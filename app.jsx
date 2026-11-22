@@ -1237,7 +1237,35 @@
 
                                               {/* Step 3 */}
                                               <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-gray-200/80 dark:border-white/10 space-y-1.5">
-                                                  <span className="inline-flex items-center justify-
+                                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#005fb8] text-white text-xs font-bold font-numbers">1</span>
+                                                  <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">ডাউনলোড কনফার্ম</h4>
+                                                  <p className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-300 leading-relaxed">"File might be harmful" দেখালে নিশ্চিন্তে <strong>Download anyway</strong> চাপুন।</p>
+                                              </div>
+                                              <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-gray-200/80 dark:border-white/10 space-y-1.5">
+                                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-amber-500 text-white text-xs font-bold font-numbers">2</span>
+                                                  <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">Unknown Apps অন</h4>
+                                                  <p className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-300 leading-relaxed">ফাইল ওপেন করে <strong>Settings → Allow from this source</strong> অন করে ব্যাক আসুন।</p>
+                                              </div>
+                                              <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-gray-200/80 dark:border-white/10 space-y-1.5">
+                                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-purple-600 text-white text-xs font-bold font-numbers">3</span>
+                                                  <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">Play Protect এলে</h4>
+                                                  <p className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-300 leading-relaxed">ওয়ার্নিং এলে নিচে <strong>More details</strong>-এ ক্লিক করে <strong>Install anyway</strong> চাপুন।</p>
+                                              </div>
+                                              <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-gray-200/80 dark:border-white/10 space-y-1.5">
+                                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs font-bold font-numbers">4</span>
+                                                  <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">ওপেন ও লগইন</h4>
+                                                  <p className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-300 leading-relaxed">ইনস্টল শেষে <strong>Open</strong> করে নোটিফিকেশন <strong>Allow</strong> দিয়ে লগইন করুন।</p>
+                                              </div>
+                                          </div>
+                                          <div className="p-3 rounded-xl bg-emerald-500/[0.08] border border-emerald-300/50 dark:border-emerald-500/25 flex items-start gap-2 text-[11px] sm:text-xs text-emerald-900 dark:text-emerald-200">
+                                              <Icon name="shield-check" className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                              <p><strong>নিরাপত্তা নোট:</strong> এটি Faridpur IT-র অফিশিয়াল অ্যাপ। প্লে-স্টোরের বাইরে হোস্ট করা বলেই অ্যান্ড্রয়েড ডিফল্ট সতর্কতা দেখায়—এটি ১০০% নিরাপদ।</p>
+                                          </div>
+                                      </div>
+                                  )}
+                              </div>
+                          </section>
+
                           <div className="w-full max-w-[90rem] mx-auto mt-32 mb-16 px-4 md:px-8 relative z-10 box-border">
                               <style>{`
                                   .state-listening .bot-ear { animation: pulse 1s infinite; background: #3b82f6; }
