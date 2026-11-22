@@ -710,6 +710,7 @@
             const [showRegisterModal, setShowRegisterModal] = useState(false);
             const [showDemoModal, setShowDemoModal] = useState(false);
             const [showSuccessModal, setShowSuccessModal] = useState(false);
+            const [showAppGuide, setShowAppGuide] = useState(false);
             const [successMsg, setSuccessMsg] = useState('We have received your registration request. We will review your details and reach out to you soon!');
               const [regForm, setRegForm] = useState({ name: '', email: '', password: '', course: '' });
               const [isRegistering, setIsRegistering] = useState(false);
@@ -1069,7 +1070,174 @@
                               </div>
                           </div>
 
-                        {/* 🤖 STUDIO QUALITY AI WORKFLOW ANIMATION */}
+                          {/* 📱 OFFICIAL ANDROID APP SHOWCASE & DIRECT APK DOWNLOAD */}
+                          <section className="w-full max-w-5xl mx-auto mt-14 md:mt-20 px-1 md:px-4 relative z-10 box-border text-left">
+                              <div className="glass-panel rounded-3xl p-5 sm:p-7 md:p-9 border border-blue-200/70 dark:border-white/10 shadow-lg relative overflow-hidden">
+                                  {/* Subtle Ambient Background Glow */}
+                                  <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#005fb8]/15 dark:bg-[#60cdff]/10 rounded-full blur-3xl pointer-events-none"></div>
+                                  <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                                  <div className="relative z-10 flex flex-col lg:flex-row items-center gap-6 lg:gap-10">
+                                      {/* Left: App Branding, Highlights & Download Actions */}
+                                      <div className="flex-1 w-full min-w-0">
+                                          <div className="flex items-center gap-3.5 mb-4">
+                                              <img
+                                                  src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjvQIhY2kPtSF4nND4gR4tX7i-T02tZMXUmMTvaAGrwMPhwbChDcNLJP43w-1lSvgYnfNfO8CpBtn2vESiT8mVAaQcAVfHWXD9OUZhkYtmgzRYg8v5JM_mNBSx8aMdeE5vCQxTmeXZoKGHg7T5cxvI4motj0u3Nv98jWcRgOFDdriZKhEbUEn4tIDgFyt9f/s512/fit-lg.png"
+                                                  alt="Faridpur IT Official App"
+                                                  loading="lazy"
+                                                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover shadow-md border-2 border-white dark:border-white/15 shrink-0 bg-[#0f172a]"
+                                              />
+                                              <div className="min-w-0">
+                                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-400/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wider mb-1">
+                                                      <Icon name="smartphone" className="w-3 h-3 shrink-0" />
+                                                      <span>Official Android App • v2.0</span>
+                                                  </div>
+                                                  <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight leading-tight">
+                                                      Faridpur IT মোবাইল অ্যাপ
+                                                  </h2>
+                                              </div>
+                                          </div>
+
+                                          <p className="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-300 leading-relaxed mb-5">
+                                              ব্রাউজার ছাড়াই এক ক্লিকে স্টুডেন্ট ড্যাশবোর্ড, রেকর্ডেড ক্লাস, স্কিল এক্সাম, আইডি কার্ড ডাউনলোড এবং প্রতিদিন প্র্যাকটিস নোটিফিকেশন পান আপনার অ্যান্ড্রয়েড ফোনে।
+                                          </p>
+
+                                          {/* 4 Compact Feature Pills */}
+                                          <div className="grid grid-cols-2 gap-2.5 mb-6">
+                                              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-white/70 dark:bg-white/[0.04] border border-gray-200/70 dark:border-white/10">
+                                                  <Icon name="zap" className="w-4 h-4 text-amber-500 shrink-0" />
+                                                  <span className="text-[11px] sm:text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">সুপার ফাস্ট লোডিং</span>
+                                              </div>
+                                              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-white/70 dark:bg-white/[0.04] border border-gray-200/70 dark:border-white/10">
+                                                  <Icon name="bell" className="w-4 h-4 text-[#005fb8] dark:text-[#60cdff] shrink-0" />
+                                                  <span className="text-[11px] sm:text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">ডেইলি প্র্যাকটিস অ্যালার্ট</span>
+                                              </div>
+                                              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-white/70 dark:bg-white/[0.04] border border-gray-200/70 dark:border-white/10">
+                                                  <Icon name="award" className="w-4 h-4 text-emerald-500 shrink-0" />
+                                                  <span className="text-[11px] sm:text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">স্কিল এক্সাম ও স্লিপ</span>
+                                              </div>
+                                              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-white/70 dark:bg-white/[0.04] border border-gray-200/70 dark:border-white/10">
+                                                  <Icon name="shield-check" className="w-4 h-4 text-purple-500 shrink-0" />
+                                                  <span className="text-[11px] sm:text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">১০০% নিরাপদ ও ফ্রি</span>
+                                              </div>
+                                          </div>
+
+                                          {/* Direct APK Download + Install Tutorial Buttons */}
+                                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                                              <a
+                                                  href="https://drive.google.com/uc?export=download&id=1wZILB_So6QRJM7_IiZ50VwIDaO6Qvr5_"
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                  onClick={() => {
+                                                      playSound('action');
+                                                      setShowAppGuide(true);
+                                                      if (typeof addToast === 'function') {
+                                                          addToast('Android APK ডাউনলোড শুরু হচ্ছে! ইনস্টল করতে নিচের গাইড দেখুন।', 'success');
+                                                      }
+                                                  }}
+                                                  className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md flex items-center justify-center gap-2 win-button whitespace-nowrap"
+                                              >
+                                                  <Icon name="download" className="w-4 h-4 shrink-0" />
+                                                  <span>Download for Android (APK)</span>
+                                              </a>
+
+                                              <button
+                                                  type="button"
+                                                  onClick={() => { playSound('click'); setShowAppGuide(prev => !prev); }}
+                                                  className="flex-1 sm:flex-none px-4 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-[#222] dark:hover:bg-[#2d2d2d] text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-white/10 font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-1.5 win-button whitespace-nowrap"
+                                              >
+                                                  <Icon name="help-circle" className="w-4 h-4 text-[#005fb8] dark:text-[#60cdff] shrink-0" />
+                                                  <span>ইনস্টল গাইড</span>
+                                                  <Icon name={showAppGuide ? 'chevron-up' : 'chevron-down'} className="w-4 h-4 shrink-0" />
+                                              </button>
+                                          </div>
+                                      </div>
+
+                                      {/* Right: Sleek Minimal Android Phone Preview Frame */}
+                                      <div className="w-full max-w-[260px] shrink-0 mx-auto lg:mx-0">
+                                          <div className="rounded-[28px] bg-[#0f172a] p-3 border-[4px] border-gray-800 dark:border-gray-700 shadow-2xl text-white">
+                                              {/* Phone Top Notch */}
+                                              <div className="w-16 h-1.5 bg-gray-700 rounded-full mx-auto mb-3"></div>
+
+                                              {/* Mini App Screen Preview */}
+                                              <div className="rounded-2xl bg-gradient-to-b from-[#172554] to-[#0f172a] p-4 border border-white/10 space-y-3">
+                                                  <div className="flex items-center gap-2.5">
+                                                      <img
+                                                          src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjvQIhY2kPtSF4nND4gR4tX7i-T02tZMXUmMTvaAGrwMPhwbChDcNLJP43w-1lSvgYnfNfO8CpBtn2vESiT8mVAaQcAVfHWXD9OUZhkYtmgzRYg8v5JM_mNBSx8aMdeE5vCQxTmeXZoKGHg7T5cxvI4motj0u3Nv98jWcRgOFDdriZKhEbUEn4tIDgFyt9f/s512/fit-lg.png"
+                                                          alt="App Icon"
+                                                          loading="lazy"
+                                                          className="w-9 h-9 rounded-xl object-cover border border-white/20"
+                                                      />
+                                                      <div className="min-w-0">
+                                                          <p className="text-xs font-bold leading-tight truncate">Faridpur IT</p>
+                                                          <p className="text-[10px] text-emerald-400 font-semibold">Verified Official APK</p>
+                                                      </div>
+                                                  </div>
+
+                                                  <div className="space-y-2 pt-1">
+                                                      <div className="p-2 rounded-lg bg-white/[0.06] border border-white/10 flex items-center justify-between text-[10px]">
+                                                          <span className="flex items-center gap-1.5 text-gray-200"><Icon name="play-circle" className="w-3.5 h-3.5 text-sky-400" /> Recorded Classes</span>
+                                                          <span className="text-emerald-400 font-bold">HD</span>
+                                                      </div>
+                                                      <div className="p-2 rounded-lg bg-white/[0.06] border border-white/10 flex items-center justify-between text-[10px]">
+                                                          <span className="flex items-center gap-1.5 text-gray-200"><Icon name="award" className="w-3.5 h-3.5 text-amber-400" /> AI Skill Exam</span>
+                                                          <span className="text-sky-400 font-bold">Live</span>
+                                                      </div>
+                                                      <div className="p-2 rounded-lg bg-white/[0.06] border border-white/10 flex items-center justify-between text-[10px]">
+                                                          <span className="flex items-center gap-1.5 text-gray-200"><Icon name="bell" className="w-3.5 h-3.5 text-emerald-400" /> Daily Practice</span>
+                                                          <span className="text-amber-300 font-bold">3x/Day</span>
+                                                      </div>
+                                                  </div>
+
+                                                  <div className="pt-1 flex items-center justify-between text-[9px] text-gray-400 border-t border-white/10">
+                                                      <span>Android 6.0+</span>
+                                                      <span className="text-emerald-400 font-bold">● Ready to Install</span>
+                                                  </div>
+                                              </div>
+                                          </div>
+                                      </div>
+                                  </div>
+
+                                  {/* Expandable Step-by-Step APK Install & Privacy Bypass Tutorial */}
+                                  {showAppGuide && (
+                                      <div className="relative z-10 mt-6 pt-6 border-t border-gray-200/80 dark:border-white/10 space-y-4">
+                                          <div className="flex items-center justify-between gap-2">
+                                              <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                                  <Icon name="book-open" className="w-4 h-4 text-[#005fb8] dark:text-[#60cdff] shrink-0" />
+                                                  <span>অ্যান্ড্রয়েড ফোনে অ্যাপ ডাউনলোড ও ইনস্টল করার সহজ নিয়ম</span>
+                                              </h3>
+                                              <button
+                                                  type="button"
+                                                  onClick={() => setShowAppGuide(false)}
+                                                  className="p-1.5 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-500 hover:text-rose-500 shrink-0"
+                                                  title="Close Guide"
+                                              >
+                                                  <Icon name="x" className="w-4 h-4" />
+                                              </button>
+                                          </div>
+
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                              {/* Step 1 */}
+                                              <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-gray-200/80 dark:border-white/10 space-y-1.5">
+                                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#005fb8] text-white text-xs font-bold font-numbers">1</span>
+                                                  <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">ডাউনলোড কনফার্ম করুন</h4>
+                                                  <p className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                                                      বাটনে ক্লিক করলে ব্রাউজারে <strong>"File might be harmful"</strong> দেখাতে পারে। প্লে-স্টোরের বাইরের যেকোনো APK-তে এটি স্বাভাবিক—নিশ্চিন্তে <strong>"Download anyway"</strong>-তে ক্লিক করুন।
+                                                  </p>
+                                              </div>
+
+                                              {/* Step 2 */}
+                                              <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-gray-200/80 dark:border-white/10 space-y-1.5">
+                                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-amber-500 text-white text-xs font-bold font-numbers">2</span>
+                                                  <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">Unknown Apps চালু করুন</h4>
+                                                  <p className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                                                      ডাউনলোড শেষে ফাইলটি ওপেন করুন। প্রাইভেসি পপআপ এলে <strong>Settings</strong>-এ গিয়ে <strong>"Allow from this source"</strong> অপশনটি অন (ON) করে ব্যাক আসুন।
+                                                  </p>
+                                              </div>
+
+                                              {/* Step 3 */}
+                                              <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-gray-200/80 dark:border-white/10 space-y-1.5">
+                                                  <span className="inline-flex items-center justify-
                           <div className="w-full max-w-[90rem] mx-auto mt-32 mb-16 px-4 md:px-8 relative z-10 box-border">
                               <style>{`
                                   .state-listening .bot-ear { animation: pulse 1s infinite; background: #3b82f6; }
