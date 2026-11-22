@@ -4179,7 +4179,31 @@
 
             const activeBudgets = Object.entries(financeConfig.budgets || {}).filter(([_, lim]) => Number(lim) > 0);
 
-           return (
+           // 📱 মোবাইল স্ক্রিনে রানিং মান্থ (বা সিলেক্টেড মান্থ) অটো-সেন্টার করার রিফ ও ইফেক্ট
+            const pipelineScrollRef = useRef(null);
+            const pipelineBarRefs = useRef({});
+
+            useEffect(() => {
+                const centerActiveMonth = () => {
+                    const container = pipelineScrollRef.current;
+                    if (!container) return;
+                    const targetIdx = periodMode === 'month'
+                        ? selectedMonthNum
+                        : (selectedYear === moment().year() ? moment().month() : 0);
+                    const targetEl = pipelineBarRefs.current[targetIdx];
+                    if (!targetEl) return;
+
+                    const cRect = container.getBoundingClientRect();
+                    const elRect = targetEl.getBoundingClientRect();
+                    const nextScrollLeft = container.scrollLeft + (elRect.left - cRect.left) - (cRect.width / 2) + (elRect.width / 2);
+                    container.scrollTo({ left: Math.max(0, nextScrollLeft), behavior: 'smooth' });
+                };
+
+                const raf = requestAnimationFrame(() => setTimeout(centerActiveMonth, 80));
+                return () => cancelAnimationFrame(raf);
+            }, [selectedYear, periodMode, selectedMonthNum, pipelineTab]);
+
+            return (
                 <div className="space-y-4 sm:space-y-5 pb-12 w-full max-w-full overflow-x-hidden">
                     {/* 🟢 Ultra-Compact Mobile-First Header (Title: Finance + Only 3 Buttons) */}
                     <div className="glass-panel p-3 sm:p-4 space-y-2.5">
@@ -4392,15 +4416,16 @@
                             </div>
                         </div>
 
-                        {/* Signature Pipeline Bars (Wide Translucent Gradient + Glowing Top Border + Bottom % Pill + Month Name) */}
-                        <div className="w-full overflow-x-auto hide-scrollbar pb-1">
-                            <div className="flex items-end gap-2 sm:gap-2.5 min-w-[760px] xl:min-w-0 h-56 sm:h-64 pt-2">
+                        {/* Signature Pipeline Bars (Auto-Centers Running Month on Mobile + Smooth Swipe) */}
+                        <div ref={pipelineScrollRef} className="w-full overflow-x-auto hide-scrollbar pb-1 scroll-smooth">
+                            <div className="flex items-end gap-2 sm:gap-2.5 min-w-[760px] xl:min-w-0 h-56 sm:h-64 pt-2 px-1">
                                 {monthlyPipeline.bars.map(bar => {
                                     const hasData = bar.amount > 0;
                                     const barColor = hasData ? bar.color : '#64748b';
                                     return (
                                         <button
                                             key={bar.label}
+                                            ref={el => { pipelineBarRefs.current[bar.idx] = el; }}
                                             type="button"
                                             onClick={() => { playSound('click'); setPeriodMode('month'); setSelectedMonthNum(bar.idx); }}
                                             style={{ WebkitTapHighlightColor: 'transparent' }}
@@ -19712,120 +19737,153 @@ const SmartPhoneAction = ({ phone }) => {
                         {/* ===================================================== */}
                         <div className="lg:col-span-4 order-1 lg:order-2 space-y-4 lg:sticky lg:top-4 min-w-0">
 
-                            {/* Profile Card with Verified Badge + 3 Mini Cards */}
-                            <div className="glass-panel p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 relative">
-                                <div className="flex flex-col items-center text-center">
-                                    {/* Circular Profile Photo */}
-                                    <div className="relative mb-3">
-                                        <img
-                                            src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
-                                            alt={displayName}
-                                            loading="lazy"
-                                            decoding="async"
-                                            className="w-20 h-20 sm:w-24 sm:h-24 object-cover border-4 border-white dark:border-dark-800 shadow-md bg-gray-100"
-                                            style={{ borderRadius: '9999px' }}
-                                        />
-                                        <span
-                                            className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 border-2 border-white dark:border-dark-800"
-                                            style={{ borderRadius: '9999px' }}
-                                            title="Active Student"
-                                        />
-                                    </div>
+                            {/* Profile Card: Mobile Horizontal (Left Photo + Right Info) | Desktop Sidebar */}
+                            {(() => {
+                                const levelTier = overallPct >= 85
+                                    ? { lv: 5, title: 'Elite Master', nextTarget: 100, color: 'text-amber-600 dark:text-amber-300', bar: 'bg-amber-500' }
+                                    : overallPct >= 65
+                                        ? { lv: 4, title: 'Pro Trainee', nextTarget: 85, color: 'text-emerald-600 dark:text-emerald-300', bar: 'bg-emerald-500' }
+                                        : overallPct >= 40
+                                            ? { lv: 3, title: 'Skill Builder', nextTarget: 65, color: 'text-purple-600 dark:text-purple-300', bar: 'bg-purple-500' }
+                                            : overallPct >= 15
+                                                ? { lv: 2, title: 'Rising Learner', nextTarget: 40, color: 'text-[#005fb8] dark:text-[#60cdff]', bar: 'bg-[#005fb8]' }
+                                                : { lv: 1, title: 'Starter', nextTarget: 15, color: 'text-cyan-600 dark:text-cyan-300', bar: 'bg-cyan-500' };
 
-                                    {/* Student Name + Smart Payment Verified Icon */}
-                                    <div className="flex items-center justify-center gap-1.5 flex-wrap relative">
-                                        <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white leading-tight">
-                                            {displayName}
-                                        </h3>
+                                return (
+                                    <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 relative">
+                                        {/* Top Identity Row: Left Photo + Right Info on Mobile, Centered on Desktop */}
+                                        <div className="flex flex-row lg:flex-col items-center lg:text-center gap-3.5 lg:gap-2.5">
+                                            {/* Clean Circular Profile Photo */}
+                                            <div className="relative shrink-0">
+                                                <img
+                                                    src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
+                                                    alt={displayName}
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                    className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 object-cover border-[3px] border-white dark:border-[#181818] shadow-sm bg-gray-100"
+                                                    style={{ borderRadius: '9999px' }}
+                                                />
+                                                <span
+                                                    className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#181818]"
+                                                    style={{ borderRadius: '9999px' }}
+                                                    title="Active Student"
+                                                />
+                                            </div>
 
-                                        {/* Verified Tick (Bright Blue if Paid, Faded/Blurred with Hover+Click Tooltip if Due) */}
-                                        <div
-                                            className="relative inline-flex items-center group"
-                                            onMouseEnter={() => { if (!isPaymentVerified) setShowVerifyTip(true); }}
-                                            onMouseLeave={() => setShowVerifyTip(false)}
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    playAudio('click');
-                                                    if (isPaymentVerified) {
-                                                        if (typeof addToast === 'function') addToast('Verified Student Account — All payments cleared!', 'success');
-                                                    } else {
-                                                        setShowVerifyTip(prev => !prev);
-                                                    }
-                                                }}
-                                                style={{ WebkitTapHighlightColor: 'transparent' }}
-                                                className={`inline-flex items-center justify-center p-0.5 rounded-full outline-none focus:outline-none transition-all ${
-                                                    isPaymentVerified
-                                                        ? 'text-[#0095F6]'
-                                                        : 'text-gray-400 dark:text-gray-500 opacity-35 blur-[0.5px] hover:opacity-80 hover:blur-0 cursor-pointer'
-                                                }`}
-                                                title={isPaymentVerified ? 'Verified Student (Payment Complete)' : 'Payment Due — Click for details'}
-                                            >
-                                                <svg className="w-[19px] h-[19px] drop-shadow-sm" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
-                                                    <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
-                                                </svg>
-                                            </button>
+                                            {/* Right Column on Mobile / Below Photo on Desktop */}
+                                            <div className="min-w-0 flex-1 lg:w-full text-left lg:text-center">
+                                                <div className="flex items-center justify-start lg:justify-center gap-1.5 flex-wrap relative">
+                                                    <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gray-900 dark:text-white leading-tight truncate max-w-full">
+                                                        {displayName}
+                                                    </h3>
 
-                                            {!isPaymentVerified && showVerifyTip && (
-                                                <div className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 top-full mt-2 w-60 p-3 rounded-xl bg-gray-900 dark:bg-[#1f1f1f] text-white text-left shadow-xl border border-white/15 z-50">
-                                                    <div className="flex items-start gap-2">
-                                                        <Icon name="alert-circle" className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                                                        <div className="min-w-0">
-                                                            <p className="text-[11px] font-bold text-amber-300">ভেরিফাইড নয় (Payment Due)</p>
-                                                            <p className="text-[11px] text-gray-200 leading-relaxed mt-0.5">
-                                                                আপনার <strong className="text-white font-numbers">{CURRENCY_SYMBOL}{myDueAmount.toLocaleString()}</strong> পেমেন্ট বাকি আছে। ভেরিফাইড হতে পেমেন্ট কমপ্লিট করুন।
-                                                            </p>
-                                                            <a href="#orders" onClick={() => { playAudio('click'); setShowVerifyTip(false); }} className="inline-block mt-2 text-[10px] font-bold text-[#60cdff] hover:underline">
-                                                                পেমেন্ট বিবরণ দেখুন →
-                                                            </a>
-                                                        </div>
+                                                    <div
+                                                        className="relative inline-flex items-center group shrink-0"
+                                                        onMouseEnter={() => { if (!isPaymentVerified) setShowVerifyTip(true); }}
+                                                        onMouseLeave={() => setShowVerifyTip(false)}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                playAudio('click');
+                                                                if (isPaymentVerified) {
+                                                                    if (typeof addToast === 'function') addToast('Verified Student Account — All payments cleared!', 'success');
+                                                                } else {
+                                                                    setShowVerifyTip(prev => !prev);
+                                                                }
+                                                            }}
+                                                            style={{ WebkitTapHighlightColor: 'transparent' }}
+                                                            className={`inline-flex items-center justify-center p-0.5 rounded-full outline-none focus:outline-none transition-all ${
+                                                                isPaymentVerified
+                                                                    ? 'text-[#0095F6]'
+                                                                    : 'text-gray-400 dark:text-gray-500 opacity-35 blur-[0.5px] hover:opacity-80 hover:blur-0 cursor-pointer'
+                                                            }`}
+                                                            title={isPaymentVerified ? 'Verified Student (Payment Complete)' : 'Payment Due — Click for details'}
+                                                        >
+                                                            <svg className="w-[18px] h-[18px] drop-shadow-sm" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                                <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                                <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                                            </svg>
+                                                        </button>
+
+                                                        {!isPaymentVerified && showVerifyTip && (
+                                                            <div className="absolute right-0 lg:left-1/2 lg:-translate-x-1/2 top-full mt-2 w-60 p-3 rounded-xl bg-gray-900 dark:bg-[#1f1f1f] text-white text-left shadow-xl border border-white/15 z-50">
+                                                                <div className="flex items-start gap-2">
+                                                                    <Icon name="alert-circle" className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-[11px] font-bold text-amber-300">ভেরিফাইড নয় (Payment Due)</p>
+                                                                        <p className="text-[11px] text-gray-200 leading-relaxed mt-0.5">
+                                                                            আপনার <strong className="text-white font-numbers">{CURRENCY_SYMBOL}{myDueAmount.toLocaleString()}</strong> পেমেন্ট বাকি আছে। ভেরিফাইড হতে পেমেন্ট কমপ্লিট করুন।
+                                                                        </p>
+                                                                        <a href="#orders" onClick={() => { playAudio('click'); setShowVerifyTip(false); }} className="inline-block mt-2 text-[10px] font-bold text-[#60cdff] hover:underline">
+                                                                            পেমেন্ট বিবরণ দেখুন →
+                                                                        </a>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
-                                            )}
+
+                                                <p className="text-xs font-mono-code text-gray-500 dark:text-gray-400 mt-0.5 truncate">{handleUsername}</p>
+
+                                                <div className="flex flex-wrap justify-start lg:justify-center gap-1.5 mt-2">
+                                                    {enrolledCourses.map(c => (
+                                                        <span key={c} className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-500/20">
+                                                            {c}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 3 Mini Profile Stat Cards */}
+                                        <div className="grid grid-cols-3 gap-2 w-full mt-4 pt-3.5 border-t border-gray-200/60 dark:border-white/10">
+                                            <a href="#leaderboard" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-amber-500/[0.08] dark:bg-amber-500/[0.12] border border-amber-200/60 dark:border-amber-500/20 hover:border-amber-500 transition-colors text-center">
+                                                <p className="text-base sm:text-lg font-numbers font-bold text-amber-700 dark:text-amber-300 leading-none">
+                                                    {myRankNum ? `#${myRankNum}` : '#—'}
+                                                </p>
+                                                <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">Rank</p>
+                                            </a>
+
+                                            <a href="#assignments" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] border border-emerald-200/60 dark:border-emerald-500/20 hover:border-emerald-500 transition-colors text-center">
+                                                <p className="text-base sm:text-lg font-numbers font-bold text-emerald-700 dark:text-emerald-300 leading-none">
+                                                    {fixedCompletedCount}
+                                                </p>
+                                                <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">Assignments</p>
+                                            </a>
+
+                                            <a href="#courses" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-blue-500/[0.07] dark:bg-blue-500/[0.11] border border-blue-200/60 dark:border-blue-500/20 hover:border-[#005fb8] transition-colors text-center">
+                                                <p className="text-base sm:text-lg font-numbers font-bold text-[#005fb8] dark:text-[#60cdff] leading-none">
+                                                    {courseCount}
+                                                </p>
+                                                <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">
+                                                    {courseCount === 1 ? 'Course' : 'Courses'}
+                                                </p>
+                                            </a>
+                                        </div>
+
+                                        {/* Career Level & XP Bar */}
+                                        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-white/5 space-y-1.5">
+                                            <div className="flex items-center justify-between text-[11px]">
+                                                <span className={`font-bold flex items-center gap-1 ${levelTier.color}`}>
+                                                    <Icon name="zap" className="w-3.5 h-3.5 shrink-0" />
+                                                    Lv.{levelTier.lv} • {levelTier.title}
+                                                </span>
+                                                <span className="font-numbers font-bold text-gray-500 dark:text-gray-400">
+                                                    {overallPct}/{levelTier.nextTarget} XP
+                                                </span>
+                                            </div>
+                                            <div className="w-full h-1.5 bg-gray-200/80 dark:bg-white/[0.08] rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-500 ${levelTier.bar}`}
+                                                    style={{ width: `${Math.min(100, Math.round((overallPct / levelTier.nextTarget) * 100))}%` }}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
-
-                                    {/* @Username */}
-                                    <p className="text-xs font-mono-code text-gray-500 dark:text-gray-400 mt-0.5">{handleUsername}</p>
-
-                                    {/* Enrolled Course Chips */}
-                                    <div className="flex flex-wrap justify-center gap-1.5 mt-2.5">
-                                        {enrolledCourses.map(c => (
-                                            <span key={c} className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-500/20">
-                                                {c}
-                                            </span>
-                                        ))}
-                                    </div>
-
-                                    {/* 3 Mini Profile Stat Cards: 1) #Rank | 2) Total Assignments | 3) Courses */}
-                                    <div className="grid grid-cols-3 gap-2 w-full mt-4 pt-4 border-t border-gray-200/60 dark:border-white/10">
-                                        <a href="#leaderboard" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-amber-500/[0.08] dark:bg-amber-500/[0.12] border border-amber-200/60 dark:border-amber-500/20 hover:border-amber-500 transition-colors text-center">
-                                            <p className="text-base sm:text-lg font-numbers font-bold text-amber-700 dark:text-amber-300 leading-none">
-                                                {myRankNum ? `#${myRankNum}` : '#—'}
-                                            </p>
-                                            <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">Rank</p>
-                                        </a>
-
-                                        <a href="#assignments" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] border border-emerald-200/60 dark:border-emerald-500/20 hover:border-emerald-500 transition-colors text-center">
-                                            <p className="text-base sm:text-lg font-numbers font-bold text-emerald-700 dark:text-emerald-300 leading-none">
-                                                {fixedCompletedCount}
-                                            </p>
-                                            <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">Assignments</p>
-                                        </a>
-
-                                        <a href="#courses" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-blue-500/[0.07] dark:bg-blue-500/[0.11] border border-blue-200/60 dark:border-blue-500/20 hover:border-[#005fb8] transition-colors text-center">
-                                            <p className="text-base sm:text-lg font-numbers font-bold text-[#005fb8] dark:text-[#60cdff] leading-none">
-                                                {courseCount}
-                                            </p>
-                                            <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">
-                                                {courseCount === 1 ? 'Course' : 'Courses'}
-                                            </p>
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
+                                );
+                            })()}
 
                             {/* Statistics Section with Zero-Blink Pie/Doughnut Chart */}
                             <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
@@ -20878,6 +20936,1042 @@ const SmartPhoneAction = ({ phone }) => {
                             </div>
                         )}
                     </Modal>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 💺 UPGRADED STUDENT MY SEAT & BATCH VIEW (PROFILE + LAB PASS + NEXT CLASS)
+        // ==========================================
+        const StudentSeatBatchView = ({ auth, batches = [], bookings = [], studentsPanel = [], studentLeads = [], enrolledCourses = [], addToast }) => {
+            const playAudio = (type) => { if (typeof window.playSound === 'function') window.playSound(type); };
+            const norm = (v) => String(v || '').replace(/^'/, '').replace(/^\+88/, '').replace(/\s+/g, '').toLowerCase();
+            const myIdNorm = norm(auth?.userId);
+            const myNameNorm = norm(auth?.name || auth?.username);
+
+            const myRecord = useMemo(() => studentsPanel.find(s =>
+                (myIdNorm && (norm(s.phone) === myIdNorm || norm(s.id) === myIdNorm || norm(s.name) === myIdNorm)) ||
+                (myNameNorm && norm(s.name) === myNameNorm)
+            ) || null, [studentsPanel, myIdNorm, myNameNorm]);
+
+            const myLead = useMemo(() => studentLeads.find(s =>
+                (myIdNorm && (norm(s.phone) === myIdNorm || norm(s.id) === myIdNorm)) ||
+                (myNameNorm && norm(s.name) === myNameNorm)
+            ) || null, [studentLeads, myIdNorm, myNameNorm]);
+
+            const displayName = myRecord?.name || auth?.name || auth?.username || 'Student';
+            const handleUsername = '@' + String(auth?.userId || displayName).replace(/\s+/g, '').toLowerCase();
+            const coursesArr = parseCourseList(enrolledCourses, auth?.course, myRecord?.course);
+
+            const myBooking = useMemo(() => bookings.find(b =>
+                (myNameNorm && norm(b.studentName) === myNameNorm) ||
+                (myIdNorm && norm(b.phone) === myIdNorm)
+            ) || null, [bookings, myNameNorm, myIdNorm]);
+
+            const myBatch = useMemo(() => myBooking
+                ? batches.find(b => String(b.id).trim() === String(myBooking.batchId).trim()) || null
+                : null, [batches, myBooking]);
+
+            const formatTime12 = (timeInput) => {
+                if (!timeInput) return 'TBA';
+                const str = String(timeInput).replace(/^'/, '').trim();
+                if (!str) return 'TBA';
+                if (str.includes('1899') || str.includes('GMT') || str.includes('T')) {
+                    const d = new Date(str);
+                    if (!isNaN(d.getTime())) return moment(d).format('hh:mm A');
+                }
+                const m = moment(str, ['HH:mm', 'HH:mm:ss', 'hh:mm A', 'h:mm A']);
+                return m.isValid() ? m.format('hh:mm A') : str;
+            };
+
+            const batchDaysLow = (myBatch?.days || []).map(d => String(d || '').trim().toLowerCase());
+            const weekOrder = [
+                { short: 'Sat', full: 'Saturday' },
+                { short: 'Sun', full: 'Sunday' },
+                { short: 'Mon', full: 'Monday' },
+                { short: 'Tue', full: 'Tuesday' },
+                { short: 'Wed', full: 'Wednesday' },
+                { short: 'Thu', full: 'Thursday' },
+                { short: 'Fri', full: 'Friday' }
+            ];
+            const todayShortLow = moment().format('ddd').toLowerCase();
+
+            // পরবর্তী ক্লাস কবে তা অটো হিসাব করা
+            const nextClassLabel = useMemo(() => {
+                if (batchDaysLow.length === 0) return 'Not Scheduled Yet';
+                for (let offset = 0; offset < 7; offset++) {
+                    const m = moment().add(offset, 'days');
+                    const sLow = m.format('ddd').toLowerCase();
+                    const fLow = m.format('dddd').toLowerCase();
+                    if (batchDaysLow.some(bd => bd === sLow || bd === fLow || fLow.startsWith(bd))) {
+                        if (offset === 0) return `Today (${m.format('ddd, DD MMM')})`;
+                        if (offset === 1) return `Tomorrow (${m.format('ddd, DD MMM')})`;
+                        return `${m.format('dddd, DD MMM')} (in ${offset} days)`;
+                    }
+                }
+                return 'Check Batch Schedule';
+            }, [batchDaysLow]);
+
+            const attStats = useMemo(() => calculateCourseAttendanceStats({
+                ...(myRecord || {}),
+                name: displayName,
+                phone: myRecord?.phone || auth?.userId,
+                durationMonths: myRecord?.durationMonths || myLead?.duration || 3,
+                startDate: myRecord?.startDate || myLead?.admissionDate
+            }, batches, bookings), [myRecord, myLead, displayName, auth, batches, bookings]);
+
+            const copyLabPass = () => {
+                playAudio('action');
+                const txt = `Faridpur IT Institute — Lab Seat Pass\nStudent: ${displayName} (${handleUsername})\nCourse: ${coursesArr.join(', ')}\nBatch: ${myBatch?.name || 'Unassigned'}\nSeat: ${myBooking?.seatId ? 'Seat #' + myBooking.seatId : 'Pending'}\nDays: ${(myBatch?.days || []).join(', ') || 'TBA'}\nTime: ${myBatch ? `${formatTime12(myBatch.startTime)} - ${formatTime12(myBatch.endTime)}` : 'TBA'}`;
+                if (navigator.clipboard) navigator.clipboard.writeText(txt);
+                if (typeof addToast === 'function') addToast('Lab Seat Pass copied!', 'success');
+            };
+
+            return (
+                <div className="space-y-4 sm:space-y-5 pb-12 w-full max-w-none overflow-x-hidden">
+                    {/* Top Student Identity + Seat Pass Banner */}
+                    <div className="glass-panel p-4 sm:p-6 rounded-2xl border border-gray-200/70 dark:border-white/10">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            {/* Left: Clean Profile Photo + Name + Course */}
+                            <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
+                                <div className="relative shrink-0">
+                                    <img
+                                        src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
+                                        alt={displayName}
+                                        loading="lazy"
+                                        className="w-16 h-16 sm:w-20 sm:h-20 object-cover border-[3px] border-white dark:border-[#181818] shadow-sm bg-gray-100"
+                                        style={{ borderRadius: '9999px' }}
+                                    />
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">
+                                        Official Lab Seat &amp; Batch Pass
+                                    </span>
+                                    <h2 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white truncate mt-0.5">{displayName}</h2>
+                                    <p className="text-xs font-mono-code text-gray-500 dark:text-gray-400 truncate">
+                                        {handleUsername} {myRecord?.id ? `• ${myRecord.id}` : ''}
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5 mt-2">
+                                        {coursesArr.map(c => (
+                                            <span key={c} className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-500/20">
+                                                {c}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Right: Big Lab Seat Badge + Copy Pass */}
+                            <div className="flex items-center justify-between md:justify-end gap-3 pt-3 md:pt-0 border-t md:border-t-0 border-gray-100 dark:border-white/10 shrink-0">
+                                <div className="px-4 py-2.5 rounded-xl bg-blue-500/[0.09] dark:bg-blue-500/[0.15] border border-blue-300/60 dark:border-blue-500/30 text-center">
+                                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#005fb8] dark:text-[#60cdff]">Lab Seat</p>
+                                    <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white leading-tight mt-0.5">
+                                        {myBooking?.seatId ? `#${String(myBooking.seatId).padStart(2, '0')}` : 'Pending'}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={copyLabPass}
+                                    className="h-10 px-3.5 rounded-xl bg-gray-900 hover:bg-black dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200 text-white text-xs font-bold flex items-center gap-1.5 whitespace-nowrap win-button"
+                                >
+                                    <Icon name="copy" className="w-3.5 h-3.5 shrink-0" />
+                                    <span>Copy Pass</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 4 Batch & Attendance Overview Cards */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+                        <div className="p-3.5 sm:p-4 rounded-2xl bg-blue-500/[0.06] dark:bg-blue-500/[0.10] border border-blue-200/60 dark:border-blue-500/20 min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff] truncate">Assigned Batch</p>
+                            <p className="text-base sm:text-lg font-bold text-gray-900 dark:text-white truncate mt-1">
+                                {myBatch ? myBatch.name : 'Not Assigned'}
+                            </p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                {myBatch ? `${(myBatch.days || []).length} days / week` : 'Contact admin for seat'}
+                            </p>
+                        </div>
+
+                        <div className="p-3.5 sm:p-4 rounded-2xl bg-emerald-500/[0.06] dark:bg-emerald-500/[0.10] border border-emerald-200/60 dark:border-emerald-500/20 min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 truncate">Class Time</p>
+                            <p className="text-sm sm:text-base font-numbers font-bold text-gray-900 dark:text-white truncate mt-1">
+                                {myBatch ? `${formatTime12(myBatch.startTime)} – ${formatTime12(myBatch.endTime)}` : 'TBA'}
+                            </p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">Be on time (10m early)</p>
+                        </div>
+
+                        <div className="p-3.5 sm:p-4 rounded-2xl bg-purple-500/[0.06] dark:bg-purple-500/[0.10] border border-purple-200/60 dark:border-purple-500/20 min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-purple-700 dark:text-purple-400 truncate">Next Class</p>
+                            <p className="text-sm sm:text-base font-bold text-gray-900 dark:text-white truncate mt-1">{nextClassLabel}</p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">Upcoming lab session</p>
+                        </div>
+
+                        <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/[0.06] dark:bg-amber-500/[0.10] border border-amber-200/60 dark:border-amber-500/20 min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 truncate">Attendance</p>
+                            <p className="text-base sm:text-lg font-numbers font-bold text-gray-900 dark:text-white truncate mt-1">
+                                {attStats.rate}% <span className="text-xs font-medium text-gray-400">({attStats.present}/{attStats.targetClasses}d)</span>
+                            </p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                {myRecord?.durationMonths || myLead?.duration || 3} Months Course
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Weekly Schedule Strip + Campus & Lab Info */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                        <div className="lg:col-span-8 glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
+                            <div className="flex items-center justify-between gap-2 mb-4">
+                                <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    <Icon name="calendar-days" className="w-4 h-4 text-[#005fb8]" />
+                                    <span>Weekly Lab Routine</span>
+                                </h3>
+                                <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                                    {(myBatch?.days || []).join(', ') || 'No days assigned'}
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+                                {weekOrder.map(d => {
+                                    const sLow = d.short.toLowerCase();
+                                    const fLow = d.full.toLowerCase();
+                                    const hasClass = batchDaysLow.some(bd => bd === sLow || bd === fLow || fLow.startsWith(bd));
+                                    const isToday = sLow === todayShortLow;
+
+                                    return (
+                                        <div
+                                            key={d.short}
+                                            className={`py-3 px-1 rounded-xl text-center flex flex-col items-center justify-center gap-1.5 border ${
+                                                hasClass
+                                                    ? 'bg-emerald-500/[0.12] dark:bg-emerald-500/[0.18] border-emerald-400/70 dark:border-emerald-500/40 text-emerald-950 dark:text-white'
+                                                    : 'bg-transparent border-dashed border-gray-200 dark:border-white/10 text-gray-400 opacity-60'
+                                            } ${isToday ? 'ring-2 ring-[#005fb8] dark:ring-[#facc15]' : ''}`}
+                                        >
+                                            <span className="text-[10px] sm:text-xs font-bold uppercase">{d.short}</span>
+                                            <span className={`px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-bold uppercase ${
+                                                hasClass ? 'bg-emerald-600 text-white' : 'bg-gray-200/70 dark:bg-dark-700 text-gray-500'
+                                            }`}>
+                                                {hasClass ? 'Class' : 'Off'}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="lg:col-span-4 glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 flex flex-col justify-between gap-3">
+                            <div>
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-2.5">
+                                    <Icon name="map-pin" className="w-4 h-4 text-rose-500 shrink-0" />
+                                    <span>Campus &amp; Lab Guidelines</span>
+                                </h3>
+                                <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                                    <strong>Faridpur IT Institute</strong><br/>
+                                    19/A, Sharmin Villa (4th Floor), Rajendra College Road, Faridpur Sadar.
+                                </p>
+                                <ul className="mt-2.5 space-y-1 text-[11px] text-gray-500 dark:text-gray-400 list-disc pl-4">
+                                    <li>ক্লাস শুরুর ১০ মিনিট আগে ল্যাবে উপস্থিত থাকুন।</li>
+                                    <li>নিজের নির্ধারিত সিট ও পিসি ব্যবহার করুন।</li>
+                                    <li>প্রতিদিন ড্যাশবোর্ডে Check In করে উপস্থিতি নিশ্চিত করুন।</li>
+                                </ul>
+                            </div>
+                            <a
+                                href="#id-card"
+                                onClick={() => playAudio('click')}
+                                className="w-full py-2 rounded-xl bg-blue-500/[0.09] hover:bg-[#005fb8] text-[#005fb8] hover:text-white dark:text-[#60cdff] text-xs font-bold text-center transition-colors"
+                            >
+                                Open Official Student ID Card →
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 📝 SMART NOTES VIEW (TITLE + COLLAPSIBLE BODY + PIN + SEARCH + COPY — ZERO BACKEND CHANGE)
+        // ==========================================
+        const SmartNotesView = ({ notes = [], auth, executeAPI, fetchOrders, addToast }) => {
+            const playAudio = (type) => { if (typeof window.playSound === 'function') window.playSound(type); };
+
+            // ব্যাকএন্ডের Content কলামে Title + Body নিরাপদে প্যাক/আনপ্যাক করা (পুরোনো নোটও কাজ করবে)
+            const unpackNote = (rawContent) => {
+                const str = String(rawContent || '');
+                const match = str.match(/^\[\[T\]\]([\s\S]*?)\[\[\/T\]\]\n?([\s\S]*)$/);
+                if (match) {
+                    return { title: match[1].trim() || 'Untitled Note', body: match[2].trim() };
+                }
+                const lines = str.split('\n').map(l => l.trim()).filter(Boolean);
+                if (lines.length === 0) return { title: 'Untitled Note', body: '' };
+                const firstLine = lines[0];
+                const derivedTitle = firstLine.length > 65 ? firstLine.slice(0, 65) + '...' : firstLine;
+                const restBody = lines.length > 1 ? lines.slice(1).join('\n') : (firstLine.length > 65 ? firstLine : '');
+                return { title: derivedTitle, body: restBody };
+            };
+
+            const packNote = (title, body) => {
+                const t = String(title || '').trim() || 'Untitled Note';
+                const b = String(body || '').trim();
+                return `[[T]]${t}[[/T]]\n${b}`;
+            };
+
+            const NOTE_COLORS = [
+                { id: '#fef08a', name: 'Yellow', dot: 'bg-amber-400', tint: 'bg-amber-500/[0.07] dark:bg-amber-500/[0.11] border-amber-300/60 dark:border-amber-500/25', titleTone: 'text-amber-900 dark:text-amber-200' },
+                { id: '#bfdbfe', name: 'Blue', dot: 'bg-blue-500', tint: 'bg-blue-500/[0.07] dark:bg-blue-500/[0.11] border-blue-300/60 dark:border-blue-500/25', titleTone: 'text-blue-900 dark:text-blue-200' },
+                { id: '#bbf7d0', name: 'Green', dot: 'bg-emerald-500', tint: 'bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] border-emerald-300/60 dark:border-emerald-500/25', titleTone: 'text-emerald-900 dark:text-emerald-200' },
+                { id: '#fbcfe8', name: 'Pink', dot: 'bg-pink-500', tint: 'bg-pink-500/[0.07] dark:bg-pink-500/[0.11] border-pink-300/60 dark:border-pink-500/25', titleTone: 'text-pink-900 dark:text-pink-200' },
+                { id: '#e9d5ff', name: 'Purple', dot: 'bg-purple-500', tint: 'bg-purple-500/[0.07] dark:bg-purple-500/[0.11] border-purple-300/60 dark:border-purple-500/25', titleTone: 'text-purple-900 dark:text-purple-200' }
+            ];
+
+            const pinStorageKey = `fit_pinned_notes_${auth?.userId || 'usr'}`;
+            const [pinnedIds, setPinnedIds] = useState(() => {
+                try { return JSON.parse(localStorage.getItem(pinStorageKey)) || []; } catch (e) { return []; }
+            });
+            const [expandedMap, setExpandedMap] = useState({});
+            const [searchQ, setSearchQ] = useState('');
+            const [colorFilter, setColorFilter] = useState('All');
+
+            // Create / Edit Modal
+            const [modalOpen, setModalOpen] = useState(false);
+            const [saving, setSaving] = useState(false);
+            const [draft, setDraft] = useState({ rowIndex: null, title: '', body: '', color: '#fef08a' });
+
+            const togglePin = (keyId) => {
+                playAudio('click');
+                setPinnedIds(prev => {
+                    const next = prev.includes(keyId) ? prev.filter(x => x !== keyId) : [keyId, ...prev];
+                    try { localStorage.setItem(pinStorageKey, JSON.stringify(next)); } catch (e) {}
+                    return next;
+                });
+            };
+
+            const toggleExpand = (keyId) => {
+                playAudio('click');
+                setExpandedMap(prev => ({ ...prev, [keyId]: !prev[keyId] }));
+            };
+
+            const parsedNotes = useMemo(() => {
+                const q = searchQ.trim().toLowerCase();
+                return (notes || [])
+                    .map((n, idx) => {
+                        const { title, body } = unpackNote(n.Content);
+                        const uid = String(n.Timestamp || n.rowIndex || idx);
+                        const isPinned = pinnedIds.includes(uid);
+                        return { ...n, uid, title, body, isPinned };
+                    })
+                    .filter(n => {
+                        if (colorFilter !== 'All' && String(n.Color || '').toLowerCase() !== colorFilter.toLowerCase()) return false;
+                        if (q && !(`${n.title} ${n.body}`.toLowerCase().includes(q))) return false;
+                        return true;
+                    })
+                    .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
+            }, [notes, searchQ, colorFilter, pinnedIds]);
+
+            const allExpanded = parsedNotes.length > 0 && parsedNotes.every(n => expandedMap[n.uid]);
+
+            const handleToggleExpandAll = () => {
+                playAudio('click');
+                if (allExpanded) {
+                    setExpandedMap({});
+                } else {
+                    const next = {};
+                    parsedNotes.forEach(n => { next[n.uid] = true; });
+                    setExpandedMap(next);
+                }
+            };
+
+            const handleSaveNote = async (e) => {
+                e.preventDefault();
+                if (!draft.title.trim() && !draft.body.trim()) {
+                    return addToast('Please write a title or note body.', 'error');
+                }
+                setSaving(true);
+                playAudio('action');
+                const packed = packNote(draft.title, draft.body);
+                try {
+                    const isEdit = Boolean(draft.rowIndex);
+                    const res = await executeAPI(isEdit
+                        ? { action: 'edit_note', rowIndex: draft.rowIndex, content: packed, color: draft.color }
+                        : { action: 'add_note', content: packed, color: draft.color }
+                    );
+                    const data = await res.json();
+                    if (data && data.success) {
+                        playAudio('success');
+                        addToast(isEdit ? 'Note updated!' : 'Note saved!', 'success');
+                        setModalOpen(false);
+                        fetchOrders(true);
+                    } else {
+                        addToast((data && data.message) || 'Could not save note.', 'error');
+                    }
+                } catch (err) {
+                    addToast('Network error saving note.', 'error');
+                }
+                setSaving(false);
+            };
+
+            const handleDeleteNote = async (note) => {
+                if (!window.confirm(`Delete "${note.title}"?`)) return;
+                playAudio('action');
+                try {
+                    const res = await executeAPI({ action: 'delete_note', rowIndex: note.rowIndex });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        addToast('Note deleted.', 'success');
+                        fetchOrders(true);
+                    } else {
+                        addToast((data && data.message) || 'Delete failed.', 'error');
+                    }
+                } catch (err) {
+                    addToast('Network error.', 'error');
+                }
+            };
+
+            return (
+                <div className="space-y-4 sm:space-y-5 pb-12 w-full max-w-none overflow-x-hidden">
+                    {/* Compact No-Wrap Header */}
+                    <div className="glass-panel p-3.5 sm:p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-3">
+                        <div className="flex items-center justify-between gap-2 flex-nowrap">
+                            <div className="min-w-0 flex items-center gap-2">
+                                <Icon name="sticky-note" className="w-5 h-5 text-amber-500 shrink-0" />
+                                <div className="min-w-0">
+                                    <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white truncate">Smart Notes</h2>
+                                    <p className="hidden sm:block text-xs text-gray-500 dark:text-gray-400">Title-first collapsible notes with pin, color tags &amp; quick copy.</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0 flex-nowrap">
+                                <button
+                                    type="button"
+                                    onClick={handleToggleExpandAll}
+                                    className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-dark-800 dark:hover:bg-dark-700 text-gray-700 dark:text-gray-200 text-[11px] sm:text-xs font-bold whitespace-nowrap win-button"
+                                >
+                                    {allExpanded ? 'Collapse All' : 'Expand All'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        playAudio('click');
+                                        setDraft({ rowIndex: null, title: '', body: '', color: '#fef08a' });
+                                        setModalOpen(true);
+                                    }}
+                                    className="h-8 sm:h-9 px-3 sm:px-4 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-[11px] sm:text-xs font-bold flex items-center gap-1.5 whitespace-nowrap win-button"
+                                >
+                                    <Icon name="plus" className="w-3.5 h-3.5 shrink-0" />
+                                    <span>New Note</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Search + Color Filter Row */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2.5 border-t border-gray-100 dark:border-white/5">
+                            <div className="flex items-center bg-white dark:bg-dark-800 px-3 py-1.5 rounded-lg border border-gray-200/80 dark:border-white/10 flex-1 min-w-0">
+                                <Icon name="search" className="w-3.5 h-3.5 text-gray-400 mr-2 shrink-0" />
+                                <input
+                                    type="text"
+                                    value={searchQ}
+                                    onChange={e => setSearchQ(e.target.value)}
+                                    placeholder="Search note titles or body..."
+                                    className="bg-transparent border-none outline-none w-full text-xs font-medium text-gray-800 dark:text-white"
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0 flex-nowrap overflow-x-auto hide-scrollbar">
+                                <button
+                                    type="button"
+                                    onClick={() => { playAudio('click'); setColorFilter('All'); }}
+                                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors ${
+                                        colorFilter === 'All'
+                                            ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+                                            : 'bg-gray-100 dark:bg-dark-800 text-gray-500 dark:text-gray-400'
+                                    }`}
+                                >
+                                    All ({notes.length})
+                                </button>
+                                {NOTE_COLORS.map(c => (
+                                    <button
+                                        key={c.id}
+                                        type="button"
+                                        onClick={() => { playAudio('click'); setColorFilter(c.id); }}
+                                        title={c.name}
+                                        className={`w-6 h-6 rounded-full flex items-center justify-center border transition-transform ${
+                                            colorFilter === c.id ? 'ring-2 ring-gray-900 dark:ring-white scale-110' : 'border-gray-300 dark:border-white/20'
+                                        }`}
+                                        style={{ backgroundColor: c.id }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Collapsible Title-Highlighted Notes Grid */}
+                    {parsedNotes.length === 0 ? (
+                        <div className="glass-panel py-12 px-4 rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-center">
+                            <Icon name="sticky-note" className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                            <p className="text-sm font-bold text-gray-700 dark:text-gray-300">No notes found</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Click "New Note" to save your study notes, code snippets, or reminders.</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-start">
+                            {parsedNotes.map(note => {
+                                const theme = NOTE_COLORS.find(c => c.id.toLowerCase() === String(note.Color || '').toLowerCase()) || NOTE_COLORS[0];
+                                const isOpen = Boolean(expandedMap[note.uid]);
+
+                                return (
+                                    <div key={note.uid} className={`rounded-2xl border transition-all overflow-hidden ${theme.tint}`}>
+                                        {/* Highlighted Title Header (Always Visible — Click to Expand/Collapse Body) */}
+                                        <div
+                                            onClick={() => toggleExpand(note.uid)}
+                                            className="p-3.5 sm:p-4 cursor-pointer select-none flex items-start justify-between gap-2.5"
+                                        >
+                                            <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                                <span className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1.5 ${theme.dot}`} />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-1.5">
+                                                        {note.isPinned && <Icon name="pin" className="w-3 h-3 text-rose-500 shrink-0" />}
+                                                        <h3 className={`text-sm font-bold leading-snug break-words ${theme.titleTone}`}>
+                                                            {note.title}
+                                                        </h3>
+                                                    </div>
+                                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 font-numbers flex items-center gap-2">
+                                                        <span>{note.Timestamp ? moment(note.Timestamp).format('DD MMM, hh:mm A') : 'Saved'}</span>
+                                                        {!isOpen && note.body && (
+                                                            <span className="text-[10px] font-semibold text-[#005fb8] dark:text-[#60cdff]">• Tap to read</span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); toggleExpand(note.uid); }}
+                                                className="w-7 h-7 rounded-lg bg-white/70 dark:bg-black/25 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0"
+                                                title={isOpen ? 'Collapse' : 'Expand'}
+                                            >
+                                                <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} className="w-4 h-4" />
+                                            </button>
+                                        </div>
+
+                                        {/* Collapsible Body & Action Toolbar */}
+                                        {isOpen && (
+                                            <div className="px-4 pb-3.5 pt-2 border-t border-black/[0.06] dark:border-white/[0.08] space-y-3">
+                                                <div className="text-xs sm:text-[13px] text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed break-words bg-white/70 dark:bg-black/20 p-3 rounded-xl border border-black/[0.05] dark:border-white/[0.06]">
+                                                    {note.body || <span className="italic text-gray-400">No additional body text.</span>}
+                                                </div>
+
+                                                <div className="flex items-center justify-between gap-2 text-[11px]">
+                                                    <span className="text-[10px] text-gray-500 font-numbers">
+                                                        {(note.body || '').length} chars
+                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => togglePin(note.uid)}
+                                                            className={`px-2 py-1 rounded-md font-bold flex items-center gap-1 ${
+                                                                note.isPinned
+                                                                    ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300'
+                                                                    : 'bg-white/80 dark:bg-dark-800 text-gray-600 dark:text-gray-300'
+                                                            }`}
+                                                            title="Pin Note"
+                                                        >
+                                                            <Icon name="pin" className="w-3 h-3" /> {note.isPinned ? 'Pinned' : 'Pin'}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                playAudio('click');
+                                                                if (navigator.clipboard) navigator.clipboard.writeText(`${note.title}\n\n${note.body}`);
+                                                                addToast('Note copied!', 'success');
+                                                            }}
+                                                            className="px-2 py-1 rounded-md bg-white/80 dark:bg-dark-800 text-gray-700 dark:text-gray-200 font-bold flex items-center gap-1"
+                                                            title="Copy Note"
+                                                        >
+                                                            <Icon name="copy" className="w-3 h-3" /> Copy
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                playAudio('click');
+                                                                setDraft({ rowIndex: note.rowIndex, title: note.title, body: note.body, color: note.Color || '#fef08a' });
+                                                                setModalOpen(true);
+                                                            }}
+                                                            className="px-2 py-1 rounded-md bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] font-bold flex items-center gap-1"
+                                                        >
+                                                            <Icon name="edit-2" className="w-3 h-3" /> Edit
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteNote(note)}
+                                                            className="px-2 py-1 rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold"
+                                                            title="Delete Note"
+                                                        >
+                                                            <Icon name="trash-2" className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* Add / Edit Note Modal (Title + Body + Color Picker) */}
+                    <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={draft.rowIndex ? 'Edit Note' : 'Create Smart Note'} maxWidth="max-w-lg" compact={true}>
+                        <form onSubmit={handleSaveNote} className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Note Title *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={draft.title}
+                                    onChange={e => setDraft({ ...draft, title: e.target.value })}
+                                    className="w-full input-style px-3 py-2 text-sm font-bold"
+                                    placeholder="e.g. Facebook Ads Checklist / Class 05 Notes"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Note Body</label>
+                                <textarea
+                                    rows="6"
+                                    value={draft.body}
+                                    onChange={e => setDraft({ ...draft, body: e.target.value })}
+                                    className="w-full input-style px-3 py-2 text-xs sm:text-sm leading-relaxed"
+                                    placeholder="Write detailed notes, links, or ideas here..."
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">Color Tag</label>
+                                <div className="flex items-center gap-2.5">
+                                    {NOTE_COLORS.map(c => (
+                                        <button
+                                            key={c.id}
+                                            type="button"
+                                            onClick={() => { playAudio('click'); setDraft({ ...draft, color: c.id }); }}
+                                            className={`w-7 h-7 rounded-full border transition-transform ${
+                                                draft.color === c.id ? 'ring-2 ring-offset-2 ring-[#005fb8] dark:ring-offset-dark-800 scale-110' : 'border-gray-300'
+                                            }`}
+                                            style={{ backgroundColor: c.id }}
+                                            title={c.name}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                                <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold win-button">Cancel</button>
+                                <button type="submit" disabled={saving} className="px-5 py-2 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button">
+                                    {saving ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="save" className="w-3.5 h-3.5" />}
+                                    <span>{saving ? 'Saving...' : 'Save Note'}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 👤 FULL-WIDTH PROFESSIONAL MY PROFILE VIEW (ZERO EXTRA SIDE PADDING + LEARNING STATS + SOCIAL SETUP)
+        // ==========================================
+        const FullStudentProfileView = ({
+            auth,
+            usersList = [],
+            studentsPanel = [],
+            studentLeads = [],
+            batches = [],
+            bookings = [],
+            videos = [],
+            modules = [],
+            moduleProgress = [],
+            assignments = [],
+            courseAssignments = [],
+            totalMyDue = 0,
+            enrolledCourses = [],
+            globalLeaderboard = null,
+            executeAPI,
+            fetchOrders,
+            addToast
+        }) => {
+            const playAudio = (type) => { if (typeof window.playSound === 'function') window.playSound(type); };
+            const norm = (v) => String(v || '').replace(/^'/, '').replace(/^\+88/, '').replace(/\s+/g, '').toLowerCase();
+
+            const myIdNorm = norm(auth?.userId);
+            const myNameNorm = norm(auth?.name || auth?.username);
+
+            const myUserRow = useMemo(() => usersList.find(u => norm(u.Username) === myIdNorm || norm(u.Username) === myNameNorm) || null, [usersList, myIdNorm, myNameNorm]);
+            const myRecord = useMemo(() => studentsPanel.find(s =>
+                (myIdNorm && (norm(s.phone) === myIdNorm || norm(s.id) === myIdNorm || norm(s.name) === myIdNorm)) ||
+                (myNameNorm && norm(s.name) === myNameNorm)
+            ) || null, [studentsPanel, myIdNorm, myNameNorm]);
+            const myLead = useMemo(() => studentLeads.find(s =>
+                (myIdNorm && (norm(s.phone) === myIdNorm || norm(s.id) === myIdNorm)) ||
+                (myNameNorm && norm(s.name) === myNameNorm)
+            ) || null, [studentLeads, myIdNorm, myNameNorm]);
+
+            const displayName = myRecord?.name || auth?.name || auth?.username || 'User';
+            const handleUsername = '@' + String(auth?.userId || displayName).replace(/\s+/g, '').toLowerCase();
+            const coursesArr = parseCourseList(enrolledCourses, auth?.course, myRecord?.course);
+            const myCoursesNorm = coursesArr.map(norm);
+            const isVerified = (Number(totalMyDue) || Number(myLead?.due) || 0) <= 0;
+
+            const [form, setForm] = useState({
+                email: myUserRow?.Email || auth?.email || myRecord?.email || '',
+                linkedin: myUserRow?.LinkedIn || '',
+                fbProfile: myUserRow?.FbProfile || '',
+                fbPage: myUserRow?.FbPage || '',
+                website: myUserRow?.Website || ''
+            });
+            const [savingProfile, setSavingProfile] = useState(false);
+
+            useEffect(() => {
+                if (myUserRow) {
+                    setForm({
+                        email: myUserRow.Email || auth?.email || '',
+                        linkedin: myUserRow.LinkedIn || '',
+                        fbProfile: myUserRow.FbProfile || '',
+                        fbPage: myUserRow.FbPage || '',
+                        website: myUserRow.Website || ''
+                    });
+                }
+            }, [myUserRow, auth]);
+
+            // Profile Completion %
+            const profileFields = [form.email, form.linkedin, form.fbProfile, form.fbPage, form.website];
+            const profileCompPct = Math.round((profileFields.filter(v => String(v || '').trim().length > 3).length / profileFields.length) * 100);
+
+            // Rank + Learning Metrics (Synced with Dashboard)
+            const myRankIdx = useMemo(() => {
+                if (!Array.isArray(globalLeaderboard)) return -1;
+                return globalLeaderboard.findIndex(st =>
+                    (myIdNorm && (norm(st.phone) === myIdNorm || norm(st.name) === myIdNorm || norm(st.id) === myIdNorm)) ||
+                    (myNameNorm && norm(st.name) === myNameNorm)
+                );
+            }, [globalLeaderboard, myIdNorm, myNameNorm]);
+            const myRankNum = myRankIdx !== -1 ? myRankIdx + 1 : null;
+            const myRankEntry = myRankIdx !== -1 ? globalLeaderboard[myRankIdx] : null;
+
+            const stats = useMemo(() => {
+                let vidCache = {};
+                try { vidCache = JSON.parse(localStorage.getItem(`fit_vid_prog_${auth?.userId}`)) || {}; } catch (e) {}
+                const cVids = videos.filter(v => myCoursesNorm.includes(norm(v.course)));
+                const vPct = cVids.length > 0 ? Math.round(cVids.reduce((s, v) => s + Math.min(100, Number(vidCache[v.id] || vidCache[v.urlId] || 0)), 0) / cVids.length) : 0;
+
+                const cMods = modules.filter(m => myCoursesNorm.includes(norm(m.course)));
+                const myModRecs = moduleProgress.filter(p => (myIdNorm && (norm(p.studentId) === myIdNorm || norm(p.studentPhone) === myIdNorm)) || (myNameNorm && norm(p.studentName) === myNameNorm));
+                let mSum = 0;
+                cMods.forEach(m => {
+                    const rec = myModRecs.find(r => String(r.moduleId).trim() === String(m.id).trim());
+                    if (rec) mSum += Math.min(100, Number(rec.confidence || 0));
+                });
+                const mPct = cMods.length > 0 ? Math.round(mSum / cMods.length) : 0;
+
+                const cFixed = courseAssignments.filter(ca => myCoursesNorm.includes(norm(ca.course)));
+                const myAsns = assignments.filter(a => (myIdNorm && norm(a.studentId) === myIdNorm) || (myNameNorm && norm(a.studentName) === myNameNorm));
+                const doneTitles = new Set(myAsns.filter(a => a.status !== 'Resubmit').map(a => String(a.taskTitle || '').trim().toLowerCase()));
+                const aPct = Math.min(100, Math.round((cFixed.filter(ca => doneTitles.has(String(ca.title || '').trim().toLowerCase())).length / (cFixed.length || 20)) * 100));
+
+                const attStats = calculateCourseAttendanceStats({
+                    ...(myRecord || {}),
+                    name: displayName,
+                    phone: myRecord?.phone || auth?.userId,
+                    durationMonths: myRecord?.durationMonths || myLead?.duration || 3,
+                    startDate: myRecord?.startDate || myLead?.admissionDate
+                }, batches, bookings);
+
+                const skPct = Math.min(100, Math.max(0, Number(myRecord?.skillProgress || 0)));
+                const overall = myRankEntry ? myRankEntry.score : Math.round((mPct * 0.4) + (aPct * 0.3) + (attStats.rate * 0.15) + (skPct * 0.15));
+
+                return {
+                    overall,
+                    metrics: [
+                        { label: 'Class Videos', pct: vPct, color: '#38bdf8' },
+                        { label: 'Course Modules', pct: mPct, color: '#a78bfa' },
+                        { label: 'Assignments', pct: aPct, color: '#34d399' },
+                        { label: 'Attendance', pct: attStats.rate, color: '#fbbf24' },
+                        { label: 'Skill Rating', pct: skPct, color: '#f472b6' }
+                    ],
+                    attStats,
+                    skPct
+                };
+            }, [auth, videos, modules, moduleProgress, assignments, courseAssignments, myCoursesNorm, myIdNorm, myNameNorm, myRecord, myLead, displayName, batches, bookings, myRankEntry]);
+
+            // Passed Skill Exams from StudentsMaster.ExamData
+            const passedExams = useMemo(() => {
+                try {
+                    const raw = myRecord?.examData || myRecord?.examdata;
+                    const map = typeof raw === 'object' ? raw : JSON.parse(String(raw || '{}'));
+                    return Object.values(map || {}).filter(e => e && e.passed);
+                } catch (e) { return []; }
+            }, [myRecord]);
+
+            // Doughnut Chart
+            const profChartRef = useRef(null);
+            const profChartInst = useRef(null);
+            const mKey = JSON.stringify(stats.metrics.map(m => m.pct));
+
+            useEffect(() => {
+                if (!profChartRef.current) return;
+                const vals = stats.metrics.map(m => m.pct);
+                const total = vals.reduce((a, b) => a + b, 0);
+                const labels = total > 0 ? stats.metrics.map(m => m.label) : ['Remaining'];
+                const dataArr = total > 0 ? vals : [100];
+                const colors = total > 0 ? stats.metrics.map(m => m.color) : ['rgba(148,163,184,0.22)'];
+
+                if (profChartInst.current && profChartInst.current.canvas === profChartRef.current) {
+                    profChartInst.current.data.labels = labels;
+                    profChartInst.current.data.datasets[0].data = dataArr;
+                    profChartInst.current.data.datasets[0].backgroundColor = colors;
+                    profChartInst.current.update('none');
+                } else {
+                    if (profChartInst.current) profChartInst.current.destroy();
+                    profChartInst.current = new Chart(profChartRef.current, {
+                        type: 'doughnut',
+                        data: {
+                            labels,
+                            datasets: [{ data: dataArr, backgroundColor: colors, borderWidth: 0, spacing: total > 0 ? 4 : 0, borderRadius: total > 0 ? 6 : 0 }]
+                        },
+                        options: { animation: false, responsive: true, maintainAspectRatio: false, cutout: '74%', plugins: { legend: { display: false } } }
+                    });
+                }
+            }, [mKey]);
+
+            useEffect(() => () => { if (profChartInst.current) { profChartInst.current.destroy(); profChartInst.current = null; } }, []);
+
+            const handleSaveProfile = async (e) => {
+                e.preventDefault();
+                setSavingProfile(true);
+                playAudio('action');
+                try {
+                    const res = await executeAPI({ action: 'update_my_profile', profile: form });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        playAudio('success');
+                        addToast(data.message || 'Profile updated successfully!', 'success');
+                        fetchOrders(true);
+                    } else {
+                        addToast((data && data.message) || 'Profile update failed.', 'error');
+                    }
+                } catch (err) {
+                    addToast('Network error updating profile.', 'error');
+                }
+                setSavingProfile(false);
+            };
+
+            return (
+                <div className="space-y-4 sm:space-y-5 pb-12 w-full max-w-none overflow-x-hidden">
+                    {/* Full-Width Professional Profile Hero Banner */}
+                    <div className="glass-panel p-4 sm:p-6 rounded-2xl border border-gray-200/70 dark:border-white/10">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="flex items-center gap-3.5 sm:gap-5 min-w-0">
+                                <div className="relative shrink-0">
+                                    <img
+                                        src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
+                                        alt={displayName}
+                                        loading="lazy"
+                                        className="w-16 h-16 sm:w-20 sm:h-20 object-cover border-[3px] border-white dark:border-[#181818] shadow-sm bg-gray-100"
+                                        style={{ borderRadius: '9999px' }}
+                                    />
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <h2 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white truncate">{displayName}</h2>
+                                        <span className={isVerified ? 'text-[#0095F6]' : 'text-gray-400 opacity-40'} title={isVerified ? 'Verified Account' : 'Payment Due'}>
+                                            <svg className="w-[19px] h-[19px]" viewBox="0 0 40 40" fill="none">
+                                                <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                            </svg>
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300">
+                                            {auth?.role || 'Student'}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs font-mono-code text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                                        {handleUsername} {myRecord?.phone ? `• ${myRecord.phone}` : ''}
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5 mt-2">
+                                        {coursesArr.map(c => (
+                                            <span key={c} className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-500/20">
+                                                {c}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Quick KPI Strip on Right */}
+                            <div className="grid grid-cols-3 gap-2 pt-3 md:pt-0 border-t md:border-t-0 border-gray-100 dark:border-white/10 shrink-0">
+                                <div className="px-3 py-2 rounded-xl bg-amber-500/[0.08] border border-amber-200/60 dark:border-amber-500/20 text-center">
+                                    <p className="text-base font-numbers font-bold text-amber-700 dark:text-amber-300">{myRankNum ? `#${myRankNum}` : '#—'}</p>
+                                    <p className="text-[9px] font-bold uppercase text-gray-500">Rank</p>
+                                </div>
+                                <div className="px-3 py-2 rounded-xl bg-emerald-500/[0.08] border border-emerald-200/60 dark:border-emerald-500/20 text-center">
+                                    <p className="text-base font-numbers font-bold text-emerald-700 dark:text-emerald-300">{stats.skPct}%</p>
+                                    <p className="text-[9px] font-bold uppercase text-gray-500">Skill</p>
+                                </div>
+                                <div className="px-3 py-2 rounded-xl bg-blue-500/[0.08] border border-blue-200/60 dark:border-blue-500/20 text-center">
+                                    <p className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{profileCompPct}%</p>
+                                    <p className="text-[9px] font-bold uppercase text-gray-500">Profile</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Full-Width 12-Col Workspace: Left Editable Social/Portfolio Setup (7) | Right Learning Statistics (5) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
+                        {/* Left: Profile & Portfolio Setup Form */}
+                        <div className="lg:col-span-7 space-y-4 min-w-0">
+                            <form onSubmit={handleSaveProfile} className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-4">
+                                <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-gray-100 dark:border-white/5">
+                                    <div>
+                                        <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                            <Icon name="user-check" className="w-4 h-4 text-[#005fb8]" />
+                                            <span>Professional Profile &amp; Portfolio Links</span>
+                                        </h3>
+                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Keep your email &amp; social links updated for certificates and client referrals.</p>
+                                    </div>
+                                    <span className="text-[11px] font-numbers font-bold px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 shrink-0">
+                                        {profileCompPct}% Ready
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                    <div className="sm:col-span-2">
+                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Official Email Address *</label>
+                                        <input
+                                            type="email"
+                                            required
+                                            value={form.email}
+                                            onChange={e => setForm({ ...form, email: e.target.value })}
+                                            className="w-full input-style px-3 py-2 text-xs sm:text-sm"
+                                            placeholder="you@example.com"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">LinkedIn Profile URL</label>
+                                        <input
+                                            type="url"
+                                            value={form.linkedin}
+                                            onChange={e => setForm({ ...form, linkedin: e.target.value })}
+                                            className="w-full input-style px-3 py-2 text-xs"
+                                            placeholder="https://linkedin.com/in/..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Portfolio / Website URL</label>
+                                        <input
+                                            type="url"
+                                            value={form.website}
+                                            onChange={e => setForm({ ...form, website: e.target.value })}
+                                            className="w-full input-style px-3 py-2 text-xs"
+                                            placeholder="https://yourportfolio.com"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Facebook Profile URL</label>
+                                        <input
+                                            type="url"
+                                            value={form.fbProfile}
+                                            onChange={e => setForm({ ...form, fbProfile: e.target.value })}
+                                            className="w-full input-style px-3 py-2 text-xs"
+                                            placeholder="https://facebook.com/..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Facebook Page / Agency URL</label>
+                                        <input
+                                            type="url"
+                                            value={form.fbPage}
+                                            onChange={e => setForm({ ...form, fbPage: e.target.value })}
+                                            className="w-full input-style px-3 py-2 text-xs"
+                                            placeholder="https://facebook.com/yourpage"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-white/5">
+                                    <a href="#id-card" onClick={() => playAudio('click')} className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">
+                                        View Student ID Card →
+                                    </a>
+                                    <button
+                                        type="submit"
+                                        disabled={savingProfile}
+                                        className="px-5 py-2 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button"
+                                    >
+                                        {savingProfile ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="save" className="w-4 h-4" />}
+                                        <span>{savingProfile ? 'Saving...' : 'Save Profile'}</span>
+                                    </button>
+                                </div>
+                            </form>
+
+                            {/* Verified Skill Exam Badges Showcase */}
+                            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
+                                <div className="flex items-center justify-between gap-2 mb-3">
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                        <Icon name="award" className="w-4 h-4 text-emerald-500" />
+                                        <span>Earned Skill Exam Badges ({passedExams.length})</span>
+                                    </h3>
+                                    <a href="#skill-exam" onClick={() => playAudio('click')} className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">
+                                        Take Exam →
+                                    </a>
+                                </div>
+                                {passedExams.length === 0 ? (
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">Pass module skill exams to unlock verified skill badges on your profile.</p>
+                                ) : (
+                                    <div className="flex flex-wrap gap-2">
+                                        {passedExams.map((ex, idx) => (
+                                            <span key={idx} className="px-3 py-1.5 rounded-xl bg-emerald-500/[0.10] border border-emerald-300/60 dark:border-emerald-500/30 text-xs font-bold text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5">
+                                                <Icon name="check-circle" className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                <span>Mod {ex.moduleSerial}: {ex.moduleTitle} ({ex.bestScore}%)</span>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Right: Dashboard-Style Learning Statistics */}
+                        <div className="lg:col-span-5 glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 min-w-0">
+                            <div className="flex items-center justify-between mb-3.5">
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    <Icon name="pie-chart" className="w-4 h-4 text-[#005fb8]" />
+                                    <span>Learning Statistics</span>
+                                </h3>
+                                <span className="text-[11px] font-numbers font-bold px-2 py-0.5 rounded bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff]">
+                                    {stats.overall}% Overall
+                                </span>
+                            </div>
+
+                            <div className="relative w-40 h-40 mx-auto my-2 p-1.5 rounded-full bg-gray-50/70 dark:bg-white/[0.03] border border-gray-200/50 dark:border-white/[0.06]">
+                                <canvas ref={profChartRef} />
+                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                    <span className="text-2xl font-numbers font-bold text-gray-900 dark:text-white leading-none">{stats.overall}%</span>
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mt-1">Completed</span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2.5 mt-4 pt-3 border-t border-gray-100 dark:border-white/5">
+                                {stats.metrics.map(item => (
+                                    <div key={item.label} className="space-y-1">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                                                <span className="font-semibold text-gray-700 dark:text-gray-300 truncate">{item.label}</span>
+                                            </div>
+                                            <span className="font-numbers font-bold text-gray-900 dark:text-white">{item.pct}%</span>
+                                        </div>
+                                        <div className="w-full h-1.5 bg-gray-200/80 dark:bg-white/[0.08] rounded-full overflow-hidden">
+                                            <div className="h-full rounded-full transition-all duration-300" style={{ width: `${item.pct}%`, backgroundColor: item.color }} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             );
         };
@@ -23214,12 +24308,39 @@ const [courseModules, setCourseModules] = useState([]);
                                                 {currentRoute === 'affiliates' && <AffiliatesView stats={metrics.affiliateStats} metrics={metrics} onPreview={setPreviewAffiliate} auth={auth} />}
                                                 {currentRoute === 'omni-search' && <GlobalFindView orders={orders} projects={projects} clientLeads={clientLeads} studentLeads={studentLeads} studentsPanel={studentsPanel} assignments={assignments} moduleProgress={moduleProgress} auth={auth} addToast={addToast} notes={notes} dailyTasks={dailyTasks} />}
                                                 {currentRoute === 'settings' && (
-    auth?.role === 'Admin' 
-    ? <SettingsView executeAPI={executeAPI} addToast={addToast} users={usersList} pendingUsers={pendingUsersList} fetchOrders={fetchOrders} auth={auth} setAuth={setAuth} /> 
-    : <MyProfileView executeAPI={executeAPI} addToast={addToast} users={usersList} fetchOrders={fetchOrders} auth={auth} setAuth={setAuth} />
+    auth?.role === 'Admin'
+    ? <SettingsView executeAPI={executeAPI} addToast={addToast} users={usersList} pendingUsers={pendingUsersList} fetchOrders={fetchOrders} auth={auth} setAuth={setAuth} />
+    : <FullStudentProfileView
+        auth={auth}
+        usersList={usersList}
+        studentsPanel={studentsPanel}
+        studentLeads={studentLeads}
+        batches={batches}
+        bookings={myBookings}
+        videos={videos}
+        modules={courseModules}
+        moduleProgress={moduleProgress}
+        assignments={assignments}
+        courseAssignments={courseAssignments}
+        totalMyDue={totalMyDue}
+        enrolledCourses={myEnrolledCourses}
+        globalLeaderboard={globalLeaderboard}
+        executeAPI={executeAPI}
+        fetchOrders={fetchOrders}
+        addToast={addToast}
+      />
 )}
                                                 {currentRoute === 'payouts' && <PayoutsView metrics={metrics} payouts={myPayouts} paymentMethods={paymentMethods} executeAPI={executeAPI} addToast={addToast} fetchOrders={fetchOrders} auth={auth} />}
-                                                {currentRoute === 'notes' && <NotesView notes={myNotes} executeAPI={executeAPI} addToast={addToast} fetchOrders={fetchOrders} auth={auth} />}
+                                                {currentRoute === 'notes' && (
+    <SmartNotesView
+        notes={myNotes}
+        auth={auth}
+        executeAPI={executeAPI}
+        fetchOrders={fetchOrders}
+        addToast={addToast}
+    />
+)}
+{false && <NotesView notes={myNotes} executeAPI={executeAPI} addToast={addToast} fetchOrders={fetchOrders} auth={auth} />}
                                                 {currentRoute === 'products' && <ProductsView addToast={addToast} auth={auth} metrics={metrics} />}
                                                 {currentRoute === 'daily-tasks' && <DailyTasksView dailyTasks={dailyTasks} setDailyTasks={setDailyTasks} projects={projects} orders={orders} expenses={filteredExpensesData} clientLeads={clientLeads} studentLeads={studentLeads} executeAPI={executeAPI} fetchOrders={fetchOrders} addToast={addToast} auth={auth} globalContacts={globalContacts} batches={batches} bookings={bookings} workspaceLinks={workspaceLinks} />}
                                                 {currentRoute === 'projects' && <ProjectsView addToast={addToast} executeAPI={executeAPI} projects={myProjects} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} />}
@@ -23244,7 +24365,18 @@ const [courseModules, setCourseModules] = useState([]);
                                                 )}
                                                 {currentRoute === 'id-card' && <IDCardView auth={auth} addToast={addToast} students={myStudentsPanel} />}
                                                 {currentRoute === 'students' && <StudentsView addToast={addToast} students={myStudentsPanel} executeAPI={executeAPI} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} batches={batches} bookings={bookings} />}
-                                                {currentRoute === 'seats' && <SeatManagementView addToast={addToast} config={seatConfig} batches={batches} bookings={myBookings} executeAPI={executeAPI} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} studentsPanel={myStudentsPanel} studentLeads={myStudentLeads} savedGroups={savedGroups} />}
+                                                {currentRoute === 'seats' && auth?.role === 'Student' && (
+    <StudentSeatBatchView
+        auth={auth}
+        batches={batches}
+        bookings={myBookings}
+        studentsPanel={studentsPanel}
+        studentLeads={studentLeads}
+        enrolledCourses={myEnrolledCourses}
+        addToast={addToast}
+    />
+)}
+{currentRoute === 'seats' && auth?.role !== 'Student' && <SeatManagementView addToast={addToast} config={seatConfig} batches={batches} bookings={myBookings} executeAPI={executeAPI} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} studentsPanel={myStudentsPanel} studentLeads={myStudentLeads} savedGroups={savedGroups} />}
                                             </>
                                         )}
                                </div>
