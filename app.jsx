@@ -6714,16 +6714,16 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
 
     return (
         <div className="space-y-6 w-full pb-10">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-2">
-                <div className="min-w-0 flex-1 w-full">
-                    <h2 className="text-lg md:text-3xl font-semibold text-gray-900 dark:text-white tracking-tight flex items-center gap-2 truncate">
-                        <Icon name="phone-call" className="w-5 h-5 md:w-6 h-6 text-[#005fb8] shrink-0" />
+            <div className="flex items-center justify-between gap-2 flex-nowrap mb-2">
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-lg md:text-2xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2 truncate">
+                        <Icon name="phone-call" className="w-5 h-5 text-[#005fb8] shrink-0" />
                         <span className="truncate">Client Leads</span>
                     </h2>
-                    <p className="text-[10px] md:text-sm text-gray-500 mt-1 truncate">Manage service inquiries, client conversions, and follow-ups.</p>
+                    <p className="hidden sm:block text-xs text-gray-500 mt-0.5 truncate">Manage service inquiries &amp; follow-ups.</p>
                 </div>
-                <button onClick={() => { if(typeof window.playSound === 'function') window.playSound('click'); setFormData(defaultFormState); setShowAddModal(true); }} className="bg-[#facc15] hover:bg-[#eab308] text-gray-900 px-4 md:px-5 py-2.5 rounded-full font-bold shadow-sm flex items-center justify-center gap-2 text-xs md:text-sm transition-colors whitespace-nowrap shrink-0 win-button w-full sm:w-auto">
-                    <Icon name="plus" className="w-4 h-4 shrink-0" /> <span>Add Client Data</span>
+                <button onClick={() => { if(typeof window.playSound === 'function') window.playSound('click'); setFormData(defaultFormState); setShowAddModal(true); }} className="h-9 px-3.5 sm:px-4 bg-[#facc15] hover:bg-[#eab308] text-gray-900 rounded-xl font-bold shadow-sm flex items-center justify-center gap-1.5 text-xs sm:text-sm transition-colors whitespace-nowrap shrink-0 win-button">
+                    <Icon name="plus" className="w-4 h-4 shrink-0" /> <span>Add Client</span>
                 </button>
             </div>
 
@@ -7794,7 +7794,22 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
             const [saving, setSaving] = useState(false);
             const [openPanels, setOpenPanels] = useState({ courses: false, services: false, addUser: true, users: true });
             const [userSearch, setUserSearch] = useState('');
+            const [userRoleFilter, setUserRoleFilter] = useState('All');
             const togglePanel = (k) => { if (typeof playSound === 'function') playSound('click'); setOpenPanels(prev => ({ ...prev, [k]: !prev[k] })); };
+
+            const filteredUsers = useMemo(() => {
+                const q = userSearch.trim().toLowerCase();
+                return (users || []).filter(u => {
+                    if (userRoleFilter !== 'All' && String(u.Role || '').trim() !== userRoleFilter) return false;
+                    if (!q) return true;
+                    return (
+                        String(u.Username || '').toLowerCase().includes(q) ||
+                        String(u.Email || '').toLowerCase().includes(q) ||
+                        String(u.Course || '').toLowerCase().includes(q) ||
+                        String(u.Role || '').toLowerCase().includes(q)
+                    );
+                });
+            }, [users, userSearch, userRoleFilter]);
 
             const isAdminOrManager = ['Admin', 'Manager'].includes(auth?.role);
 
@@ -8227,32 +8242,70 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                                 </div>
                             )}
 
-                            <div className="glass-panel border border-gray-200/50 dark:border-white/10 overflow-hidden flex flex-col shadow-sm">
-                                <div className="p-4 border-b border-gray-200/50 dark:border-white/5 bg-gray-50/50 dark:bg-dark-900/30 flex justify-between items-center">
-                                    <div className="flex items-center gap-2">
-                                        <Icon name="users" className="w-5 h-5 text-[#005fb8]" />
-                                        <h3 className="font-bold text-gray-900 dark:text-white text-base">Registered Users Database</h3>
+                            <div className="glass-panel rounded-2xl border border-gray-200/60 dark:border-white/10 overflow-hidden flex flex-col shadow-sm">
+                                <div className="p-3.5 sm:p-4 border-b border-gray-200/50 dark:border-white/5 bg-gray-50/60 dark:bg-dark-900/30 space-y-2.5">
+                                    <div className="flex items-center justify-between gap-2 flex-nowrap">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <Icon name="users" className="w-4 h-4 text-[#005fb8] shrink-0" />
+                                            <h3 className="font-bold text-gray-900 dark:text-white text-sm sm:text-base truncate">Users ({filteredUsers.length}/{users.length})</h3>
+                                        </div>
+                                        <div className="flex items-center bg-white dark:bg-dark-800 px-2.5 py-1.5 rounded-lg border border-gray-200/80 dark:border-white/10 w-44 sm:w-60 shrink-0">
+                                            <Icon name="search" className="w-3.5 h-3.5 text-gray-400 mr-1.5 shrink-0" />
+                                            <input
+                                                type="text"
+                                                value={userSearch}
+                                                onChange={e => setUserSearch(e.target.value)}
+                                                placeholder="Search user, email, course..."
+                                                className="bg-transparent border-none outline-none w-full text-xs font-medium text-gray-800 dark:text-white"
+                                            />
+                                            {userSearch && (
+                                                <button type="button" onClick={() => setUserSearch('')} className="text-gray-400 hover:text-rose-500 ml-1 shrink-0">
+                                                    <Icon name="x" className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                    <span className="bg-blue-100 text-[#005fb8] dark:bg-blue-900/30 dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-800/50 font-bold text-[11px] px-2.5 py-1 rounded-full whitespace-nowrap">{users.length} Active Users</span>
+
+                                    {/* Quick Role Filter Pills */}
+                                    <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                                        {['All', 'Student', 'Admin', 'Manager', 'Trainer', 'Team', 'Affiliator'].map(r => {
+                                            const cnt = r === 'All' ? users.length : users.filter(x => String(x.Role || '').trim() === r).length;
+                                            if (r !== 'All' && cnt === 0) return null;
+                                            return (
+                                                <button
+                                                    key={r}
+                                                    type="button"
+                                                    onClick={() => { if (typeof playSound === 'function') playSound('click'); setUserRoleFilter(r); }}
+                                                    className={`px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-bold whitespace-nowrap shrink-0 transition-colors ${
+                                                        userRoleFilter === r
+                                                            ? 'bg-[#005fb8] text-white'
+                                                            : 'bg-white dark:bg-dark-800 text-gray-600 dark:text-gray-300 border border-gray-200/70 dark:border-white/10'
+                                                    }`}
+                                                >
+                                                    {r} ({cnt})
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                                 <div className="overflow-x-auto hide-scrollbar max-h-[500px]">
-                                    {users.length === 0 ? (
+                                    {filteredUsers.length === 0 ? (
                                         <div className="p-10 text-center text-gray-400 text-sm flex flex-col items-center">
-                                            <Icon name="shield-off" className="w-10 h-10 mb-3 opacity-50" />
-                                            <p>No registered users found.</p>
+                                            <Icon name="search" className="w-8 h-8 mb-2 opacity-50" />
+                                            <p>No users match "{userSearch || userRoleFilter}".</p>
                                         </div>
                                     ) : (
                                         <table className="w-full text-left whitespace-nowrap text-sm">
                                             <thead className="text-[10px] uppercase tracking-widest text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-dark-900/30 border-b border-gray-100 dark:border-white/5 sticky top-0 backdrop-blur-md z-10">
                                                 <tr>
-                                                    <th className="px-5 py-3 font-bold">User Information</th>
-                                                    <th className="px-5 py-3 font-bold">Role & Access</th>
-                                                    <th className="px-5 py-3 font-bold">Joined Date</th>
-                                                    <th className="px-5 py-3 font-bold text-right sticky-action bg-gray-50/50 dark:bg-[#1a1a1a]">Manage</th>
+                                                    <th className="px-4 py-3 font-bold">User</th>
+                                                    <th className="px-4 py-3 font-bold">Role &amp; Course</th>
+                                                    <th className="px-4 py-3 font-bold">Joined</th>
+                                                    <th className="px-4 py-3 font-bold text-right sticky-action bg-gray-50/50 dark:bg-[#1a1a1a]">Manage</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100/50 dark:divide-white/5">
-                                                {users.map((u, i) => (
+                                                {filteredUsers.map((u, i) => (
                                                     <tr key={i} className={`transition-colors ${i % 2 === 0 ? 'bg-transparent' : 'bg-[#fcfcfc] dark:bg-dark-900/20'} hover:bg-black/5 dark:hover:bg-white/5`}>
                                                         <td className="px-5 py-3.5 flex items-center gap-3">
                                                             <img src={`https://api.dicebear.com/9.x/micah/svg?seed=${u.Username}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`} loading="lazy" onError={(e) => { e.target.onerror = null; e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='12' fill='%23f1f5f9'/%3E%3Cpath d='M12 11c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm0 2c-2.67 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z' fill='%23cbd5e1'/%3E%3C/svg%3E"; }} alt="" className="w-10 h-10 rounded-full shadow-sm shrink-0 border border-gray-200 dark:border-gray-700" />
@@ -8277,8 +8330,11 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                                                         </td>
                                                         <td className="px-5 py-3.5 text-right sticky-action bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-md group-hover:bg-transparent transition-colors">
                                                             {u.Username.toLowerCase() !== 'admin' ? (
-                                                                <div className="flex justify-end gap-2">
-                                                                    <button onClick={() => handleEditClick(u)} className="px-3 py-1.5 text-xs font-bold text-gray-500 hover:text-[#005fb8] bg-gray-100/80 dark:bg-dark-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors border border-transparent dark:border-white/5 rounded-lg flex items-center gap-1.5 win-button" title="Edit">
+                                                                <div className="flex justify-end gap-1.5">
+                                                                    <button onClick={() => { if(typeof playSound === 'function') playSound('click'); navigator.clipboard?.writeText(`User: ${u.Username}\nEmail: ${u.Email || 'N/A'}\nRole: ${u.Role}\nCourse: ${u.Course || 'N/A'}`); addToast('User info copied!', 'success'); }} className="p-1.5 text-gray-500 hover:text-emerald-600 bg-gray-100/80 dark:bg-dark-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors rounded-lg win-button" title="Copy User Info">
+                                                                        <Icon name="copy" className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                    <button onClick={() => handleEditClick(u)} className="px-2.5 py-1.5 text-xs font-bold text-gray-500 hover:text-[#005fb8] bg-gray-100/80 dark:bg-dark-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors border border-transparent dark:border-white/5 rounded-lg flex items-center gap-1 win-button" title="Edit">
                                                                         <Icon name="edit-2" className="w-3.5 h-3.5" /> Edit
                                                                     </button>
                                                                     <button onClick={() => handleDeleteClick(u.Username)} className="p-1.5 text-gray-500 hover:text-red-500 bg-gray-100/80 dark:bg-dark-700 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors border border-transparent dark:border-white/5 rounded-lg win-button" title="Delete">
@@ -8770,11 +8826,11 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
             return (
                 <div className="space-y-6 pb-10">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div>
-                            <h2 className="text-xl md:text-2xl font-semibold text-gray-900 dark:text-white flex items-center gap-2 tracking-tight">
-                                <Icon name="box" className="w-5 h-5 text-[#005fb8]"/> Courses & Services
+                       <div>
+                            <h2 className="text-lg md:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2 tracking-tight">
+                                <Icon name="box" className="w-5 h-5 text-[#005fb8] shrink-0"/> Promo Products
                             </h2>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Get your unique affiliate links instantly.</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Share links &amp; earn {myCommissionRate}% commission.</p>
                         </div>
                         <div className="flex items-center glass-panel rounded-lg shadow-sm px-3 py-2 w-full md:w-72 focus-within:ring-1 focus-within:ring-[#005fb8] transition-shadow border border-gray-200/50 dark:border-white/10">
                             <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
@@ -10362,16 +10418,16 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
 
     return (
         <div className="space-y-6 w-full pb-10">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-2">
-                <div className="min-w-0 flex-1 w-full">
-                    <h2 className="text-lg md:text-3xl font-semibold text-gray-900 dark:text-white tracking-tight flex items-center gap-2 truncate">
-                        <Icon name="graduation-cap" className="w-5 h-5 md:w-6 h-6 text-[#005fb8] shrink-0" />
+            <div className="flex items-center justify-between gap-2 flex-nowrap mb-2">
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-lg md:text-2xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2 truncate">
+                        <Icon name="graduation-cap" className="w-5 h-5 text-[#005fb8] shrink-0" />
                         <span className="truncate">Student Leads</span>
                     </h2>
-                    <p className="text-[10px] md:text-sm text-gray-500 mt-1 truncate">Manage course inquiries, admissions, and student life-cycle.</p>
+                    <p className="hidden sm:block text-xs text-gray-500 mt-0.5 truncate">Manage course inquiries &amp; admissions.</p>
                 </div>
-                <button onClick={() => { if(typeof window.playSound === 'function') window.playSound('click'); setFormData(defaultFormState); setShowAddModal(true); }} className="bg-[#facc15] hover:bg-[#eab308] text-gray-900 px-4 md:px-5 py-2.5 rounded-full font-bold shadow-sm flex items-center justify-center gap-2 text-xs md:text-sm transition-colors whitespace-nowrap shrink-0 win-button w-full sm:w-auto">
-                    <Icon name="plus" className="w-4 h-4 shrink-0" /> <span>Add Student Data</span>
+                <button onClick={() => { if(typeof window.playSound === 'function') window.playSound('click'); setFormData(defaultFormState); setShowAddModal(true); }} className="h-9 px-3.5 sm:px-4 bg-[#facc15] hover:bg-[#eab308] text-gray-900 rounded-xl font-bold shadow-sm flex items-center justify-center gap-1.5 text-xs sm:text-sm transition-colors whitespace-nowrap shrink-0 win-button">
+                    <Icon name="plus" className="w-4 h-4 shrink-0" /> <span>Add Student</span>
                 </button>
             </div>
 
@@ -19313,6 +19369,23 @@ const SmartPhoneAction = ({ phone }) => {
             const activeWeekDay = weeklyDays[selectedWeekDayIdx] || weeklyDays[0];
             const classDaysThisWeekCount = weeklyDays.filter(d => d.hasClass).length;
 
+            // 📱 মোবাইলে আজকের (বা সিলেক্টেড) দিনটি অটোমেটিক স্ক্রিনের মাঝখানে আনবে
+            const dashRoutineScrollRef = useRef(null);
+            const dashRoutineDayRefs = useRef({});
+            useEffect(() => {
+                const centerDay = () => {
+                    const container = dashRoutineScrollRef.current;
+                    const el = dashRoutineDayRefs.current[selectedWeekDayIdx];
+                    if (!container || !el) return;
+                    const cRect = container.getBoundingClientRect();
+                    const elRect = el.getBoundingClientRect();
+                    const left = container.scrollLeft + (elRect.left - cRect.left) - (cRect.width / 2) + (elRect.width / 2);
+                    container.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+                };
+                const raf = requestAnimationFrame(() => setTimeout(centerDay, 120));
+                return () => cancelAnimationFrame(raf);
+            }, [selectedWeekDayIdx]);
+
             // 🔥 DB-POWERED SMART STUDY STREAK (Syncs across devices & doesn't break on Off days)
             const liveStreakCount = useMemo(() => {
                 let attArr = [];
@@ -19462,44 +19535,72 @@ const SmartPhoneAction = ({ phone }) => {
                         {/* ===================================================== */}
                         <div className="lg:col-span-8 order-2 lg:order-1 space-y-4 sm:space-y-5 min-w-0">
 
-                            {/* 1. Smart Welcome & Daily Study Check-in Strip */}
-                            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                <div className="min-w-0">
-                                    <p className="text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">
-                                        {moment().format('dddd, DD MMM YYYY')}
-                                    </p>
-                                    <h2 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight truncate mt-0.5">
-                                        Welcome back, {displayName.split(' ')[0]}!
-                                    </h2>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                        {nextRankEntry
-                                            ? `You are #${myRankNum} on the leaderboard — earn ${pointsToNextRank} more pts to pass ${nextRankEntry.name}.`
-                                            : myRankNum === 1
-                                                ? 'You are ranked #1 right now! Stay consistent to hold the crown.'
-                                                : 'Stay consistent with your daily modules, videos, and assignments.'}
-                                    </p>
+                            {/* 1. Smart Welcome + Clear Mobile-Friendly Daily Attendance Card */}
+                            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-3.5">
+                                <div className="flex items-start justify-between gap-2.5">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">
+                                            {moment().format('ddd, DD MMM YYYY')}
+                                        </p>
+                                        <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white tracking-tight truncate mt-0.5">
+                                            Welcome, {displayName.split(' ')[0]}!
+                                        </h2>
+                                        <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">
+                                            {nextRankEntry
+                                                ? `Rank #${myRankNum} • ${pointsToNextRank} pts to pass ${nextRankEntry.name}`
+                                                : myRankNum === 1
+                                                    ? 'Ranked #1 — Keep your daily streak alive!'
+                                                    : 'Complete today’s check-in & study tasks.'}
+                                        </p>
+                                    </div>
+
+                                    <div className="px-2.5 py-1.5 rounded-xl bg-amber-500/[0.10] border border-amber-300/50 dark:border-amber-500/25 flex items-center gap-1.5 shrink-0 whitespace-nowrap">
+                                        <Icon name="flame" className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                        <span className="text-xs font-numbers font-bold text-gray-900 dark:text-white">{liveStreakCount}d</span>
+                                    </div>
                                 </div>
 
-                               <div className="flex items-center gap-2 shrink-0 flex-nowrap">
-                                    <div className="h-9 px-3 rounded-lg bg-amber-500/[0.10] border border-amber-300/50 dark:border-amber-500/25 flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0">
-                                        <Icon name="flame" className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                        <span className="text-xs font-numbers font-bold text-gray-900 dark:text-white">{liveStreakCount}d Streak</span>
+                                {/* Clear Attendance Action Bar (Easy to Understand on Mobile & Desktop) */}
+                                <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-colors ${
+                                    checkedInToday
+                                        ? 'bg-emerald-500/[0.08] dark:bg-emerald-500/[0.13] border-emerald-300/60 dark:border-emerald-500/30'
+                                        : 'bg-blue-500/[0.07] dark:bg-blue-500/[0.12] border-blue-200/70 dark:border-blue-500/25'
+                                }`}>
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                            checkedInToday
+                                                ? 'bg-emerald-600 text-white'
+                                                : 'bg-[#005fb8] text-white'
+                                        }`}>
+                                            <Icon name={checkedInToday ? 'check-circle' : 'calendar-check'} className="w-4 h-4" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white leading-tight truncate">
+                                                {checkedInToday ? 'আজকের হাজিরা সম্পন্ন (Present)' : 'আজকের হাজিরা দিন (Daily Attendance)'}
+                                            </p>
+                                            <p className="text-[10px] sm:text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                                {checkedInToday
+                                                    ? `Attendance: ${attendancePct}% (${presentDays}/${totalAttDays}d) • Synced to Rank`
+                                                    : 'Present দিলে Attendance, Streak ও Skill (+2%) অটো বাড়বে'}
+                                            </p>
+                                        </div>
                                     </div>
+
                                     <button
                                         type="button"
                                         disabled={checkedInToday || isCheckingIn}
                                         onClick={() => handleDailyCheckIn(false)}
-                                        className={`h-9 px-3.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors win-button ${
+                                        className={`w-full sm:w-auto h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-all win-button ${
                                             checkedInToday
-                                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-300/40 cursor-default'
-                                                : 'bg-[#005fb8] hover:bg-[#004a94] text-white disabled:opacity-60'
+                                                ? 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 cursor-default'
+                                                : 'bg-[#005fb8] hover:bg-[#004a94] text-white shadow-sm disabled:opacity-60'
                                         }`}
                                     >
                                         <Icon
-                                            name={isCheckingIn ? 'loader' : (checkedInToday ? 'check-circle' : 'sparkles')}
-                                            className={`w-3.5 h-3.5 shrink-0 ${isCheckingIn ? 'animate-spin' : ''}`}
+                                            name={isCheckingIn ? 'loader' : (checkedInToday ? 'check' : 'fingerprint')}
+                                            className={`w-4 h-4 shrink-0 ${isCheckingIn ? 'animate-spin' : ''}`}
                                         />
-                                        <span>{isCheckingIn ? 'Saving...' : (checkedInToday ? 'Present ✓' : 'Check In')}</span>
+                                        <span>{isCheckingIn ? 'Saving...' : (checkedInToday ? 'Present Today ✓' : 'Mark Present')}</span>
                                     </button>
                                 </div>
                             </div>
@@ -19682,13 +19783,14 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 </div>
 
-                                {/* 7-Day Mobile-Scrollable Calendar Strip (Spacious on Mobile, 7-Col Grid on Desktop) */}
-                                <div className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto hide-scrollbar pb-1 snap-x">
+                                {/* 7-Day Mobile-Scrollable Calendar Strip (Auto-Centers Today on Mobile) */}
+                                <div ref={dashRoutineScrollRef} className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto hide-scrollbar pb-1 snap-x scroll-smooth">
                                     {weeklyDays.map(day => {
                                         const isSel = selectedWeekDayIdx === day.idx;
                                         return (
                                             <button
                                                 key={day.ymd}
+                                                ref={el => { dashRoutineDayRefs.current[day.idx] = el; }}
                                                 type="button"
                                                 onClick={() => { playAudio('click'); setSelectedWeekDayIdx(day.idx); }}
                                                 style={{ WebkitTapHighlightColor: 'transparent' }}
@@ -21144,6 +21246,24 @@ const SmartPhoneAction = ({ phone }) => {
                 { short: 'Fri', full: 'Friday' }
             ];
             const todayShortLow = moment().format('ddd').toLowerCase();
+            const isVerifiedSeat = (Number(myLead?.due) || 0) <= 0;
+
+            // 📱 Weekly Lab Routine-এ আজকের দিন অটোমেটিক স্ক্রিনের মাঝখানে আনবে
+            const seatRoutineScrollRef = useRef(null);
+            const seatRoutineDayRefs = useRef({});
+            useEffect(() => {
+                const centerToday = () => {
+                    const container = seatRoutineScrollRef.current;
+                    const el = seatRoutineDayRefs.current[todayShortLow];
+                    if (!container || !el) return;
+                    const cRect = container.getBoundingClientRect();
+                    const elRect = el.getBoundingClientRect();
+                    const left = container.scrollLeft + (elRect.left - cRect.left) - (cRect.width / 2) + (elRect.width / 2);
+                    container.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+                };
+                const raf = requestAnimationFrame(() => setTimeout(centerToday, 120));
+                return () => cancelAnimationFrame(raf);
+            }, [todayShortLow]);
 
             // পরবর্তী ক্লাস কবে তা অটো হিসাব করা
             const nextClassLabel = useMemo(() => {
@@ -21178,91 +21298,108 @@ const SmartPhoneAction = ({ phone }) => {
 
             return (
                 <div className="space-y-4 sm:space-y-5 pb-12 w-full max-w-none overflow-x-hidden">
-                   {/* Clean Minimal Student Identity + Compact Lab Seat Pill */}
+                   {/* Clean Spacious Dashboard-Style Identity Hero (Zero Squishing on Mobile) */}
                     <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
-                        <div className="flex items-center justify-between gap-3 flex-nowrap">
-                            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
-                                <div className="relative shrink-0">
-                                    <img
-                                        src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
-                                        alt={displayName}
-                                        loading="lazy"
-                                        className="w-14 h-14 sm:w-16 sm:h-16 object-cover border-[3px] border-white dark:border-[#181818] shadow-sm bg-gray-100"
-                                        style={{ borderRadius: '9999px' }}
-                                    />
-                                    <span
-                                        className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#181818] shadow-[0_0_8px_rgba(16,185,129,0.75)]"
-                                        style={{ borderRadius: '9999px' }}
-                                        title="Active"
-                                    />
-                                </div>
-
-                                <div className="min-w-0 flex-1">
-                                    <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white truncate leading-tight">{displayName}</h2>
-                                    <p className="text-[11px] font-mono-code text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                                        {handleUsername}
-                                    </p>
-                                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-400/35">
-                                            {auth?.role || 'Student'}
-                                        </span>
-                                        {coursesArr.map(c => (
-                                            <span key={c} className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-500/20">
-                                                {c}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
+                        <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
+                            <div className="relative shrink-0">
+                                <img
+                                    src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
+                                    alt={displayName}
+                                    loading="lazy"
+                                    className="w-16 h-16 sm:w-20 sm:h-20 object-cover border-[3px] border-white dark:border-[#181818] shadow-sm bg-gray-100"
+                                    style={{ borderRadius: '9999px' }}
+                                />
+                                <span
+                                    className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#181818] shadow-[0_0_8px_rgba(16,185,129,0.75)]"
+                                    style={{ borderRadius: '9999px' }}
+                                    title="Active"
+                                />
                             </div>
 
-                            {/* Sleek Compact Seat Indicator */}
-                            <div className="shrink-0 flex flex-col items-end">
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#005fb8] text-white text-xs sm:text-sm font-numbers font-bold shadow-sm whitespace-nowrap">
-                                    <Icon name="monitor" className="w-3.5 h-3.5 shrink-0" />
-                                    <span>{myBooking?.seatId ? `Seat ${String(myBooking.seatId).padStart(2, '0')}` : 'Unassigned'}</span>
-                                </span>
-                                {myBatch && (
-                                    <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 mt-1 truncate max-w-[110px]">
-                                        {myBatch.name}
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-nowrap">
+                                    <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white truncate leading-tight">
+                                        {displayName}
+                                    </h2>
+                                    <span className={`shrink-0 ${isVerifiedSeat ? 'text-[#0095F6]' : 'text-gray-400 opacity-35'}`} title={isVerifiedSeat ? 'Verified' : 'Payment Due'}>
+                                        <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" viewBox="0 0 40 40" fill="none">
+                                            <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                            <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                        </svg>
                                     </span>
-                                )}
+                                </div>
+                                <p className="text-xs font-mono-code text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                    {handleUsername}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-400/35">
+                                        {auth?.role || 'Student'}
+                                    </span>
+                                    {coursesArr.map(c => (
+                                        <span key={c} className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-500/20">
+                                            {c}
+                                        </span>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* 4 Batch & Attendance Overview Cards */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-                        <div className="p-3.5 sm:p-4 rounded-2xl bg-blue-500/[0.06] dark:bg-blue-500/[0.10] border border-blue-200/60 dark:border-blue-500/20 min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff] truncate">Assigned Batch</p>
-                            <p className="text-base sm:text-lg font-bold text-gray-900 dark:text-white truncate mt-1">
-                                {myBatch ? myBatch.name : 'Not Assigned'}
+                    {/* Dedicated Seat, Batch, Schedule & Attendance Cards */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+                        {/* 1. Lab Seat Card */}
+                        <div className="p-3.5 sm:p-4 rounded-2xl bg-blue-500/[0.08] dark:bg-blue-500/[0.13] border border-blue-200/70 dark:border-blue-500/25 min-w-0">
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff] truncate">Lab Seat</p>
+                                <Icon name="monitor" className="w-3.5 h-3.5 text-[#005fb8] dark:text-[#60cdff] shrink-0" />
+                            </div>
+                            <p className="text-lg sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white truncate">
+                                {myBooking?.seatId ? `Seat #${String(myBooking.seatId).padStart(2, '0')}` : 'Pending'}
                             </p>
                             <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                                {myBatch ? `${(myBatch.days || []).length} days / week` : 'Contact admin for seat'}
+                                {myBooking?.seatId ? 'Reserved PC' : 'Contact admin'}
                             </p>
                         </div>
 
-                        <div className="p-3.5 sm:p-4 rounded-2xl bg-emerald-500/[0.06] dark:bg-emerald-500/[0.10] border border-emerald-200/60 dark:border-emerald-500/20 min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 truncate">Class Time</p>
-                            <p className="text-sm sm:text-base font-numbers font-bold text-gray-900 dark:text-white truncate mt-1">
+                        {/* 2. Batch Card */}
+                        <div className="p-3.5 sm:p-4 rounded-2xl bg-purple-500/[0.07] dark:bg-purple-500/[0.11] border border-purple-200/60 dark:border-purple-500/20 min-w-0">
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-purple-700 dark:text-purple-400 truncate">Batch</p>
+                                <Icon name="users" className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                            </div>
+                            <p className="text-base sm:text-xl font-bold text-gray-900 dark:text-white truncate">
+                                {myBatch ? myBatch.name : 'Unassigned'}
+                            </p>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                {myBatch ? `${(myBatch.days || []).length} days/wk` : 'No batch yet'}
+                            </p>
+                        </div>
+
+                        {/* 3. Class Time & Next Class Card */}
+                        <div className="p-3.5 sm:p-4 rounded-2xl bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] border border-emerald-200/60 dark:border-emerald-500/20 min-w-0">
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 truncate">Class Time</p>
+                                <Icon name="clock" className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            </div>
+                            <p className="text-sm sm:text-base font-numbers font-bold text-gray-900 dark:text-white truncate">
                                 {myBatch ? `${formatTime12(myBatch.startTime)} – ${formatTime12(myBatch.endTime)}` : 'TBA'}
                             </p>
-                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">Be on time (10m early)</p>
+                            <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold truncate mt-1">
+                                Next: {nextClassLabel}
+                            </p>
                         </div>
 
-                        <div className="p-3.5 sm:p-4 rounded-2xl bg-purple-500/[0.06] dark:bg-purple-500/[0.10] border border-purple-200/60 dark:border-purple-500/20 min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-purple-700 dark:text-purple-400 truncate">Next Class</p>
-                            <p className="text-sm sm:text-base font-bold text-gray-900 dark:text-white truncate mt-1">{nextClassLabel}</p>
-                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">Upcoming lab session</p>
-                        </div>
-
-                        <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/[0.06] dark:bg-amber-500/[0.10] border border-amber-200/60 dark:border-amber-500/20 min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 truncate">Attendance</p>
-                            <p className="text-base sm:text-lg font-numbers font-bold text-gray-900 dark:text-white truncate mt-1">
+                        {/* 4. Attendance Card */}
+                        <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/[0.07] dark:bg-amber-500/[0.11] border border-amber-200/60 dark:border-amber-500/20 min-w-0">
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 truncate">Attendance</p>
+                                <Icon name="check-circle" className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                            </div>
+                            <p className="text-lg sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white truncate">
                                 {attStats.rate}% <span className="text-xs font-medium text-gray-400">({attStats.present}/{attStats.targetClasses}d)</span>
                             </p>
                             <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                                {myRecord?.durationMonths || myLead?.duration || 3} Months Course
+                                {myRecord?.durationMonths || myLead?.duration || 3}m Course
                             </p>
                         </div>
                     </div>
@@ -21280,7 +21417,7 @@ const SmartPhoneAction = ({ phone }) => {
                                 </span>
                             </div>
 
-                            <div className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto hide-scrollbar pb-1 snap-x">
+                            <div ref={seatRoutineScrollRef} className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto hide-scrollbar pb-1 snap-x scroll-smooth">
                                 {weekOrder.map(d => {
                                     const sLow = d.short.toLowerCase();
                                     const fLow = d.full.toLowerCase();
@@ -21290,6 +21427,7 @@ const SmartPhoneAction = ({ phone }) => {
                                     return (
                                         <div
                                             key={d.short}
+                                            ref={el => { seatRoutineDayRefs.current[sLow] = el; }}
                                             className={`min-w-[66px] sm:min-w-0 shrink-0 snap-center py-3 px-2 rounded-xl text-center flex flex-col items-center justify-center gap-1.5 border ${
                                                 hasClass
                                                     ? 'bg-emerald-500/[0.12] dark:bg-emerald-500/[0.18] border-emerald-400/70 dark:border-emerald-500/40 text-emerald-950 dark:text-white'
@@ -23612,7 +23750,7 @@ const [courseModules, setCourseModules] = useState([]);
                     Manager: ['community', 'dashboard', 'daily-tasks', 'projects', 'clients', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'students', 'seats', 'leaderboard', 'orders', 'abandoned', 'products', 'omni-search', 'notes', 'settings'],
                     Trainer: ['community', 'dashboard', 'daily-tasks', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'students', 'seats', 'leaderboard', 'notes', 'settings'],
                     Team: ['community', 'dashboard', 'daily-tasks', 'projects', 'clients', 'enrollments', 'orders', 'notes', 'settings'],
-                    Student: ['community', 'dashboard', 'courses', 'modules', 'assignments', 'resources', 'id-card', 'seats', 'leaderboard', 'orders', 'notes', 'settings', 'clients', 'enrollments'],
+                    Student: ['community', 'dashboard', 'courses', 'modules', 'assignments', 'resources', 'id-card', 'seats', 'leaderboard', 'orders', 'notes', 'settings', 'clients', 'enrollments', 'products'],
                     Affiliator: ['community', 'dashboard', 'orders', 'abandoned', 'affiliates', 'payouts', 'products', 'omni-search', 'notes', 'settings']
                 };
                 const allowed = permissions[role] || permissions.Student;
@@ -24039,14 +24177,16 @@ const [courseModules, setCourseModules] = useState([]);
                             )}
 
                             {/* 🚀 Affiliate Hub Block */}
-                           {['Affiliator', 'Admin', 'Manager'].includes(auth?.role) && (
+                           {['Student', 'Affiliator', 'Admin', 'Manager'].includes(auth?.role) && (
                                 <div className="space-y-0.5">
                                     {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 mb-1.5 text-left mt-3">Partner Network</p>}
                                     <NavItem route="products" current={currentRoute} icon="box">Promo Products</NavItem>
                                     {['Admin'].includes(auth?.role) && (
                                         <NavItem route="affiliates" current={currentRoute} icon="award">Affiliate Hub</NavItem>
                                     )}
-                                    <NavItem route="omni-search" current={currentRoute} icon="globe">Global Find</NavItem>
+                                    {['Admin', 'Manager', 'Affiliator'].includes(auth?.role) && (
+                                        <NavItem route="omni-search" current={currentRoute} icon="globe">Global Find</NavItem>
+                                    )}
                                     {['Admin', 'Affiliator'].includes(auth?.role) && (
                                         <NavItem route="payouts" current={currentRoute} icon="credit-card">Payouts & Billing</NavItem>
                                     )}
