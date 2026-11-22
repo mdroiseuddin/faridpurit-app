@@ -1429,7 +1429,7 @@
                                           onChange={e=>setCred({...cred, userId: e.target.value})} 
                                           className="w-full bg-gray-50 dark:bg-[#1e1e1e] border border-gray-200 dark:border-transparent text-gray-900 dark:text-white text-sm font-medium rounded-xl pl-11 pr-4 py-3.5 focus:outline-none focus:ring-1 focus:ring-[#005fb8] dark:focus:ring-[#60cdff]/50 transition-all placeholder-gray-400 dark:placeholder-gray-500" 
                                           required 
-                                          autoComplete="off" 
+                                          autoComplete="username" 
                                           placeholder="User ID / Phone" 
                                       />
                                   </div>
@@ -1747,9 +1747,9 @@
                       {!isChatOpen && (
                           <button 
                               onClick={() => { if(typeof window.playSound === 'function') window.playSound('click'); setIsChatOpen(true); }}
-                              className="w-14 h-14 md:w-[60px] md:h-[60px] rounded-full shadow-[0_8px_25px_rgba(37,211,102,0.4)] flex items-center justify-center transition-transform duration-300 z-50 bg-gradient-to-tr from-[#128C7E] to-[#25D366] text-white hover:scale-110 border-[1.5px] border-white/30 pointer-events-auto"
+                              className="w-11 h-11 md:w-12 md:h-12 rounded-full shadow-[0_6px_18px_rgba(37,211,102,0.35)] flex items-center justify-center transition-transform duration-300 z-50 bg-gradient-to-tr from-[#128C7E] to-[#25D366] text-white hover:scale-105 border border-white/30 pointer-events-auto"
                           >
-                              <svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor">
+                              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
                                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.888-.788-1.489-1.761-1.663-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.052 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/>
                               </svg>
                           </button>
@@ -7792,6 +7792,9 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
             const [form, setForm] = useState({ username: '', email: '', password: '', role: 'Admin', course: courseList[0] || 'Basic Computer' });
             const [editMode, setEditMode] = useState(null); 
             const [saving, setSaving] = useState(false);
+            const [openPanels, setOpenPanels] = useState({ courses: false, services: false, addUser: true, users: true });
+            const [userSearch, setUserSearch] = useState('');
+            const togglePanel = (k) => { if (typeof playSound === 'function') playSound('click'); setOpenPanels(prev => ({ ...prev, [k]: !prev[k] })); };
 
             const isAdminOrManager = ['Admin', 'Manager'].includes(auth?.role);
 
@@ -7982,27 +7985,29 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
 
            return (
                 <div className="space-y-6 w-full max-w-full xl:max-w-7xl mx-auto pb-10 px-2 md:px-0">
-                    <div>
-                        <h2 className="text-xl md:text-2xl font-semibold text-gray-900 dark:text-white flex items-center gap-2 whitespace-nowrap">
-                            <Icon name="settings" className="w-5 h-5 text-[#005fb8]" /> Settings, Courses & Users
+                    <div className="flex items-center justify-between gap-2 flex-nowrap">
+                        <h2 className="text-lg md:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2 truncate">
+                            <Icon name="settings" className="w-5 h-5 text-[#005fb8] shrink-0" />
+                            <span className="truncate">Settings</span>
                         </h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage global courses, system access, and user roles.</p>
+                        <span className="text-xs font-numbers font-bold px-2.5 py-1 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] shrink-0 whitespace-nowrap">
+                            {users.length} Users
+                        </span>
                     </div>
 
-                   {/* 🎓 & 💼 GLOBAL COURSE & AGENCY SERVICE MANAGERS */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                   {/* 🎓 & 💼 COLLAPSIBLE COURSE & SERVICE MANAGERS (Compact Until Needed) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 items-start">
                         {/* Academy Courses Manager */}
-                        <div className="glass-panel border border-gray-200/50 dark:border-white/10 overflow-hidden">
-                            <div className="p-3 border-b border-gray-200/50 dark:border-white/5 bg-gray-50/50 dark:bg-dark-900/30 flex justify-between items-center gap-2">
+                        <div className="glass-panel rounded-2xl border border-gray-200/60 dark:border-white/10 overflow-hidden">
+                            <button type="button" onClick={() => togglePanel('courses')} className="w-full p-3.5 bg-gray-50/60 dark:bg-dark-900/30 flex justify-between items-center gap-2 text-left">
                                 <div className="flex items-center gap-2 min-w-0">
                                     <Icon name="graduation-cap" className="w-4 h-4 text-[#005fb8] shrink-0" />
-                                    <h3 className="font-semibold text-gray-800 dark:text-gray-200 text-sm truncate">Academy Courses Manager</h3>
+                                    <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm truncate">Courses ({courseList.length})</h3>
                                 </div>
-                                <span className="bg-blue-50 dark:bg-blue-900/30 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-800/50 font-bold text-[10px] px-2 py-0.5 whitespace-nowrap shrink-0">
-                                    {courseList.length} Courses
-                                </span>
-                            </div>
-                            <div className="p-4 space-y-4">
+                                <Icon name={openPanels.courses ? 'chevron-up' : 'chevron-down'} className="w-4 h-4 text-gray-400 shrink-0" />
+                            </button>
+                            {openPanels.courses && (
+                            <div className="p-3.5 border-t border-gray-100 dark:border-white/5 space-y-3">
                                 <form onSubmit={handleAddCourse} className="flex flex-col sm:flex-row gap-2">
                                     <input 
                                         type="text" 
@@ -8026,20 +8031,20 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                                     ))}
                                 </div>
                             </div>
+                            )}
                         </div>
 
                         {/* Agency Services Manager */}
-                        <div className="glass-panel border border-gray-200/50 dark:border-white/10 overflow-hidden">
-                            <div className="p-3 border-b border-gray-200/50 dark:border-white/5 bg-gray-50/50 dark:bg-dark-900/30 flex justify-between items-center gap-2">
+                        <div className="glass-panel rounded-2xl border border-gray-200/60 dark:border-white/10 overflow-hidden">
+                            <button type="button" onClick={() => togglePanel('services')} className="w-full p-3.5 bg-gray-50/60 dark:bg-dark-900/30 flex justify-between items-center gap-2 text-left">
                                 <div className="flex items-center gap-2 min-w-0">
                                     <Icon name="briefcase" className="w-4 h-4 text-purple-600 shrink-0" />
-                                    <h3 className="font-semibold text-gray-800 dark:text-gray-200 text-sm truncate">Agency Services Manager</h3>
+                                    <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm truncate">Services ({serviceList.length})</h3>
                                 </div>
-                                <span className="bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border border-purple-200/50 dark:border-purple-800/50 font-bold text-[10px] px-2 py-0.5 whitespace-nowrap shrink-0">
-                                    {serviceList.length} Services
-                                </span>
-                            </div>
-                            <div className="p-4 space-y-4">
+                                <Icon name={openPanels.services ? 'chevron-up' : 'chevron-down'} className="w-4 h-4 text-gray-400 shrink-0" />
+                            </button>
+                            {openPanels.services && (
+                            <div className="p-3.5 border-t border-gray-100 dark:border-white/5 space-y-3">
                                 <form onSubmit={async (e) => {
                                     e.preventDefault();
                                     const trimmed = newServiceName.trim();
@@ -8087,10 +8092,11 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                                     ))}
                                 </div>
                             </div>
+                            )}
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
                         <div className="lg:col-span-1">
                             <div className={`glass-panel overflow-hidden transition-all border ${editMode ? 'border-orange-300 dark:border-orange-700/50' : 'border-gray-200/50 dark:border-white/10'}`}>
                                 <div className={`p-3 border-b flex justify-between items-center ${editMode ? 'border-orange-200/50 dark:border-orange-800/30 bg-orange-50/50 dark:bg-orange-900/10' : 'border-gray-200/50 dark:border-white/5 bg-gray-50/50 dark:bg-dark-900/30'}`}>
@@ -8105,17 +8111,17 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                                 <form onSubmit={handleSubmit} className="p-4 space-y-3.5">
                                     <div>
                                         <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-400 mb-1">Username</label>
-                                        <input type="text" value={form.username} onChange={e => setForm({...form, username: e.target.value})} className="w-full input-style px-3 py-2 text-sm" placeholder="Enter username" required />
+                                        <input type="text" list="fit-dl-usernames" autoComplete="username" value={form.username} onChange={e => setForm({...form, username: e.target.value})} className="w-full input-style px-3 py-2 text-sm" placeholder="Username" required />
                                     </div>
                                     <div>
                                         <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-400 mb-1">Email</label>
-                                        <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full input-style px-3 py-2 text-sm" placeholder="user@email.com" />
+                                        <input type="email" list="fit-dl-emails" autoComplete="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full input-style px-3 py-2 text-sm" placeholder="name@gmail.com" />
                                     </div>
                                     <div>
                                         <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-400 mb-1">
-                                            Password {editMode && <span className="text-gray-400 font-normal">(Leave blank)</span>}
+                                            Password {editMode && <span className="text-gray-400 font-normal">(Optional)</span>}
                                         </label>
-                                        <input type="text" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full input-style px-3 py-2 text-sm" placeholder={editMode ? "New password" : "Enter password"} required={!editMode} />
+                                        <input type="text" list="fit-dl-phones" autoComplete="new-password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full input-style px-3 py-2 text-sm" placeholder={editMode ? "New password" : "Password / Phone"} required={!editMode} />
                                     </div>
                                     <div>
                                         <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-400 mb-1">Role</label>
@@ -8654,7 +8660,18 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
 
                 const script = document.createElement('script');
                 script.id = scriptId;
-                script.src = 'https://faridpurit.com/feeds/posts/default?alt=json-in-script&max-results=500&callback=loadBloggerProducts';
+                script.src = 'https://www.buykori.com/feeds/posts/default?alt=json-in-script&max-results=500&callback=loadBloggerProducts';
+                script.onerror = () => {
+                    if (!script.dataset.fb) {
+                        script.dataset.fb = '1';
+                        const fb = document.createElement('script');
+                        fb.id = scriptId + '_fb';
+                        fb.src = 'https://buykori.com/feeds/posts/default?alt=json-in-script&max-results=500&callback=loadBloggerProducts';
+                        document.body.appendChild(fb);
+                    } else {
+                        setLoading(false);
+                    }
+                };
                 document.body.appendChild(script);
 
                 return () => {
@@ -8848,12 +8865,42 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
         // ==========================================
         // OMNI SEARCH & GLOBAL FIND VIEW (SMART ENGINE - V2.0)
         // ==========================================
-       const GlobalFindView = ({ orders = [], projects = [], clientLeads = [], studentLeads = [], studentsPanel = [], assignments = [], moduleProgress = [], auth, addToast, notes = [], dailyTasks = [] }) => {
+       const GlobalFindView = ({ orders = [], projects = [], clientLeads = [], studentLeads = [], studentsPanel = [], assignments = [], moduleProgress = [], auth, addToast, notes = [], dailyTasks = [], executeAPI }) => {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState({ profiles: [], projects: [], tasks: [], notes: [], transactions: [] });
     const [isSearching, setIsSearching] = useState(false);
+    const [sheetResults, setSheetResults] = useState([]);
+    const [scannedSheetsCount, setScannedSheetsCount] = useState(0);
+    const [sheetSearching, setSheetSearching] = useState(false);
+    const [activeSheetTab, setActiveSheetTab] = useState('All');
 
     const isAuthorized = ['Admin', 'Manager', 'Team'].includes(auth?.role);
+
+    // 🔍 ২২টি গুগল শিট ট্যাবে ডিপ-সার্চ (Debounce 350ms)
+    useEffect(() => {
+        const cleanQ = query.trim();
+        if (!isAuthorized || cleanQ.length < 2 || typeof executeAPI !== 'function') {
+            setSheetResults([]);
+            setScannedSheetsCount(0);
+            setSheetSearching(false);
+            return;
+        }
+        let cancelled = false;
+        setSheetSearching(true);
+        const timer = setTimeout(async () => {
+            try {
+                const res = await executeAPI({ action: 'global_omni_search', query: cleanQ });
+                const data = await res.json();
+                if (!cancelled && data && data.success) {
+                    setSheetResults(Array.isArray(data.results) ? data.results : []);
+                    setScannedSheetsCount(Number(data.scannedSheets) || 0);
+                    setActiveSheetTab('All');
+                }
+            } catch (err) {}
+            if (!cancelled) setSheetSearching(false);
+        }, 350);
+        return () => { cancelled = true; clearTimeout(timer); };
+    }, [query, isAuthorized]);
 
     // 🟢 UNIVERSAL COPY FUNCTION (কপি করলে নোট, ডেসক্রিপশন সব সহ সুন্দর ফরমেটে কপি হবে)
     const copyData = (type, data) => {
@@ -9002,7 +9049,15 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
         setIsSearching(false);
     };
 
-    const totalMatches = results.profiles.length + results.projects.length + results.tasks.length + results.notes.length + results.transactions.length;
+    const totalMatches = results.profiles.length + results.projects.length + results.tasks.length + results.notes.length + results.transactions.length + sheetResults.length;
+    const sheetCounts = useMemo(() => {
+        const m = {};
+        sheetResults.forEach(r => { m[r.sheet] = (m[r.sheet] || 0) + 1; });
+        return Object.entries(m).sort((a, b) => b[1] - a[1]);
+    }, [sheetResults]);
+    const visibleSheetResults = useMemo(() => {
+        return activeSheetTab === 'All' ? sheetResults : sheetResults.filter(r => r.sheet === activeSheetTab);
+    }, [sheetResults, activeSheetTab]);
 
     // Simple Markdown parser for Notes visualization
     const renderMarkdown = (text) => {
@@ -9057,7 +9112,7 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
             <div className="pt-6">
                 {query.length > 0 && query.length < 2 && <p className="text-center text-gray-400 text-sm font-medium">Keep typing to search...</p>}
                 
-                {query.length >= 2 && totalMatches === 0 && !isSearching && (
+                {query.length >= 2 && totalMatches === 0 && !isSearching && !sheetSearching && (
                     <div className="text-center py-16 glass-panel rounded-3xl border-dashed border-gray-300 dark:border-dark-600">
                         <Icon name="file-question" className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white">No exact match found</h3>
@@ -9077,11 +9132,104 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                     <div className="space-y-10 animate-in slide-in-from-bottom-4">
                         <div className="flex items-center justify-center gap-4">
                             <div className="h-px bg-gray-200 dark:bg-white/10 flex-1"></div>
-                            <span className="text-xs font-black text-[#005fb8] dark:text-[#60cdff] uppercase tracking-widest px-4 py-1.5 bg-blue-50 dark:bg-blue-900/30 rounded-full border border-blue-200 dark:border-blue-800/50 shadow-sm">
-                                {totalMatches} Results Found
+                            <span className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] uppercase tracking-wider px-4 py-1.5 bg-blue-50 dark:bg-blue-900/30 rounded-full border border-blue-200 dark:border-blue-800/50 shadow-sm">
+                                {sheetSearching ? 'Scanning all sheets...' : `${sheetResults.length} Sheet Matches (${scannedSheetsCount} Tabs)`}
                             </span>
                             <div className="h-px bg-gray-200 dark:bg-white/10 flex-1"></div>
                         </div>
+
+                        {/* 🟢 ALL 22 GOOGLE SHEETS DEEP-SEARCH RESULTS FRAME */}
+                        {sheetResults.length > 0 && (
+                            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-white/10 space-y-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                        <Icon name="database" className="w-4 h-4 text-[#005fb8]" />
+                                        <span>All Sheets Matches ({sheetResults.length})</span>
+                                    </h3>
+                                    <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar pb-0.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveSheetTab('All')}
+                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 whitespace-nowrap ${activeSheetTab === 'All' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300'}`}
+                                        >
+                                            All ({sheetResults.length})
+                                        </button>
+                                        {sheetCounts.map(([sName, cnt]) => (
+                                            <button
+                                                key={sName}
+                                                type="button"
+                                                onClick={() => setActiveSheetTab(sName)}
+                                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 whitespace-nowrap ${activeSheetTab === sName ? 'bg-[#005fb8] text-white' : 'bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300'}`}
+                                            >
+                                                {sName} ({cnt})
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {visibleSheetResults.map((item, idx) => (
+                                        <div key={`${item.sheet}-${item.rowNumber}-${idx}`} className="p-3.5 rounded-xl bg-white dark:bg-[#181818] border border-gray-200/80 dark:border-white/10 flex flex-col gap-2.5">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff]">
+                                                            {item.sheet} • Row {item.rowNumber}
+                                                        </span>
+                                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-100 dark:bg-dark-800 text-gray-500">
+                                                            Match: {item.matchedField}
+                                                        </span>
+                                                    </div>
+                                                    <h4 className="text-sm font-bold text-gray-900 dark:text-white break-words">{item.title}</h4>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const txt = `[${item.sheet} #${item.rowNumber}]\n` +
+                                                            Object.entries(item.fields || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+                                                        if (navigator.clipboard) navigator.clipboard.writeText(txt);
+                                                        if (addToast) addToast('Record copied!', 'success');
+                                                    }}
+                                                    className="p-1.5 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:text-[#005fb8] shrink-0"
+                                                    title="Copy Record"
+                                                >
+                                                    <Icon name="copy" className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+
+                                            {/* Input / Issue / Updated Dates Bar */}
+                                            <div className="flex flex-wrap gap-1.5 text-[10px] font-numbers">
+                                                {item.inputDate && (
+                                                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold">
+                                                        Input: {item.inputDate}
+                                                    </span>
+                                                )}
+                                                {item.issueDate && (
+                                                    <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300 font-semibold">
+                                                        Issue/Start: {item.issueDate}
+                                                    </span>
+                                                )}
+                                                {item.updatedDate && (
+                                                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold">
+                                                        Updated: {item.updatedDate}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Clean Key-Value Details Grid */}
+                                            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-2 border-t border-gray-100 dark:border-white/5 text-[11px]">
+                                                {Object.entries(item.fields || {}).slice(0, 8).map(([k, v]) => (
+                                                    <div key={k} className="min-w-0">
+                                                        <span className="text-[9px] font-bold uppercase text-gray-400 block truncate">{k}</span>
+                                                        <span className="text-gray-800 dark:text-gray-200 font-medium break-words line-clamp-2">{v}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         
                         {/* 🔴 Profiles & Leads Results (Detailed) */}
                         {results.profiles.length > 0 && (
@@ -18045,7 +18193,7 @@ const SmartPhoneAction = ({ phone }) => {
 
             useEffect(() => {
                 fetchMessages();
-                const interval = setInterval(fetchMessages, 7000);
+                const interval = setInterval(fetchMessages, 3000);
                 return () => clearInterval(interval);
             }, []);
 
@@ -18220,6 +18368,7 @@ const SmartPhoneAction = ({ phone }) => {
                         addToast(saveData.message, 'error');
                         return;
                     }
+                    setTimeout(() => fetchMessages(), 350);
                 } catch(e) { addToast("Failed to send message to DB", "error"); }
 
                 // 🟢 ব্যাকগ্রাউন্ডে হিউম্যান সাপোর্ট রিপ্লাই (কোনো AI ট্যাগ বা টাইপিং শো করবে না, এবং মূল মেসেজ অ্যাপ্রুভ না হওয়া পর্যন্ত Pending থাকবে)
@@ -19533,8 +19682,8 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 </div>
 
-                                {/* 7-Day High-Contrast Calendar Strip (Class Days Pop vs Off Days Muted Dashed) */}
-                                <div className="grid grid-cols-7 gap-1 sm:gap-2">
+                                {/* 7-Day Mobile-Scrollable Calendar Strip (Spacious on Mobile, 7-Col Grid on Desktop) */}
+                                <div className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto hide-scrollbar pb-1 snap-x">
                                     {weeklyDays.map(day => {
                                         const isSel = selectedWeekDayIdx === day.idx;
                                         return (
@@ -19543,7 +19692,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                 type="button"
                                                 onClick={() => { playAudio('click'); setSelectedWeekDayIdx(day.idx); }}
                                                 style={{ WebkitTapHighlightColor: 'transparent' }}
-                                                className={`py-2 px-1 sm:p-2.5 rounded-xl text-center flex flex-col items-center justify-between gap-1.5 transition-all outline-none focus:outline-none relative ${
+                                                className={`min-w-[66px] sm:min-w-0 shrink-0 snap-center py-2.5 px-2 sm:p-2.5 rounded-xl text-center flex flex-col items-center justify-between gap-1.5 transition-all outline-none focus:outline-none relative ${
                                                     day.hasClass
                                                         ? (isSel
                                                             ? 'bg-emerald-600 text-white border border-emerald-500 shadow-md scale-[1.03]'
@@ -19764,9 +19913,9 @@ const SmartPhoneAction = ({ phone }) => {
                                                     style={{ borderRadius: '9999px' }}
                                                 />
                                                 <span
-                                                    className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#181818]"
+                                                    className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#181818] shadow-[0_0_8px_rgba(16,185,129,0.75)]"
                                                     style={{ borderRadius: '9999px' }}
-                                                    title="Active Student"
+                                                    title="Active"
                                                 />
                                             </div>
 
@@ -19800,7 +19949,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                             }`}
                                                             title={isPaymentVerified ? 'Verified Student (Payment Complete)' : 'Payment Due — Click for details'}
                                                         >
-                                                            <svg className="w-[18px] h-[18px] drop-shadow-sm" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                           <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 drop-shadow-sm" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
                                                                 <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
                                                                 <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
                                                             </svg>
@@ -21029,30 +21178,34 @@ const SmartPhoneAction = ({ phone }) => {
 
             return (
                 <div className="space-y-4 sm:space-y-5 pb-12 w-full max-w-none overflow-x-hidden">
-                    {/* Top Student Identity + Seat Pass Banner */}
-                    <div className="glass-panel p-4 sm:p-6 rounded-2xl border border-gray-200/70 dark:border-white/10">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            {/* Left: Clean Profile Photo + Name + Course */}
-                            <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
+                   {/* Clean Minimal Student Identity + Compact Lab Seat Pill */}
+                    <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
+                        <div className="flex items-center justify-between gap-3 flex-nowrap">
+                            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
                                 <div className="relative shrink-0">
                                     <img
                                         src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
                                         alt={displayName}
                                         loading="lazy"
-                                        className="w-16 h-16 sm:w-20 sm:h-20 object-cover border-[3px] border-white dark:border-[#181818] shadow-sm bg-gray-100"
+                                        className="w-14 h-14 sm:w-16 sm:h-16 object-cover border-[3px] border-white dark:border-[#181818] shadow-sm bg-gray-100"
                                         style={{ borderRadius: '9999px' }}
+                                    />
+                                    <span
+                                        className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#181818] shadow-[0_0_8px_rgba(16,185,129,0.75)]"
+                                        style={{ borderRadius: '9999px' }}
+                                        title="Active"
                                     />
                                 </div>
 
                                 <div className="min-w-0 flex-1">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">
-                                        Official Lab Seat &amp; Batch Pass
-                                    </span>
-                                    <h2 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white truncate mt-0.5">{displayName}</h2>
-                                    <p className="text-xs font-mono-code text-gray-500 dark:text-gray-400 truncate">
-                                        {handleUsername} {myRecord?.id ? `• ${myRecord.id}` : ''}
+                                    <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white truncate leading-tight">{displayName}</h2>
+                                    <p className="text-[11px] font-mono-code text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                        {handleUsername}
                                     </p>
-                                    <div className="flex flex-wrap gap-1.5 mt-2">
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-400/35">
+                                            {auth?.role || 'Student'}
+                                        </span>
                                         {coursesArr.map(c => (
                                             <span key={c} className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-500/20">
                                                 {c}
@@ -21062,22 +21215,17 @@ const SmartPhoneAction = ({ phone }) => {
                                 </div>
                             </div>
 
-                            {/* Right: Big Lab Seat Badge + Copy Pass */}
-                            <div className="flex items-center justify-between md:justify-end gap-3 pt-3 md:pt-0 border-t md:border-t-0 border-gray-100 dark:border-white/10 shrink-0">
-                                <div className="px-4 py-2.5 rounded-xl bg-blue-500/[0.09] dark:bg-blue-500/[0.15] border border-blue-300/60 dark:border-blue-500/30 text-center">
-                                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#005fb8] dark:text-[#60cdff]">Lab Seat</p>
-                                    <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white leading-tight mt-0.5">
-                                        {myBooking?.seatId ? `#${String(myBooking.seatId).padStart(2, '0')}` : 'Pending'}
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={copyLabPass}
-                                    className="h-10 px-3.5 rounded-xl bg-gray-900 hover:bg-black dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200 text-white text-xs font-bold flex items-center gap-1.5 whitespace-nowrap win-button"
-                                >
-                                    <Icon name="copy" className="w-3.5 h-3.5 shrink-0" />
-                                    <span>Copy Pass</span>
-                                </button>
+                            {/* Sleek Compact Seat Indicator */}
+                            <div className="shrink-0 flex flex-col items-end">
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#005fb8] text-white text-xs sm:text-sm font-numbers font-bold shadow-sm whitespace-nowrap">
+                                    <Icon name="monitor" className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{myBooking?.seatId ? `Seat ${String(myBooking.seatId).padStart(2, '0')}` : 'Unassigned'}</span>
+                                </span>
+                                {myBatch && (
+                                    <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 mt-1 truncate max-w-[110px]">
+                                        {myBatch.name}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -21132,7 +21280,7 @@ const SmartPhoneAction = ({ phone }) => {
                                 </span>
                             </div>
 
-                            <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+                            <div className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto hide-scrollbar pb-1 snap-x">
                                 {weekOrder.map(d => {
                                     const sLow = d.short.toLowerCase();
                                     const fLow = d.full.toLowerCase();
@@ -21142,7 +21290,7 @@ const SmartPhoneAction = ({ phone }) => {
                                     return (
                                         <div
                                             key={d.short}
-                                            className={`py-3 px-1 rounded-xl text-center flex flex-col items-center justify-center gap-1.5 border ${
+                                            className={`min-w-[66px] sm:min-w-0 shrink-0 snap-center py-3 px-2 rounded-xl text-center flex flex-col items-center justify-center gap-1.5 border ${
                                                 hasClass
                                                     ? 'bg-emerald-500/[0.12] dark:bg-emerald-500/[0.18] border-emerald-400/70 dark:border-emerald-500/40 text-emerald-950 dark:text-white'
                                                     : 'bg-transparent border-dashed border-gray-200 dark:border-white/10 text-gray-400 opacity-60'
@@ -21232,8 +21380,9 @@ const SmartPhoneAction = ({ phone }) => {
             const [searchQ, setSearchQ] = useState('');
             const [colorFilter, setColorFilter] = useState('All');
 
-            // Create / Edit Modal
+            // Create / Edit & Full Reader Modals
             const [modalOpen, setModalOpen] = useState(false);
+            const [detailNote, setDetailNote] = useState(null);
             const [saving, setSaving] = useState(false);
             const [draft, setDraft] = useState({ rowIndex: null, title: '', body: '', color: '#fef08a' });
 
@@ -21412,20 +21561,22 @@ const SmartPhoneAction = ({ phone }) => {
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Click "New Note" to save your study notes, code snippets, or reminders.</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-start">
+                        /* Apple Notes Masonry Columns — Zero Gaps When Any Note Expands */
+                        <div className="columns-1 md:columns-2 xl:columns-3 gap-3 space-y-3">
                             {parsedNotes.map(note => {
                                 const theme = NOTE_COLORS.find(c => c.id.toLowerCase() === String(note.Color || '').toLowerCase()) || NOTE_COLORS[0];
                                 const isOpen = Boolean(expandedMap[note.uid]);
+                                const isLongNote = (note.body || '').length > 180 || (note.body || '').split('\n').length > 4;
 
                                 return (
-                                    <div key={note.uid} className={`rounded-2xl border transition-all overflow-hidden ${theme.tint}`}>
-                                        {/* Highlighted Title Header (Always Visible — Click to Expand/Collapse Body) */}
+                                    <div key={note.uid} className={`break-inside-avoid mb-3 rounded-2xl border transition-all overflow-hidden ${theme.tint}`}>
+                                        {/* Highlighted Title Bar */}
                                         <div
                                             onClick={() => toggleExpand(note.uid)}
-                                            className="p-3.5 sm:p-4 cursor-pointer select-none flex items-start justify-between gap-2.5"
+                                            className="p-3.5 cursor-pointer select-none flex items-start justify-between gap-2"
                                         >
-                                            <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                                                <span className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1.5 ${theme.dot}`} />
+                                            <div className="flex items-start gap-2 min-w-0 flex-1">
+                                                <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${theme.dot}`} />
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-center gap-1.5">
                                                         {note.isPinned && <Icon name="pin" className="w-3 h-3 text-rose-500 shrink-0" />}
@@ -21433,11 +21584,8 @@ const SmartPhoneAction = ({ phone }) => {
                                                             {note.title}
                                                         </h3>
                                                     </div>
-                                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 font-numbers flex items-center gap-2">
-                                                        <span>{note.Timestamp ? moment(note.Timestamp).format('DD MMM, hh:mm A') : 'Saved'}</span>
-                                                        {!isOpen && note.body && (
-                                                            <span className="text-[10px] font-semibold text-[#005fb8] dark:text-[#60cdff]">• Tap to read</span>
-                                                        )}
+                                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 font-numbers">
+                                                        {note.Timestamp ? moment(note.Timestamp).format('DD MMM, hh:mm A') : 'Saved'}
                                                     </p>
                                                 </div>
                                             </div>
@@ -21445,36 +21593,39 @@ const SmartPhoneAction = ({ phone }) => {
                                             <button
                                                 type="button"
                                                 onClick={(e) => { e.stopPropagation(); toggleExpand(note.uid); }}
-                                                className="w-7 h-7 rounded-lg bg-white/70 dark:bg-black/25 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0"
-                                                title={isOpen ? 'Collapse' : 'Expand'}
+                                                className="w-6 h-6 rounded-md bg-white/70 dark:bg-black/25 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0"
                                             >
-                                                <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} className="w-4 h-4" />
+                                                <Icon name={isOpen ? 'chevron-up' : 'chevron-down'} className="w-3.5 h-3.5" />
                                             </button>
                                         </div>
 
-                                        {/* Collapsible Body & Action Toolbar */}
+                                        {/* Uniform Height-Clamped Body + Full Detail View Button */}
                                         {isOpen && (
-                                            <div className="px-4 pb-3.5 pt-2 border-t border-black/[0.06] dark:border-white/[0.08] space-y-3">
-                                                <div className="text-xs sm:text-[13px] text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed break-words bg-white/70 dark:bg-black/20 p-3 rounded-xl border border-black/[0.05] dark:border-white/[0.06]">
-                                                    {note.body || <span className="italic text-gray-400">No additional body text.</span>}
+                                            <div className="px-3.5 pb-3 pt-2 border-t border-black/[0.06] dark:border-white/[0.08] space-y-2.5">
+                                                <div className="relative text-xs sm:text-[13px] text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed break-words bg-white/75 dark:bg-black/20 p-2.5 rounded-xl border border-black/[0.05] dark:border-white/[0.06] max-h-[120px] overflow-hidden">
+                                                    {note.body || <span className="italic text-gray-400">No body text.</span>}
+                                                    {isLongNote && (
+                                                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white/95 dark:from-[#1b1b1b]/95 to-transparent" />
+                                                    )}
                                                 </div>
 
-                                                <div className="flex items-center justify-between gap-2 text-[11px]">
-                                                    <span className="text-[10px] text-gray-500 font-numbers">
-                                                        {(note.body || '').length} chars
-                                                    </span>
-                                                    <div className="flex items-center gap-1.5">
+                                                <div className="flex items-center justify-between gap-1.5 text-[11px] flex-wrap">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { playAudio('click'); setDetailNote(note); }}
+                                                        className="px-2.5 py-1 rounded-md bg-gray-900 text-white dark:bg-white dark:text-gray-900 font-bold flex items-center gap-1 text-[10px] win-button"
+                                                    >
+                                                        <Icon name="maximize-2" className="w-3 h-3" /> Detail View
+                                                    </button>
+
+                                                    <div className="flex items-center gap-1">
                                                         <button
                                                             type="button"
                                                             onClick={() => togglePin(note.uid)}
-                                                            className={`px-2 py-1 rounded-md font-bold flex items-center gap-1 ${
-                                                                note.isPinned
-                                                                    ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300'
-                                                                    : 'bg-white/80 dark:bg-dark-800 text-gray-600 dark:text-gray-300'
-                                                            }`}
-                                                            title="Pin Note"
+                                                            className={`p-1.5 rounded-md font-bold ${note.isPinned ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300' : 'bg-white/80 dark:bg-dark-800 text-gray-600 dark:text-gray-300'}`}
+                                                            title="Pin"
                                                         >
-                                                            <Icon name="pin" className="w-3 h-3" /> {note.isPinned ? 'Pinned' : 'Pin'}
+                                                            <Icon name="pin" className="w-3 h-3" />
                                                         </button>
                                                         <button
                                                             type="button"
@@ -21483,10 +21634,10 @@ const SmartPhoneAction = ({ phone }) => {
                                                                 if (navigator.clipboard) navigator.clipboard.writeText(`${note.title}\n\n${note.body}`);
                                                                 addToast('Note copied!', 'success');
                                                             }}
-                                                            className="px-2 py-1 rounded-md bg-white/80 dark:bg-dark-800 text-gray-700 dark:text-gray-200 font-bold flex items-center gap-1"
-                                                            title="Copy Note"
+                                                            className="p-1.5 rounded-md bg-white/80 dark:bg-dark-800 text-gray-700 dark:text-gray-200"
+                                                            title="Copy"
                                                         >
-                                                            <Icon name="copy" className="w-3 h-3" /> Copy
+                                                            <Icon name="copy" className="w-3 h-3" />
                                                         </button>
                                                         <button
                                                             type="button"
@@ -21495,15 +21646,16 @@ const SmartPhoneAction = ({ phone }) => {
                                                                 setDraft({ rowIndex: note.rowIndex, title: note.title, body: note.body, color: note.Color || '#fef08a' });
                                                                 setModalOpen(true);
                                                             }}
-                                                            className="px-2 py-1 rounded-md bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] font-bold flex items-center gap-1"
+                                                            className="p-1.5 rounded-md bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff]"
+                                                            title="Edit"
                                                         >
-                                                            <Icon name="edit-2" className="w-3 h-3" /> Edit
+                                                            <Icon name="edit-2" className="w-3 h-3" />
                                                         </button>
                                                         <button
                                                             type="button"
                                                             onClick={() => handleDeleteNote(note)}
-                                                            className="px-2 py-1 rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold"
-                                                            title="Delete Note"
+                                                            className="p-1.5 rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                                                            title="Delete"
                                                         >
                                                             <Icon name="trash-2" className="w-3 h-3" />
                                                         </button>
@@ -21516,6 +21668,46 @@ const SmartPhoneAction = ({ phone }) => {
                             })}
                         </div>
                     )}
+
+                    {/* Apple Notes Full Detail Reader Modal */}
+                    <Modal isOpen={!!detailNote} onClose={() => setDetailNote(null)} title={detailNote?.title || 'Note Details'} maxWidth="max-w-xl" compact={true}>
+                        {detailNote && (
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-white/10 pb-2 font-numbers">
+                                    <span>{detailNote.Timestamp ? moment(detailNote.Timestamp).format('DD MMM YYYY, hh:mm A') : 'Saved Note'}</span>
+                                    <span>{(detailNote.body || '').length} chars</span>
+                                </div>
+                                <div className="text-sm text-gray-800 dark:text-gray-100 whitespace-pre-wrap leading-relaxed break-words max-h-[55vh] overflow-y-auto pr-1">
+                                    {detailNote.body || <span className="italic text-gray-400">No body text.</span>}
+                                </div>
+                                <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100 dark:border-white/10">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            playAudio('click');
+                                            if (navigator.clipboard) navigator.clipboard.writeText(`${detailNote.title}\n\n${detailNote.body}`);
+                                            addToast('Copied!', 'success');
+                                        }}
+                                        className="px-3.5 py-2 rounded-lg bg-gray-100 dark:bg-dark-700 text-gray-800 dark:text-gray-100 text-xs font-bold flex items-center gap-1.5 win-button"
+                                    >
+                                        <Icon name="copy" className="w-3.5 h-3.5" /> Copy
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            playAudio('click');
+                                            setDraft({ rowIndex: detailNote.rowIndex, title: detailNote.title, body: detailNote.body, color: detailNote.Color || '#fef08a' });
+                                            setDetailNote(null);
+                                            setModalOpen(true);
+                                        }}
+                                        className="px-4 py-2 rounded-lg bg-[#005fb8] text-white text-xs font-bold flex items-center gap-1.5 win-button"
+                                    >
+                                        <Icon name="edit-2" className="w-3.5 h-3.5" /> Edit Note
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </Modal>
 
                     {/* Add / Edit Note Modal (Title + Body + Color Picker) */}
                     <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={draft.rowIndex ? 'Edit Note' : 'Create Smart Note'} maxWidth="max-w-lg" compact={true}>
@@ -21617,9 +21809,20 @@ const SmartPhoneAction = ({ phone }) => {
             const coursesArr = parseCourseList(enrolledCourses, auth?.course, myRecord?.course);
             const myCoursesNorm = coursesArr.map(norm);
             const isVerified = (Number(totalMyDue) || Number(myLead?.due) || 0) <= 0;
+            const savedEmailVal = String(myUserRow?.Email || auth?.email || myRecord?.email || '').trim();
+            const isGmailLocked = Boolean(savedEmailVal && savedEmailVal.toLowerCase().endsWith('@gmail.com'));
+
+            const roleBadgeStyle = {
+                Student: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-400/40',
+                Trainer: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-400/40',
+                Manager: 'bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] border-blue-400/40',
+                Team: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-400/40',
+                Affiliator: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-400/40',
+                Admin: 'bg-red-500/15 text-red-700 dark:text-red-300 border-red-400/40'
+            }[auth?.role || 'Student'] || 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-400/40';
 
             const [form, setForm] = useState({
-                email: myUserRow?.Email || auth?.email || myRecord?.email || '',
+                email: savedEmailVal,
                 linkedin: myUserRow?.LinkedIn || '',
                 fbProfile: myUserRow?.FbProfile || '',
                 fbPage: myUserRow?.FbPage || '',
@@ -21743,10 +21946,14 @@ const SmartPhoneAction = ({ phone }) => {
 
             const handleSaveProfile = async (e) => {
                 e.preventDefault();
+                const finalEmail = isGmailLocked ? savedEmailVal : String(form.email || '').trim();
+                if (!isGmailLocked && !/^[a-zA-Z0-9._%+-]+@gmail\.com$/i.test(finalEmail)) {
+                    return addToast('Valid @gmail.com address required.', 'error');
+                }
                 setSavingProfile(true);
                 playAudio('action');
                 try {
-                    const res = await executeAPI({ action: 'update_my_profile', profile: form });
+                    const res = await executeAPI({ action: 'update_my_profile', profile: { ...form, email: finalEmail } });
                     const data = await res.json();
                     if (data && data.success) {
                         playAudio('success');
@@ -21775,25 +21982,30 @@ const SmartPhoneAction = ({ phone }) => {
                                         className="w-16 h-16 sm:w-20 sm:h-20 object-cover border-[3px] border-white dark:border-[#181818] shadow-sm bg-gray-100"
                                         style={{ borderRadius: '9999px' }}
                                     />
+                                    <span
+                                        className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#181818] shadow-[0_0_8px_rgba(16,185,129,0.75)]"
+                                        style={{ borderRadius: '9999px' }}
+                                        title="Active"
+                                    />
                                 </div>
 
                                 <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                    <div className="flex items-center gap-1.5 flex-nowrap">
                                         <h2 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white truncate">{displayName}</h2>
-                                        <span className={isVerified ? 'text-[#0095F6]' : 'text-gray-400 opacity-40'} title={isVerified ? 'Verified Account' : 'Payment Due'}>
-                                            <svg className="w-[19px] h-[19px]" viewBox="0 0 40 40" fill="none">
+                                        <span className={`shrink-0 ${isVerified ? 'text-[#0095F6]' : 'text-gray-400 opacity-35'}`} title={isVerified ? 'Verified' : 'Payment Due'}>
+                                            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" viewBox="0 0 40 40" fill="none">
                                                 <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
                                                 <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
                                             </svg>
-                                        </span>
-                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300">
-                                            {auth?.role || 'Student'}
                                         </span>
                                     </div>
                                     <p className="text-xs font-mono-code text-gray-500 dark:text-gray-400 mt-0.5 truncate">
                                         {handleUsername} {myRecord?.phone ? `• ${myRecord.phone}` : ''}
                                     </p>
-                                    <div className="flex flex-wrap gap-1.5 mt-2">
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md border ${roleBadgeStyle}`}>
+                                            {auth?.role || 'Student'}
+                                        </span>
                                         {coursesArr.map(c => (
                                             <span key={c} className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-500/20">
                                                 {c}
@@ -21826,70 +22038,52 @@ const SmartPhoneAction = ({ phone }) => {
                         {/* Left: Profile & Portfolio Setup Form */}
                         <div className="lg:col-span-7 space-y-4 min-w-0">
                             <form onSubmit={handleSaveProfile} className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-4">
-                                <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-gray-100 dark:border-white/5">
-                                    <div>
-                                        <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                            <Icon name="user-check" className="w-4 h-4 text-[#005fb8]" />
-                                            <span>Professional Profile &amp; Portfolio Links</span>
-                                        </h3>
-                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Keep your email &amp; social links updated for certificates and client referrals.</p>
-                                    </div>
-                                    <span className="text-[11px] font-numbers font-bold px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 shrink-0">
-                                        {profileCompPct}% Ready
+                                <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-gray-100 dark:border-white/5 flex-nowrap">
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5 truncate">
+                                        <Icon name="user-check" className="w-4 h-4 text-[#005fb8] shrink-0" />
+                                        <span className="truncate">Profile &amp; Links</span>
+                                    </h3>
+                                    <span className="text-[11px] font-numbers font-bold px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 shrink-0 whitespace-nowrap">
+                                        {profileCompPct}%
                                     </span>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="sm:col-span-2">
-                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Official Email Address *</label>
-                                        <input
-                                            type="email"
-                                            required
-                                            value={form.email}
-                                            onChange={e => setForm({ ...form, email: e.target.value })}
-                                            className="w-full input-style px-3 py-2 text-xs sm:text-sm"
-                                            placeholder="you@example.com"
-                                        />
+                                        <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">
+                                            Gmail {isGmailLocked ? '(Locked)' : '*'}
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type="email"
+                                                required
+                                                disabled={isGmailLocked}
+                                                list="fit-dl-emails"
+                                                value={isGmailLocked ? savedEmailVal : form.email}
+                                                onChange={e => { if (!isGmailLocked) setForm({ ...form, email: e.target.value }); }}
+                                                className={`w-full input-style px-3 py-2 text-xs sm:text-sm ${isGmailLocked ? 'pr-9 opacity-70 cursor-not-allowed bg-gray-100 dark:bg-dark-800' : ''}`}
+                                                placeholder="name@gmail.com"
+                                            />
+                                            {isGmailLocked && (
+                                                <Icon name="lock" className="w-3.5 h-3.5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                            )}
+                                        </div>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">LinkedIn Profile URL</label>
-                                        <input
-                                            type="url"
-                                            value={form.linkedin}
-                                            onChange={e => setForm({ ...form, linkedin: e.target.value })}
-                                            className="w-full input-style px-3 py-2 text-xs"
-                                            placeholder="https://linkedin.com/in/..."
-                                        />
+                                        <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">LinkedIn</label>
+                                        <input type="url" value={form.linkedin} onChange={e => setForm({ ...form, linkedin: e.target.value })} className="w-full input-style px-3 py-2 text-xs" placeholder="linkedin.com/in/..." />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Portfolio / Website URL</label>
-                                        <input
-                                            type="url"
-                                            value={form.website}
-                                            onChange={e => setForm({ ...form, website: e.target.value })}
-                                            className="w-full input-style px-3 py-2 text-xs"
-                                            placeholder="https://yourportfolio.com"
-                                        />
+                                        <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">Website</label>
+                                        <input type="url" value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} className="w-full input-style px-3 py-2 text-xs" placeholder="https://..." />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Facebook Profile URL</label>
-                                        <input
-                                            type="url"
-                                            value={form.fbProfile}
-                                            onChange={e => setForm({ ...form, fbProfile: e.target.value })}
-                                            className="w-full input-style px-3 py-2 text-xs"
-                                            placeholder="https://facebook.com/..."
-                                        />
+                                        <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">Facebook</label>
+                                        <input type="url" value={form.fbProfile} onChange={e => setForm({ ...form, fbProfile: e.target.value })} className="w-full input-style px-3 py-2 text-xs" placeholder="facebook.com/..." />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Facebook Page / Agency URL</label>
-                                        <input
-                                            type="url"
-                                            value={form.fbPage}
-                                            onChange={e => setForm({ ...form, fbPage: e.target.value })}
-                                            className="w-full input-style px-3 py-2 text-xs"
-                                            placeholder="https://facebook.com/yourpage"
-                                        />
+                                        <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">FB Page</label>
+                                        <input type="url" value={form.fbPage} onChange={e => setForm({ ...form, fbPage: e.target.value })} className="w-full input-style px-3 py-2 text-xs" placeholder="facebook.com/page" />
                                     </div>
                                 </div>
 
@@ -23730,6 +23924,25 @@ const [courseModules, setCourseModules] = useState([]);
 
             return (
                 <div className="flex h-[100dvh] overflow-hidden text-gray-800 dark:text-gray-200 transition-colors bg-cover bg-center">
+                    {/* 🧠 Global Smart Suggestions (Auto-Suggests Saved Usernames, Emails & Phones App-Wide) */}
+                    <datalist id="fit-dl-usernames">
+                        {Array.from(new Set([
+                            ...(usersList || []).map(u => u.Username),
+                            ...(globalContacts || []).map(c => c.name)
+                        ].filter(Boolean))).slice(0, 120).map((val, idx) => <option key={idx} value={val} />)}
+                    </datalist>
+                    <datalist id="fit-dl-emails">
+                        {Array.from(new Set([
+                            ...(usersList || []).map(u => u.Email),
+                            ...(globalContacts || []).map(c => c.email)
+                        ].filter(Boolean))).slice(0, 120).map((val, idx) => <option key={idx} value={val} />)}
+                    </datalist>
+                    <datalist id="fit-dl-phones">
+                        {Array.from(new Set([
+                            ...(globalContacts || []).map(c => c.phone)
+                        ].filter(Boolean))).slice(0, 120).map((val, idx) => <option key={idx} value={val} />)}
+                    </datalist>
+
                     <ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
 
                    {isSidebarOpen && (
@@ -24306,7 +24519,7 @@ const [courseModules, setCourseModules] = useState([]);
                                                 {currentRoute === 'analytics' && <AnalyticsView orders={myFilteredOrders} expenses={filteredExpensesData} metrics={metrics} startDate={startDate} endDate={endDate} auth={auth} projects={myProjects} clientLeads={trueAdminClientLeads} studentLeads={trueAdminStudentLeads} studentsPanel={myStudentsPanel} batches={batches} bookings={bookings} videos={videos} seatConfig={seatConfig} activityLogs={activityLogs} onAddExpense={() => { setExpenseForm({ date: moment().format('YYYY-MM-DD'), category: 'Ad Cost', amount: '', note: '', saving: false }); setExpenseModal({ isOpen: true }); }} />}
                                                 {currentRoute === 'clients' && <ClientsView addToast={addToast} executeAPI={executeAPI} leads={myClientLeads} clientLeads={trueAdminClientLeads} studentLeads={trueAdminStudentLeads} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} projects={myProjects} usersList={usersList} />}
                                                 {currentRoute === 'affiliates' && <AffiliatesView stats={metrics.affiliateStats} metrics={metrics} onPreview={setPreviewAffiliate} auth={auth} />}
-                                                {currentRoute === 'omni-search' && <GlobalFindView orders={orders} projects={projects} clientLeads={clientLeads} studentLeads={studentLeads} studentsPanel={studentsPanel} assignments={assignments} moduleProgress={moduleProgress} auth={auth} addToast={addToast} notes={notes} dailyTasks={dailyTasks} />}
+                                                {currentRoute === 'omni-search' && <GlobalFindView orders={orders} projects={projects} clientLeads={clientLeads} studentLeads={studentLeads} studentsPanel={studentsPanel} assignments={assignments} moduleProgress={moduleProgress} auth={auth} addToast={addToast} notes={notes} dailyTasks={dailyTasks} executeAPI={executeAPI} />}
                                                 {currentRoute === 'settings' && (
     auth?.role === 'Admin'
     ? <SettingsView executeAPI={executeAPI} addToast={addToast} users={usersList} pendingUsers={pendingUsersList} fetchOrders={fetchOrders} auth={auth} setAuth={setAuth} />
@@ -24663,10 +24876,10 @@ const [courseModules, setCourseModules] = useState([]);
             <div className="absolute inset-[-4px] bg-gradient-to-tr from-[#25D366] to-[#128C7E] rounded-full opacity-20 blur-md"></div>
             <button 
                 onClick={() => { if(typeof window.playSound === 'function') window.playSound('click'); setShowAIChat(true); setSamiraPopup({show: false, text: ''}); }}
-            className="relative w-14 h-14 md:w-[60px] md:h-[60px] bg-gradient-to-tr from-[#128C7E] to-[#25D366] text-white rounded-full shadow-[0_8px_25px_rgba(37,211,102,0.4)] flex items-center justify-center hover:scale-110 transition-transform duration-300 border-[1.5px] border-white/30"
-            title="Chat with Support"
+            className="relative w-11 h-11 md:w-12 md:h-12 bg-gradient-to-tr from-[#128C7E] to-[#25D366] text-white rounded-full shadow-[0_6px_18px_rgba(37,211,102,0.35)] flex items-center justify-center hover:scale-105 transition-transform duration-300 border border-white/30"
+            title="Support"
         >
-        <svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
             <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.888-.788-1.489-1.761-1.663-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.052 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/>
         </svg>
             </button>
