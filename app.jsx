@@ -20295,33 +20295,44 @@ const SmartPhoneAction = ({ phone }) => {
                 setDownloadingSlip(false);
             };
 
-            // স্লিপ প্রিন্ট / PDF
+            // স্লিপ প্রিন্ট / PDF (Minimal Plain Margin & Table Only — No Shapes)
             const handlePrintSlip = () => {
                 if (!slipModal) return;
                 playAudio('action');
                 const s = slipModal;
+                const weakRow = (Array.isArray(s.weakTopics) && s.weakTopics.length > 0)
+                    ? "<tr><td class='lbl'>Topics to Revise</td><td colspan='3'>" + s.weakTopics.join(', ') + "</td></tr>"
+                    : "";
                 const html = [
                     "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Exam Slip - " + s.examId + "</title>",
-                    "<style>body{font-family:'Segoe UI',Arial,sans-serif;padding:30px;color:#0f172a;background:#fff;}",
-                    ".card{max-width:620px;margin:0 auto;border:2px solid #0f172a;border-radius:10px;overflow:hidden;}",
-                    ".hdr{background:#0f172a;color:#fff;padding:20px 24px;border-bottom:4px solid #005fb8;display:flex;justify-content:space-between;align-items:center;}",
-                    ".bd{padding:24px;}table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;}",
-                    "td{padding:9px 12px;border:1px solid #cbd5e1;}.lbl{background:#f8fafc;font-weight:700;width:36%;color:#475569;}",
-                    ".scorebox{display:flex;justify-content:space-around;background:#f1f5f9;padding:16px;border-radius:8px;text-align:center;margin:16px 0;}",
-                    ".ft{padding:14px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:11px;color:#64748b;text-align:center;}",
-                    "@media print{body{padding:0;}}</style></head><body>",
-                    "<div class='card'><div class='hdr'><div><strong style='font-size:18px;'>FARIDPUR IT INSTITUTE</strong><br/><span style='font-size:11px;color:#cbd5e1;'>OFFICIAL SKILL ASSESSMENT SLIP</span></div><div style='text-align:right;font-family:monospace;font-size:12px;'>" + s.examId + "</div></div>",
-                    "<div class='bd'><table><tr><td class='lbl'>Student Name</td><td><strong>" + s.studentName + "</strong> (" + (s.studentId || 'Student') + ")</td></tr>",
+                    "<style>body{font-family:'Segoe UI',Arial,sans-serif;margin:32px;color:#111;background:#fff;}",
+                    ".wrap{max-width:640px;margin:0 auto;padding:24px;border:1px solid #222;}",
+                    ".top{border-bottom:1.5px solid #111;padding-bottom:12px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-end;}",
+                    "h1{margin:0;font-size:18px;letter-spacing:0.5px;text-transform:uppercase;}",
+                    ".sub{margin:3px 0 0 0;font-size:11px;color:#444;text-transform:uppercase;letter-spacing:0.8px;}",
+                    ".meta{font-family:monospace;font-size:11px;text-align:right;color:#333;}",
+                    "table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12.5px;}",
+                    "th,td{border:1px solid #999;padding:8px 10px;text-align:left;}",
+                    "th{background:#f5f5f5;font-size:11px;text-transform:uppercase;letter-spacing:0.4px;}",
+                    ".lbl{width:30%;font-weight:700;color:#222;background:#fafafa;}",
+                    ".ctr{text-align:center;}",
+                    ".ft{margin-top:18px;padding-top:10px;border-top:1px solid #ccc;font-size:10.5px;color:#555;display:flex;justify-content:space-between;}",
+                    "@media print{body{margin:12mm;}}</style></head><body>",
+                    "<div class='wrap'>",
+                    "<div class='top'><div><h1>Faridpur IT Institute</h1><p class='sub'>Skill Assessment Result Slip</p></div>",
+                    "<div class='meta'>Slip ID: " + s.examId + "<br/>Date: " + moment(s.completedAt).format('DD MMM YYYY, hh:mm A') + "</div></div>",
+                    "<table>",
+                    "<tr><td class='lbl'>Student Name</td><td><strong>" + s.studentName + "</strong></td></tr>",
+                    "<tr><td class='lbl'>Student ID</td><td>" + (s.studentId || 'Student') + "</td></tr>",
                     "<tr><td class='lbl'>Course</td><td>" + s.course + "</td></tr>",
                     "<tr><td class='lbl'>Module</td><td>Module " + s.moduleSerial + ": " + s.moduleTitle + "</td></tr>",
-                    "<tr><td class='lbl'>Assessment Date</td><td>" + moment(s.completedAt).format('DD MMM YYYY, hh:mm A') + "</td></tr></table>",
-                    "<div class='scorebox'><div><div style='font-size:11px;color:#64748b;'>SCORE</div><strong style='font-size:24px;color:#005fb8;'>" + s.scorePct + "%</strong></div>",
-                    "<div><div style='font-size:11px;color:#64748b;'>CORRECT</div><strong style='font-size:24px;'>" + s.correct + "/" + s.total + "</strong></div>",
-                    "<div><div style='font-size:11px;color:#64748b;'>GRADE</div><strong style='font-size:24px;color:" + (s.passed ? "#15803d" : "#dc2626") + ";'>" + s.grade + "</strong></div>",
-                    "<div><div style='font-size:11px;color:#64748b;'>STATUS</div><strong style='font-size:16px;color:" + (s.passed ? "#15803d" : "#dc2626") + ";'>" + (s.passed ? "PASSED" : "RETRY") + "</strong></div></div>",
-                    "<p style='font-size:12px;color:#334155;'>Updated Overall Course Skill Rating: <strong>" + s.newSkillProgress + "%</strong></p>",
-                    "</div><div class='ft'>Verified Digital Slip • Faridpur IT Institute (faridpurit.com) • +880 1642890942</div></div>",
-                    "<script>setTimeout(function(){window.print();},400);</" + "script></body></html>"
+                    "</table>",
+                    "<table><thead><tr><th class='ctr'>Score</th><th class='ctr'>Correct</th><th class='ctr'>Grade</th><th class='ctr'>Status</th><th class='ctr'>Overall Skill</th></tr></thead>",
+                    "<tbody><tr><td class='ctr'><strong>" + s.scorePct + "%</strong></td><td class='ctr'>" + s.correct + " / " + s.total + "</td><td class='ctr'><strong>" + s.grade + "</strong></td><td class='ctr'><strong>" + (s.passed ? "PASSED" : "RETRY") + "</strong></td><td class='ctr'><strong>" + s.newSkillProgress + "%</strong></td></tr>",
+                    weakRow,
+                    "</tbody></table>",
+                    "<div class='ft'><span>Faridpur IT Institute • faridpurit.com • +880 1642890942</span><span>Retake Lock: 24 Hours</span></div>",
+                    "</div><script>setTimeout(function(){window.print();},350);</" + "script></body></html>"
                 ].join('');
                 const w = window.open('', '_blank');
                 w.document.write(html);
@@ -20454,37 +20465,56 @@ const SmartPhoneAction = ({ phone }) => {
                                     const isStarting = startingModId === mod.id;
                                     const hasAttempt = Boolean(rec && rec.attempts > 0);
 
+                                    const isCompleted = Boolean(rec?.passed);
+
                                     return (
-                                        <div key={mod.id} className="p-3.5 sm:p-4 hover:bg-black/[0.015] dark:hover:bg-white/[0.02] transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                        <div
+                                            key={mod.id}
+                                            className={`p-3.5 sm:p-4 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                                                isCompleted
+                                                    ? 'bg-emerald-500/[0.08] dark:bg-emerald-500/[0.12] hover:bg-emerald-500/[0.12] dark:hover:bg-emerald-500/[0.16]'
+                                                    : 'hover:bg-black/[0.015] dark:hover:bg-white/[0.02]'
+                                            }`}
+                                        >
                                             {/* Left Module Info */}
                                             <div className="flex items-start gap-3 min-w-0 flex-1">
                                                 <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center shrink-0 font-numbers font-bold text-xs border ${
-                                                    rec?.passed
-                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-400/40'
+                                                    isCompleted
+                                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                                                         : hasAttempt
                                                             ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-400/40'
                                                             : 'bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10'
                                                 }`}>
-                                                    <span className="text-[8px] uppercase opacity-70 leading-none">Mod</span>
-                                                    <span className="text-sm leading-tight">{String(mod.serial || 1).padStart(2, '0')}</span>
+                                                    {isCompleted ? (
+                                                        <Icon name="check-circle" className="w-5 h-5" />
+                                                    ) : (
+                                                        <>
+                                                            <span className="text-[8px] uppercase opacity-70 leading-none">Mod</span>
+                                                            <span className="text-sm leading-tight">{String(mod.serial || 1).padStart(2, '0')}</span>
+                                                        </>
+                                                    )}
                                                 </div>
 
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-center gap-1.5 flex-wrap">
-                                                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">
-                                                            {mod.course}
+                                                        <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                                                            isCompleted ? 'text-emerald-700 dark:text-emerald-400' : 'text-[#005fb8] dark:text-[#60cdff]'
+                                                        }`}>
+                                                            {mod.course} • Mod {String(mod.serial || 1).padStart(2, '0')}
                                                         </span>
                                                         {hasAttempt && (
                                                             <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                                                rec.passed
-                                                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                                                isCompleted
+                                                                    ? 'bg-emerald-600 text-white'
                                                                     : 'bg-rose-500/15 text-rose-600 dark:text-rose-300'
                                                             }`}>
-                                                                {rec.passed ? `Passed • ${rec.bestGrade || rec.grade}` : `Retry • ${rec.lastScore}%`}
+                                                                {isCompleted ? `✓ Completed • ${rec.bestGrade || rec.grade}` : `Retry • ${rec.lastScore}%`}
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug mt-0.5 truncate" title={mod.title}>
+                                                    <h3 className={`text-sm font-bold leading-snug mt-0.5 truncate ${
+                                                        isCompleted ? 'text-emerald-950 dark:text-emerald-100' : 'text-gray-900 dark:text-white'
+                                                    }`} title={mod.title}>
                                                         {mod.title}
                                                     </h3>
                                                     <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">
@@ -20497,11 +20527,15 @@ const SmartPhoneAction = ({ phone }) => {
                                             <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0 flex-nowrap pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-white/5">
                                                 {hasAttempt ? (
                                                     <div className="text-left sm:text-right pr-1">
-                                                        <p className="text-sm font-numbers font-bold text-gray-900 dark:text-white leading-none">
+                                                        <p className={`text-sm font-numbers font-bold leading-none ${
+                                                            isCompleted ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-900 dark:text-white'
+                                                        }`}>
                                                             {rec.bestScore}% <span className="text-[10px] font-medium text-gray-400">({rec.correct}/{rec.total})</span>
                                                         </p>
-                                                        <p className="text-[10px] text-gray-400 mt-0.5">
-                                                            {rec.attempts} {rec.attempts === 1 ? 'try' : 'tries'}
+                                                        <p className={`text-[10px] mt-0.5 font-semibold ${
+                                                            isCompleted ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'
+                                                        }`}>
+                                                            {isCompleted ? 'Completed' : `${rec.attempts} ${rec.attempts === 1 ? 'try' : 'tries'}`}
                                                         </p>
                                                     </div>
                                                 ) : (
@@ -20513,7 +20547,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                         <button
                                                             type="button"
                                                             onClick={() => openSavedSlip(mod, rec)}
-                                                            className="h-8 px-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-dark-800 dark:hover:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold border border-gray-200 dark:border-white/10 flex items-center gap-1 whitespace-nowrap win-button"
+                                                            className="h-8 px-2.5 rounded-lg bg-white/80 hover:bg-white dark:bg-dark-800 dark:hover:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold border border-gray-200 dark:border-white/10 flex items-center gap-1 whitespace-nowrap win-button"
                                                             title="View & Download Exam Slip"
                                                         >
                                                             <Icon name="file-text" className="w-3.5 h-3.5 shrink-0" />
@@ -20522,19 +20556,30 @@ const SmartPhoneAction = ({ phone }) => {
                                                     )}
 
                                                     {lock.isLocked ? (
-                                                        <span className="h-8 px-3 rounded-lg bg-amber-500/[0.12] text-amber-700 dark:text-amber-300 border border-amber-300/50 dark:border-amber-500/25 text-[11px] font-numbers font-bold flex items-center gap-1.5 whitespace-nowrap">
-                                                            <Icon name="lock" className="w-3.5 h-3.5 shrink-0" />
-                                                            <span>{lock.label}</span>
+                                                        <span className={`h-8 px-3 rounded-lg border text-[11px] font-numbers font-bold flex items-center gap-1.5 whitespace-nowrap ${
+                                                            isCompleted
+                                                                ? 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/35'
+                                                                : 'bg-amber-500/[0.12] text-amber-700 dark:text-amber-300 border-amber-300/50 dark:border-amber-500/25'
+                                                        }`}>
+                                                            <Icon name={isCompleted ? 'check-circle' : 'lock'} className="w-3.5 h-3.5 shrink-0" />
+                                                            <span>{isCompleted ? `Done • ${lock.label}` : lock.label}</span>
                                                         </span>
                                                     ) : (
                                                         <button
                                                             type="button"
                                                             disabled={!!startingModId}
                                                             onClick={() => handleStartExam(mod)}
-                                                            className="h-8 px-3.5 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50 win-button"
+                                                            className={`h-8 px-3.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50 win-button ${
+                                                                isCompleted
+                                                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                                                    : 'bg-[#005fb8] hover:bg-[#004a94] text-white'
+                                                            }`}
                                                         >
-                                                            {isStarting ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin shrink-0" /> : <Icon name="play" className="w-3.5 h-3.5 shrink-0" />}
-                                                            <span>{isStarting ? 'Preparing...' : (hasAttempt ? 'Retake' : 'Start Exam')}</span>
+                                                            {isStarting
+                                                                ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                                                : <Icon name={isCompleted ? 'rotate-ccw' : 'play'} className="w-3.5 h-3.5 shrink-0" />
+                                                            }
+                                                            <span>{isStarting ? 'Preparing...' : (isCompleted ? 'Retake' : hasAttempt ? 'Retry' : 'Start Exam')}</span>
                                                         </button>
                                                     )}
                                                 </div>
@@ -20705,79 +20750,79 @@ const SmartPhoneAction = ({ phone }) => {
                     <Modal isOpen={!!slipModal} onClose={() => setSlipModal(null)} title="Official Exam Result Slip" maxWidth="max-w-xl" compact={true}>
                         {slipModal && (
                             <div className="space-y-4">
-                                {/* Downloadable Slip Canvas Area */}
-                                <div id="skill-exam-slip-card" className="bg-white text-gray-900 rounded-xl border border-gray-300 overflow-hidden shadow-sm">
-                                    {/* Official Header */}
-                                    <div className="bg-[#0f172a] text-white px-5 py-4 border-b-4 border-[#005fb8] flex items-center justify-between gap-2">
+                                {/* Minimalist Plain Table Exam Slip (No Shapes, No Rounded Badges, Clean Margins) */}
+                                <div id="skill-exam-slip-card" className="bg-white text-gray-900 border border-gray-800 p-5 sm:p-6">
+                                    {/* Minimal Text Header with Thin Divider */}
+                                    <div className="pb-3 mb-4 border-b-2 border-gray-900 flex items-end justify-between gap-2">
                                         <div>
-                                            <h3 className="text-base font-bold tracking-wide uppercase leading-tight">Faridpur IT Institute</h3>
-                                            <p className="text-[10px] text-slate-300 tracking-widest uppercase mt-0.5">Official Skill Assessment Slip</p>
+                                            <h3 className="text-base font-bold tracking-wide uppercase text-gray-900 leading-tight">Faridpur IT Institute</h3>
+                                            <p className="text-[10px] text-gray-500 tracking-widest uppercase mt-0.5">Skill Assessment Result Slip</p>
                                         </div>
-                                        <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                            slipModal.passed ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
-                                        }`}>
-                                            {slipModal.passed ? 'PASSED' : 'NEEDS RETRY'}
-                                        </span>
+                                        <div className="text-right font-mono-code text-[10px] text-gray-600 leading-snug">
+                                            <div>Slip ID: <strong className="text-gray-900">{slipModal.examId}</strong></div>
+                                            <div>{moment(slipModal.completedAt).format('DD MMM YYYY, hh:mm A')}</div>
+                                        </div>
                                     </div>
 
-                                    {/* Details Table */}
-                                    <div className="p-5 space-y-4">
-                                        <div className="grid grid-cols-2 gap-2.5 text-xs bg-slate-50 p-3 rounded-lg border border-slate-200">
-                                            <div>
-                                                <p className="text-[10px] font-bold uppercase text-slate-400">Student Name</p>
-                                                <p className="font-bold text-slate-900 mt-0.5">{slipModal.studentName}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-bold uppercase text-slate-400">Slip ID</p>
-                                                <p className="font-mono-code font-bold text-[#005fb8] mt-0.5">{slipModal.examId}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-bold uppercase text-slate-400">Course</p>
-                                                <p className="font-semibold text-slate-800 mt-0.5">{slipModal.course}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-bold uppercase text-slate-400">Date &amp; Time</p>
-                                                <p className="font-numbers font-semibold text-slate-800 mt-0.5">
-                                                    {moment(slipModal.completedAt).format('DD MMM YYYY, hh:mm A')}
-                                                </p>
-                                            </div>
-                                            <div className="col-span-2 pt-1.5 border-t border-slate-200">
-                                                <p className="text-[10px] font-bold uppercase text-slate-400">Module</p>
-                                                <p className="font-bold text-slate-900 mt-0.5">Module {slipModal.moduleSerial}: {slipModal.moduleTitle}</p>
-                                            </div>
-                                        </div>
+                                    {/* Student & Module Details Table */}
+                                    <table className="w-full border-collapse text-xs mb-4">
+                                        <tbody>
+                                            <tr>
+                                                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-bold text-gray-700 w-[34%]">Student Name</td>
+                                                <td className="border border-gray-300 px-3 py-2 font-bold text-gray-900">{slipModal.studentName}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-bold text-gray-700">Student ID</td>
+                                                <td className="border border-gray-300 px-3 py-2 font-mono-code text-gray-800">{slipModal.studentId || 'Student'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-bold text-gray-700">Course</td>
+                                                <td className="border border-gray-300 px-3 py-2 text-gray-800">{slipModal.course}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-bold text-gray-700">Module</td>
+                                                <td className="border border-gray-300 px-3 py-2 font-semibold text-gray-900">Module {slipModal.moduleSerial}: {slipModal.moduleTitle}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
 
-                                        {/* Score Grid */}
-                                        <div className="grid grid-cols-4 gap-2 text-center">
-                                            <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200">
-                                                <p className="text-[9px] font-bold uppercase text-blue-600">Score</p>
-                                                <p className="text-xl font-numbers font-bold text-[#005fb8] mt-0.5">{slipModal.scorePct}%</p>
-                                            </div>
-                                            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                                                <p className="text-[9px] font-bold uppercase text-slate-500">Correct</p>
-                                                <p className="text-xl font-numbers font-bold text-slate-900 mt-0.5">{slipModal.correct}/{slipModal.total}</p>
-                                            </div>
-                                            <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
-                                                <p className="text-[9px] font-bold uppercase text-emerald-700">Grade</p>
-                                                <p className="text-xl font-numbers font-bold text-emerald-700 mt-0.5">{slipModal.grade}</p>
-                                            </div>
-                                            <div className="p-2.5 rounded-lg bg-purple-50 border border-purple-200">
-                                                <p className="text-[9px] font-bold uppercase text-purple-700">Skill</p>
-                                                <p className="text-xl font-numbers font-bold text-purple-700 mt-0.5">{slipModal.newSkillProgress}%</p>
-                                            </div>
-                                        </div>
+                                    {/* Result Summary Table */}
+                                    <table className="w-full border-collapse text-xs mb-4 text-center">
+                                        <thead>
+                                            <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-600">
+                                                <th className="border border-gray-300 px-2 py-2 font-bold">Score</th>
+                                                <th className="border border-gray-300 px-2 py-2 font-bold">Correct</th>
+                                                <th className="border border-gray-300 px-2 py-2 font-bold">Grade</th>
+                                                <th className="border border-gray-300 px-2 py-2 font-bold">Status</th>
+                                                <th className="border border-gray-300 px-2 py-2 font-bold">Overall Skill</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr className="font-numbers text-sm text-gray-900">
+                                                <td className="border border-gray-300 px-2 py-2.5 font-bold">{slipModal.scorePct}%</td>
+                                                <td className="border border-gray-300 px-2 py-2.5">{slipModal.correct}/{slipModal.total}</td>
+                                                <td className="border border-gray-300 px-2 py-2.5 font-bold">{slipModal.grade}</td>
+                                                <td className="border border-gray-300 px-2 py-2.5 font-bold text-xs uppercase">{slipModal.passed ? 'PASSED' : 'RETRY'}</td>
+                                                <td className="border border-gray-300 px-2 py-2.5 font-bold">{slipModal.newSkillProgress}%</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
 
-                                        {Array.isArray(slipModal.weakTopics) && slipModal.weakTopics.length > 0 && (
-                                            <div className="p-3 rounded-lg bg-amber-50 border-l-4 border-amber-500 text-xs">
-                                                <p className="text-[10px] font-bold uppercase text-amber-700 mb-1">Topics to Revise</p>
-                                                <p className="text-slate-700 font-medium">{slipModal.weakTopics.join(', ')}</p>
-                                            </div>
-                                        )}
+                                    {Array.isArray(slipModal.weakTopics) && slipModal.weakTopics.length > 0 && (
+                                        <table className="w-full border-collapse text-xs mb-4">
+                                            <tbody>
+                                                <tr>
+                                                    <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-bold text-gray-700 w-[34%]">Topics to Revise</td>
+                                                    <td className="border border-gray-300 px-3 py-2 text-gray-800">{slipModal.weakTopics.join(', ')}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    )}
 
-                                        <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-500">
-                                            <span>Verified by Faridpur IT Institute • faridpurit.com</span>
-                                            <span>Retake lock: 24 Hours</span>
-                                        </div>
+                                    {/* Minimal Footer */}
+                                    <div className="pt-3 border-t border-gray-300 flex items-center justify-between text-[10px] text-gray-500">
+                                        <span>Faridpur IT Institute • faridpurit.com • +880 1642890942</span>
+                                        <span>Retake Lock: 24 Hours</span>
                                     </div>
                                 </div>
 
