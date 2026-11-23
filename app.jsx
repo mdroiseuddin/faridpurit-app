@@ -16304,15 +16304,117 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
         // ==========================================
         const LeaderboardView = ({ studentsPanel = [], studentLeads = [], usersList = [], moduleProgress = [], modules = [], videos = [], assignments = [], courseAssignments = [], batches = [], bookings = [], auth, globalLeaderboard = null }) => {
             const [showAllRows, setShowAllRows] = useState(false);
+            const [courseFilter, setCourseFilter] = useState('All');
+            const [periodFilter, setPeriodFilter] = useState('all'); // 'all' | 'this_month' | 'last_month'
+            const [globalCourseList] = useGlobalCourses();
 
+            const isStudentUser = auth?.role === 'Student';
             const normStr = (v) => String(v || '').replace(/^'/, '').replace(/^\+88/, '').replace(/\s+/g, '').toLowerCase();
             const myIdNorm = normStr(auth?.userId);
             const myNameNorm = normStr(auth?.name || auth?.username);
 
-            const leaderboard = useMemo(() => {
+            // স্টুডেন্টের এনরোল করা কোর্সগুলো বের করা (যাতে নিজের কোর্সের ভেতরেই পজিশন ফিল্টার করতে পারে)
+            const myOwnCourses = useMemo(() => {
+                const matchedPanel = studentsPanel.filter(s =>
+                    (myIdNorm && (normStr(s.phone) === myIdNorm || normStr(s.id) === myIdNorm)) ||
+                    (myNameNorm && normStr(s.name) === myNameNorm)
+                );
+                const matchedLeads = studentLeads.filter(s =>
+                    (myIdNorm && (normStr(s.phone) === myIdNorm || normStr(s.id) === myIdNorm)) ||
+                    (myNameNorm && normStr(s.name) === myNameNorm)
+                );
+                return parseCourseList(
+                    auth?.course,
+                    ...matchedPanel.map(s => s.course),
+                    ...matchedLeads.map(s => s.interestedIn)
+                );
+            }, [auth, studentsPanel, studentLeads, myIdNorm, myNameNorm]);
+
+            const courseFilterOptions = useMemo(() => {
+                if (isStudentUser) return ['All', ...myOwnCourses];
+                return ['All', ...globalCourseList];
+            }, [isStudentUser, myOwnCourses, globalCourseList]);
+
+            const baseLeaderboard = useMemo(() => {
                 if (Array.isArray(globalLeaderboard) && globalLeaderboard.length > 0) return globalLeaderboard;
                 return computeGlobalLeaderboard({ studentsPanel, studentLeads, usersList, moduleProgress, modules, assignments, courseAssignments, batches, bookings, auth });
             }, [globalLeaderboard, studentsPanel, studentLeads, usersList, moduleProgress, modules, assignments, courseAssignments, batches, bookings, auth]);
+
+            // 🎯 কোর্সভিত্তিক + মাসভিত্তিক স্মার্ট লিডারবোর্ড ইঞ্জিন
+            const leaderboard = useMemo(() => {
+                const targetYM = periodFilter === 'this_month'
+                    ? moment().format('YYYY-MM')
+                    : periodFilter === 'last_month'
+                        ? moment().subtract(1, 'months').format('YYYY-MM')
+                        : null;
+
+                let list = baseLeaderboard.filter(st => {
+                    if (courseFilter === 'All') return true;
+                    const stTokens = String(st.course || '').split(',').map(normStr).filter(Boolean);
+                    return stTokens.includes(normStr(courseFilter));
+                });
+
+                if (!targetYM) return list;
+
+                // মাসভিত্তিক স্কোরিং (চলতি মাস / গত মাসের অ্যাসাইনমেন্ট ও হাজিরা অনুযায়ী)
+                return list.map(st => {
+                    const sPhoneNorm = normStr(st.phone);
+                    const sNameNorm = normStr(st.name);
+                    const sIdNorm = normStr(st.id);
+
+                    // ১. ওই মাসের অ্যাসাইনমেন্ট (টার্গেট ৪টি/মাস = ৩০ পয়েন্ট)
+                    const mAsn = assignments.filter(a => {
+                        const aId = normStr(a.studentId);
+                        const aName = normStr(a.studentName);
+                        const isMine = (aId && (aId === sPhoneNorm || aId === sNameNorm || aId === sIdNorm)) || (aName && (aName === sNameNorm || aName === sPhoneNorm));
+                        if (!isMine || a.status === 'Resubmit') return false;
+                        const ts = a.timestamp || a.Timestamp;
+                        if (!ts) return false;
+                        return moment(parseCustomDate(ts)).format('YYYY-MM') === targetYM;
+                    });
+                    const mGraded = mAsn.filter(a => String(a.status || '').trim().toLowerCase() === 'graded');
+                    const mDoneCount = Math.min(4, mAsn.length);
+                    const mMarksSum = mGraded.slice(0, 4).reduce((sum, a) => sum + Math.min(100, Math.max(0, Number(a.mark || 0))), 0);
+                    const mAsnPts = Math.min(30, Math.round(((mDoneCount / 4) * 10) + ((mMarksSum / 400) * 20)));
+
+                    // ২. ওই মাসের উপস্থিতি (টার্গেট ১০ দিন/মাস = ১৫ পয়েন্ট)
+                    const panelRec = studentsPanel.find(s =>
+                        (sPhoneNorm && normStr(s.phone) === sPhoneNorm) ||
+                        (sNameNorm && normStr(s.name) === sNameNorm) ||
+                        (sIdNorm && normStr(s.id) === sIdNorm)
+                    );
+                    let attArr = [];
+                    if (Array.isArray(panelRec?.attendance)) attArr = panelRec.attendance;
+                    else if (typeof panelRec?.attendance === 'string' && panelRec.attendance.trim().startsWith('[')) {
+                        try { attArr = JSON.parse(panelRec.attendance); } catch (e) {}
+                    }
+                    const mPresent = attArr.filter(a => {
+                        const dStr = typeof a === 'string' ? a : String(a?.date || '');
+                        const sVal = typeof a === 'string' ? 'present' : String(a?.status || '').toLowerCase();
+                        return dStr.includes(targetYM) && (sVal === 'present' || sVal === 'p');
+                    }).length;
+                    const mAttPts = mPresent > 0 ? Math.min(15, Math.max(1, Math.round((mPresent / 10) * 15))) : 0;
+
+                    const monthlyScore = Math.min(100, st.modPoints + mAsnPts + mAttPts + st.skillPoints);
+                    return {
+                        ...st,
+                        asnDoneCount: mAsn.length,
+                        gradedMarksSum: mMarksSum,
+                        asnPoints: mAsnPts,
+                        presentCount: mPresent,
+                        totalAtt: 10,
+                        attPoints: mAttPts,
+                        score: monthlyScore,
+                        _mActive: (mAsn.length + mPresent) > 0 ? 1 : 0
+                    };
+                }).sort((a, b) =>
+                    b._mActive - a._mActive ||
+                    b.score - a.score ||
+                    b.asnPoints - a.asnPoints ||
+                    b.attPoints - a.attPoints ||
+                    String(a.name).localeCompare(String(b.name))
+                );
+            }, [baseLeaderboard, courseFilter, periodFilter, assignments, studentsPanel]);
 
             // ৩. লগইন করা স্টুডেন্টের সঠিক পজিশন বের করা
             const isUserMatch = (st) => {
@@ -16334,7 +16436,7 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
 
             const isInTop10 = myRankIndex >= 0 && myRankIndex < 10;
 
-            // ৪. মিনিমাম ১০টি পজিশন স্লট নিশ্চিত করা
+            // ৪. মিনিমাম ১০টি পজিশন স্লট নিশ্চিত করা (স্টুডেন্ট কখনোই ১০ জনের বেশি দেখতে পারবে না)
             const min10List = [...leaderboard];
             while (min10List.length < 10) {
                 min10List.push({
@@ -16354,97 +16456,80 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
             }
 
             const top10 = min10List.slice(0, 10);
-            const displayedRows = showAllRows ? leaderboard : top10; 
-            
-            const printableRows = displayedRows;
+            const displayedRows = (!isStudentUser && showAllRows) ? leaderboard : top10;
 
-            // 🟢 PREMIUM MINIMAL PRINT FOR LEADERBOARD
+            // 🔒 প্রাইভেসি-সুরক্ষিত প্রিন্ট: স্টুডেন্ট প্রোফাইল থেকে প্রিন্ট করলে সর্বোচ্চ Top 10 (+ বাইরে থাকলে শুধু নিজের সারি)
             const handlePrintLeaderboard = () => {
-                if(typeof window.playSound === 'function') window.playSound('action');
-                
-                const tableRows = leaderboard.filter(st => !st.isEmptySlot).map((st, i) => {
-                    return `<tr>
-                        <td style="padding: 10px 12px; border: 1px solid #cbd5e1; text-align: center; font-weight: 800; font-size: 14px; color: #005fb8; width: 60px;">
-                            #${String(i+1).padStart(2,'0')}
+                if (typeof window.playSound === 'function') window.playSound('action');
+
+                const baseToPrint = isStudentUser
+                    ? top10.filter(st => !st.isEmptySlot).map((st, idx) => ({ ...st, _rank: idx + 1 }))
+                    : (showAllRows ? leaderboard : top10).filter(st => !st.isEmptySlot).map((st, idx) => ({ ...st, _rank: idx + 1 }));
+
+                if (isStudentUser && !isInTop10 && myStudentEntry) {
+                    baseToPrint.push({ ...myStudentEntry, _rank: myRankNum, _isSelfExtra: true });
+                }
+
+                const periodText = periodFilter === 'this_month'
+                    ? `This Month (${moment().format('MMM YYYY')})`
+                    : periodFilter === 'last_month'
+                        ? `Last Month (${moment().subtract(1, 'months').format('MMM YYYY')})`
+                        : 'All Time';
+                const scopeText = courseFilter === 'All' ? 'All Courses' : courseFilter;
+
+                const tableRows = baseToPrint.map((st) => {
+                    const r = st._rank;
+                    const sepRow = st._isSelfExtra
+                        ? `<tr><td colspan="7" style="padding:6px;text-align:center;font-size:10px;font-weight:700;color:#64748b;background:#f1f5f9;border:1px solid #cbd5e1;">YOUR POSITION</td></tr>`
+                        : '';
+                    return sepRow + `<tr style="${st._isSelfExtra ? 'background-color:#eff6ff;' : ''}">
+                        <td style="padding: 9px 10px; border: 1px solid #cbd5e1; text-align: center; font-weight: 800; font-size: 13px; color: #005fb8; width: 55px;">
+                            #${String(r).padStart(2, '0')}
                         </td>
-                        <td style="padding: 10px 12px; border: 1px solid #cbd5e1;">
-                            <strong style="font-size: 14px; color: #0f172a;">${st.name}</strong>
-                            ${i === 0 ? ' 🏆' : i === 1 ? ' 🥈' : i === 2 ? ' 🥉' : ''}<br/>
-                            <span style="font-size: 11px; color: #005fb8; font-weight: bold; margin-top: 4px; display: inline-block;">${st.course}</span>
+                        <td style="padding: 9px 10px; border: 1px solid #cbd5e1;">
+                            <strong style="font-size: 13px; color: #0f172a;">${st.name}</strong>
+                            ${r === 1 ? ' 🏆' : r === 2 ? ' 🥈' : r === 3 ? ' 🥉' : ''}<br/>
+                            <span style="font-size: 10px; color: #005fb8; font-weight: bold;">${st.course}</span>
                         </td>
-                        <td style="padding: 10px 12px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace;">
-                            <strong style="font-size: 14px; color: #0f172a;">${st.modPoints}</strong><span style="font-size: 10px; color: #64748b;">/40</span>
+                        <td style="padding: 9px 8px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace;">
+                            <strong>${st.modPoints}</strong><span style="font-size:10px;color:#64748b;">/40</span>
                         </td>
-                        <td style="padding: 10px 12px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace;">
-                            <strong style="font-size: 14px; color: #9333ea;">${st.asnPoints}</strong><span style="font-size: 10px; color: #64748b;">/30</span>
+                        <td style="padding: 9px 8px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace;">
+                            <strong style="color:#9333ea;">${st.asnPoints}</strong><span style="font-size:10px;color:#64748b;">/30</span>
                         </td>
-                        <td style="padding: 10px 12px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace;">
-                            <strong style="font-size: 14px; color: #0f172a;">${st.attPoints + st.skillPoints}</strong><span style="font-size: 10px; color: #64748b;">/30</span>
+                        <td style="padding: 9px 8px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace;">
+                            <strong style="color:#059669;">${st.attPoints}</strong><span style="font-size:10px;color:#64748b;">/15</span>
                         </td>
-                        <td style="padding: 10px 12px; border: 1px solid #cbd5e1; text-align: right; font-family: monospace; background-color: #f8fafc;">
-                            <span style="font-size: 18px; font-weight: 900; color: #005fb8;">${st.score}</span><span style="font-size: 12px; color: #94a3b8; font-weight: bold;">/100</span>
+                        <td style="padding: 9px 8px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace;">
+                            <strong style="color:#d97706;">${st.skillPoints}</strong><span style="font-size:10px;color:#64748b;">/15</span>
+                        </td>
+                        <td style="padding: 9px 10px; border: 1px solid #cbd5e1; text-align: right; font-family: monospace; background-color: #f8fafc;">
+                            <span style="font-size: 16px; font-weight: 900; color: #005fb8;">${st.score}</span><span style="font-size: 11px; color: #94a3b8; font-weight: bold;">/100</span>
                         </td>
                     </tr>`;
                 }).join('');
 
                 const htmlContent = [
                     "<!DOCTYPE html>",
-                    "<html>",
-                    "<head>",
-                    "<meta charset='utf-8'>",
-                    "<title>Student Leaderboard - Print</title>",
-                    "<style>",
-                    "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');",
-                    "body { font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 20px; color: #0f172a; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }",
-                    ".container { width: 100%; max-width: 900px; margin: 0 auto; }",
-                    ".header-area { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #005fb8; padding-bottom: 15px; }",
-                    "h1 { font-size: 26px; margin: 0 0 4px 0; text-transform: uppercase; font-weight: 900; letter-spacing: -0.5px; color: #0f172a; }",
-                    "p.subtitle { font-size: 11px; color: #64748b; margin: 0; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; }",
-                    ".score-guide { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 10px; font-weight: 700; gap: 8px; }",
-                    ".score-guide > div { padding: 6px 10px; border-radius: 4px; flex: 1; text-align: center; border: 1px solid; }",
-                    "table { width: 100%; border-collapse: collapse; margin-bottom: 30px; border: 1px solid #cbd5e1; }",
-                    "th { background-color: #f1f5f9; padding: 12px 10px; border: 1px solid #cbd5e1; text-align: center; text-transform: uppercase; font-size: 11px; font-weight: 700; color: #475569; }",
-                    "th:nth-child(2) { text-align: left; }",
-                    "th:nth-child(6) { text-align: right; }",
-                    ".footer { text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e5e7eb; padding-top: 15px; margin-top: 30px; font-weight: 600; text-transform: uppercase; }",
-                    "@page { size: A4 portrait; margin: 12mm; }",
-                    "@media print { body { padding: 0; } .container { max-width: 100%; } table { page-break-inside: auto; } tr { page-break-inside: avoid; page-break-after: auto; } th { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }",
-                    "</style>",
-                    "</head>",
-                    "<body>",
-                    "<div class='container'>",
-                    "<div class='header-area'>",
-                    "<h1>Global Leadership Board</h1>",
-                    "<p class='subtitle'>Official Student Performance & Evaluation Sheet</p>",
-                    "</div>",
-                    "<div class='score-guide'>",
-                    "<div style='background: #f0f9ff; border-color: #bae6fd; color: #0369a1;'>1. Modules: 40 Marks</div>",
-                    "<div style='background: #faf5ff; border-color: #e9d5ff; color: #7e22ce;'>2. Assignments: 30 Marks</div>",
-                    "<div style='background: #ecfdf5; border-color: #a7f3d0; color: #047857;'>3. Attendance: 15 Marks</div>",
-                    "<div style='background: #fffbeb; border-color: #fde68a; color: #b45309;'>4. Skill Eval: 15 Marks</div>",
-                    "</div>",
-                    "<table>",
-                    "<thead>",
-                    "<tr>",
-                    "<th>Rank</th>",
-                    "<th>Student Name & Course</th>",
-                    "<th>Modules (40)</th>",
-                    "<th>Assignments (30)</th>",
-                    "<th>Attend. & Skill (30)</th>",
-                    "<th>Total (100)</th>",
-                    "</tr>",
-                    "</thead>",
-                    "<tbody>",
-                    tableRows,
-                    "</tbody>",
-                    "</table>",
-                    "<div class='footer'>Generated by FaridpurIT Academy &bull; faridpurit.com</div>",
-                    "</div>",
-                    "<script>",
-                    "setTimeout(function() { window.print(); }, 500);",
-                    "</" + "script>",
-                    "</body>",
-                    "</html>"
+                    "<html><head><meta charset='utf-8'><title>Student Leaderboard - Print</title><style>",
+                    "body{font-family:'Segoe UI',Arial,sans-serif;margin:0;padding:20px;color:#0f172a;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}",
+                    ".container{width:100%;max-width:900px;margin:0 auto;}",
+                    ".header-area{text-align:center;margin-bottom:18px;border-bottom:2px solid #005fb8;padding-bottom:12px;}",
+                    "h1{font-size:22px;margin:0 0 4px 0;text-transform:uppercase;font-weight:900;color:#0f172a;}",
+                    "p.subtitle{font-size:11px;color:#64748b;margin:0;text-transform:uppercase;font-weight:700;letter-spacing:0.8px;}",
+                    "table{width:100%;border-collapse:collapse;margin-bottom:24px;border:1px solid #cbd5e1;}",
+                    "th{background-color:#f1f5f9;padding:10px 8px;border:1px solid #cbd5e1;text-align:center;text-transform:uppercase;font-size:10px;font-weight:700;color:#475569;}",
+                    "th:nth-child(2){text-align:left;} th:nth-child(7){text-align:right;}",
+                    ".footer{text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e5e7eb;padding-top:12px;font-weight:600;text-transform:uppercase;}",
+                    "@page{size:A4 portrait;margin:12mm;}",
+                    "@media print{body{padding:0;} tr{page-break-inside:avoid;}}",
+                    "</style></head><body><div class='container'>",
+                    "<div class='header-area'><h1>Leadership Board (Top 10)</h1>",
+                    `<p class='subtitle'>${scopeText} &bull; ${periodText}</p></div>`,
+                    "<table><thead><tr><th>Rank</th><th>Student Name & Course</th><th>Mod (40)</th><th>Asn (30)</th><th>Att (15)</th><th>Skill (15)</th><th>Total</th></tr></thead>",
+                    `<tbody>${tableRows || '<tr><td colspan="7" style="padding:16px;text-align:center;color:#64748b;">No records found</td></tr>'}</tbody></table>`,
+                    "<div class='footer'>Faridpur IT Institute &bull; faridpurit.com</div>",
+                    "</div><script>setTimeout(function(){window.print();},400);</" + "script></body></html>"
                 ].join("");
 
                 const printWindow = window.open('', '_blank');
@@ -16459,33 +16544,83 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
             };
 
             return (
-                <div className="space-y-4 pb-10 w-full max-w-none overflow-hidden">
-                    {/* Header */}
-                    <div className="glass-panel p-3.5 md:p-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-                        <div className="min-w-0">
-                            <h2 className="text-lg md:text-2xl  text-gray-900 dark:text-white tracking-tight flex items-center gap-2 truncate">
-                                <Icon name="trophy" className="w-5 h-5 md:w-6 md:h-6 text-yellow-500 shrink-0" />
-                                <span className="truncate">Global Leadership Board</span>
-                            </h2>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                ২০টি অ্যাসাইনমেন্ট, কোর্স মডিউল, উপস্থিতি ও স্কিলের ওপর ভিত্তি করে ১০০ নম্বরের র‍্যাঙ্কিং।
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                            {auth?.role !== 'Student' && leaderboard.length > 10 && (
+                <div className="space-y-3.5 pb-10 w-full max-w-none overflow-hidden">
+                    {/* Single-Row Responsive Header (Title + Print Button Always On Same Line) + Smart Filters */}
+                    <div className="glass-panel p-3 sm:p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-3">
+                        <div className="flex items-center justify-between gap-2 flex-nowrap">
+                            <div className="min-w-0 flex-1">
+                                <h2 className="text-base sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-1.5 sm:gap-2 truncate">
+                                    <Icon name="trophy" className="w-5 h-5 md:w-6 md:h-6 text-yellow-500 shrink-0" />
+                                    <span className="truncate">Leadership Board</span>
+                                </h2>
+                                <p className="hidden sm:block text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                                    মডিউল, অ্যাসাইনমেন্ট, উপস্থিতি ও স্কিলের ভিত্তিতে Top 10 র‍্যাঙ্কিং।
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-nowrap">
+                                {!isStudentUser && leaderboard.length > 10 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { playSound('click'); setShowAllRows(!showAllRows); }}
+                                        className="h-8 sm:h-9 px-2.5 sm:px-3 bg-gray-100 dark:bg-dark-800 text-gray-700 dark:text-gray-200 text-[11px] sm:text-xs font-bold rounded-lg border border-gray-200 dark:border-white/10 whitespace-nowrap shrink-0 win-button"
+                                    >
+                                        {showAllRows ? 'Top 10' : `All (${leaderboard.length})`}
+                                    </button>
+                                )}
                                 <button
-                                    onClick={() => { playSound('click'); setShowAllRows(!showAllRows); }}
-                                    className="flex-1 sm:flex-none px-3 py-2 bg-gray-100 dark:bg-dark-800 text-gray-700 dark:text-gray-200 text-xs font-bold border border-gray-200 dark:border-white/10 win-button"
+                                    type="button"
+                                    onClick={handlePrintLeaderboard}
+                                    className="h-8 sm:h-9 px-2.5 sm:px-4 bg-[#005fb8] hover:bg-[#004a94] text-white flex items-center justify-center gap-1.5 text-[11px] sm:text-xs font-bold win-button rounded-lg shadow-sm whitespace-nowrap shrink-0 transition-colors"
                                 >
-                                    {showAllRows ? 'Top 10' : `Show All (${leaderboard.length})`}
+                                    <Icon name="printer" className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                                    <span className="sm:hidden">Print</span>
+                                    <span className="hidden sm:inline">Print Board</span>
                                 </button>
-                            )}
-                            <button
-                                onClick={handlePrintLeaderboard}
-                                className="flex-1 sm:flex-none bg-[#005fb8] hover:bg-[#004a94] text-white px-4 py-2 flex items-center justify-center gap-1.5 text-xs font-bold win-button rounded-lg shadow-sm transition-colors"
-                            >
-                                <Icon name="printer" className="w-4 h-4" /> Print Leaderboard
-                            </button>
+                            </div>
+                        </div>
+
+                        {/* Smart Filters: Period (All Time / Monthly) + Course-wise */}
+                        <div className="pt-2.5 border-t border-gray-100 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            {/* Period Switcher */}
+                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-dark-800 p-0.5 rounded-lg border border-gray-200/70 dark:border-white/10 self-start sm:self-auto shrink-0">
+                                {[
+                                    { id: 'all', label: 'All Time' },
+                                    { id: 'this_month', label: `This Month` },
+                                    { id: 'last_month', label: `Last Month` }
+                                ].map(p => (
+                                    <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => { playSound('click'); setPeriodFilter(p.id); }}
+                                        className={`px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-bold whitespace-nowrap transition-colors ${
+                                            periodFilter === p.id
+                                                ? 'bg-white dark:bg-dark-700 text-gray-900 dark:text-white shadow-sm'
+                                                : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+                                        }`}
+                                    >
+                                        {p.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Course-Wise Pills */}
+                            <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">Course:</span>
+                                {courseFilterOptions.map(c => (
+                                    <button
+                                        key={c}
+                                        type="button"
+                                        onClick={() => { playSound('click'); setCourseFilter(c); }}
+                                        className={`px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold whitespace-nowrap shrink-0 transition-colors border ${
+                                            courseFilter === c
+                                                ? 'bg-[#005fb8] text-white border-[#005fb8]'
+                                                : 'bg-white dark:bg-dark-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10'
+                                        }`}
+                                    >
+                                        {c === 'All' ? 'All Students' : c}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
 
@@ -18775,7 +18910,8 @@ const SmartPhoneAction = ({ phone }) => {
             const [replyingTo, setReplyingTo] = useState(null);
             const [uploadingFile, setUploadingFile] = useState(false);
             const [uploadProgress, setUploadProgress] = useState({ active: false, percent: 0, fileName: '', stage: '' });
-            const [visibleLimit, setVisibleLimit] = useState(35); // মোবাইলে স্মুথ স্ক্রলের জন্য শুরুতে ৩৫টি মেসেজ
+            const [visibleLimit, setVisibleLimit] = useState(20); // মোবাইলে স্মুথ স্ক্রলের জন্য শুরুতে 20টি মেসেজ
+            const [lightboxImg, setLightboxImg] = useState(null);
             const [typedWelcome, setTypedWelcome] = useState('');
             const chatEndRef = useRef(null);
             const fileInputRef = useRef(null);
@@ -19244,32 +19380,35 @@ const SmartPhoneAction = ({ phone }) => {
                                     /\.(jpeg|jpg|gif|png|webp)$/i.test(meta.url) ||
                                     (!raw.startsWith('{') && String(meta.url).includes('drive.google.com/uc'));
 
-                    if (isImage) {
+                   if (isImage) {
+                        const directImgUrl = fileId
+                            ? `https://lh3.googleusercontent.com/d/${fileId}=w1000`
+                            : meta.url;
+                        const fallbackThumbUrl = fileId
+                            ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`
+                            : meta.url;
                         return (
-                            <div className="w-[230px] sm:w-[270px] md:w-[310px] max-w-full rounded-lg overflow-hidden border border-black/10 dark:border-white/10 bg-black/5 dark:bg-black/30">
-                                <div className="w-full h-[180px] sm:h-[210px] bg-black/10 relative">
-                                    <iframe
-                                        src={iframePreviewUrl}
-                                        title={meta.name || 'Image Preview'}
-                                        className="w-full h-full border-0 block"
-                                        allow="autoplay"
-                                        loading="lazy"
-                                    />
-                                </div>
-                                <a
-                                    href={driveOpenUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-[11px] font-semibold"
-                                >
-                                    <span className="truncate flex items-center gap-1.5">
-                                        <Icon name="image" className="w-3.5 h-3.5 shrink-0 opacity-75" />
-                                        <span className="truncate">{meta.name || 'Image'}</span>
-                                    </span>
-                                    <span className="shrink-0 text-[#005fb8] dark:text-[#60cdff] flex items-center gap-1">
-                                        Open <Icon name="external-link" className="w-3 h-3" />
-                                    </span>
-                                </a>
+                            <div
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    playAudio('click');
+                                    setLightboxImg({ src: directImgUrl, fallback: fallbackThumbUrl, alt: meta.name || 'Image' });
+                                }}
+                                className="w-[215px] sm:w-[260px] md:w-[300px] max-w-full rounded-lg overflow-hidden border border-black/10 dark:border-white/10 bg-black/5 dark:bg-black/30 cursor-pointer"
+                            >
+                                <img
+                                    src={directImgUrl}
+                                    alt={meta.name || 'Shared Image'}
+                                    loading="lazy"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => {
+                                        if (!e.target.dataset.fb && fallbackThumbUrl && e.target.src !== fallbackThumbUrl) {
+                                            e.target.dataset.fb = '1';
+                                            e.target.src = fallbackThumbUrl;
+                                        }
+                                    }}
+                                    className="w-full max-h-[260px] object-cover block select-none"
+                                />
                             </div>
                         );
                     }
@@ -19555,6 +19694,37 @@ const SmartPhoneAction = ({ phone }) => {
                             </form>
                         )}
                     </div>
+
+                    {/* ক্লিন ফুলস্ক্রিন ইমেজ প্রিভিউ (কোনো ড্রাইভ জুম বা ওপেন বাটন ছাড়া) */}
+                    {lightboxImg && ReactDOM.createPortal(
+                        <div
+                            onClick={() => setLightboxImg(null)}
+                            className="fixed inset-0 z-[999999] bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+                        >
+                            <button
+                                type="button"
+                                onClick={() => setLightboxImg(null)}
+                                className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 hover:bg-rose-500 text-white flex items-center justify-center transition-colors z-10"
+                                title="Close"
+                            >
+                                <Icon name="x" className="w-5 h-5" />
+                            </button>
+                            <img
+                                src={lightboxImg.src}
+                                alt={lightboxImg.alt}
+                                referrerPolicy="no-referrer"
+                                onClick={(e) => e.stopPropagation()}
+                                onError={(e) => {
+                                    if (!e.target.dataset.fb && lightboxImg.fallback) {
+                                        e.target.dataset.fb = '1';
+                                        e.target.src = lightboxImg.fallback;
+                                    }
+                                }}
+                                className="max-w-full max-h-[88dvh] object-contain rounded-lg shadow-2xl select-none"
+                            />
+                        </div>,
+                        document.body
+                    )}
                 </div>
             );
         };
@@ -20298,7 +20468,7 @@ const SmartPhoneAction = ({ phone }) => {
                                         {myRankNum ? `#${String(myRankNum).padStart(2, '0')}` : '—'}
                                     </p>
                                     <p className="text-[10px] text-gray-600 dark:text-gray-400 truncate mt-1">
-                                        {myRankEntry ? `${myRankEntry.score}/100 pts • Top ${totalRankedStudents}` : 'View ranking →'}
+                                        {myRankEntry ? `${myRankEntry.score}/100 pts • Top 10 →` : 'View ranking →'}
                                     </p>
                                 </a>
                             </div>
@@ -21215,40 +21385,40 @@ const SmartPhoneAction = ({ phone }) => {
                 });
             };
 
-            // 🟢 Pixel-Perfect High-DPI Canvas Slip Generator (Zero Text Shift & Zero Border Overflow)
+           // 🟢 ফিক্সড-সাইজ হাই-রেজোলিউশন স্লিপ PNG জেনারেটর (মোবাইল ও পিসি সবখানে একই প্রফেশনাল সাইজ)
             const handleDownloadSlipImage = async () => {
                 if (!slipModal) return;
                 playAudio('action');
                 setDownloadingSlip(true);
                 try {
                     const s = slipModal;
-                    const W = 760;
-                    const margin = 20;
-                    const pad = 42;
+                    const W = 720;
+                    const frameM = 18;
+                    const pad = 38;
                     const innerW = W - pad * 2;
-                    const labelW = 180;
+                    const labelW = 165;
                     const valW = innerW - labelW;
                     const fontMain = "'Inter', 'Hind Siliguri', 'Segoe UI', Arial, sans-serif";
 
-                    const measureCanvas = document.createElement('canvas');
-                    const mCtx = measureCanvas.getContext('2d');
+                    const mCanvas = document.createElement('canvas');
+                    const mCtx = mCanvas.getContext('2d');
 
-                    const wrapText = (ctx, text, maxWidth) => {
+                    const wrapLines = (ctx, text, maxW) => {
                         const raw = String(text || '—').trim();
                         const words = raw.split(/\s+/);
                         const lines = [];
-                        let line = '';
+                        let cur = '';
                         words.forEach(w => {
-                            const test = line ? `${line} ${w}` : w;
-                            if (ctx.measureText(test).width > maxWidth && line) {
-                                lines.push(line);
-                                line = w;
+                            const test = cur ? `${cur} ${w}` : w;
+                            if (ctx.measureText(test).width > maxW && cur) {
+                                lines.push(cur);
+                                cur = w;
                             } else {
-                                line = test;
+                                cur = test;
                             }
                         });
-                        if (line) lines.push(line);
-                        return lines.length > 0 ? lines : ['—'];
+                        if (cur) lines.push(cur);
+                        return lines.length ? lines : ['—'];
                     };
 
                     const infoRows = [
@@ -21257,59 +21427,61 @@ const SmartPhoneAction = ({ phone }) => {
                         { label: 'Course', value: s.course || 'IT Course', bold: false },
                         { label: 'Module', value: `Module ${s.moduleSerial || 1}: ${s.moduleTitle || ''}`, bold: true }
                     ];
+
+                    const measuredInfo = infoRows.map(r => {
+                        mCtx.font = `${r.bold ? '700' : '500'} 13.5px ${fontMain}`;
+                        const lines = wrapLines(mCtx, r.value, valW - 24);
+                        return { ...r, lines, h: Math.max(38, lines.length * 19 + 18) };
+                    });
+                    const infoH = measuredInfo.reduce((acc, r) => acc + r.h, 0);
+
+                    let weakRow = null;
                     if (Array.isArray(s.weakTopics) && s.weakTopics.length > 0) {
-                        infoRows.push({ label: 'Topics to Revise', value: s.weakTopics.join(', '), bold: false });
+                        mCtx.font = `500 13px ${fontMain}`;
+                        const wLines = wrapLines(mCtx, s.weakTopics.join(', '), valW - 24);
+                        weakRow = { label: 'Topics to Revise', lines: wLines, h: Math.max(38, wLines.length * 19 + 18) };
                     }
 
-                    // 1. Pre-measure exact dynamic heights
-                    mCtx.font = `600 14px ${fontMain}`;
-                    const measuredRows = infoRows.map(r => {
-                        mCtx.font = `${r.bold ? '700' : '500'} 14px ${fontMain}`;
-                        const lines = wrapText(mCtx, r.value, valW - 28);
-                        const h = Math.max(40, lines.length * 20 + 20);
-                        return { ...r, lines, h };
-                    });
-                    const infoTableH = measuredRows.reduce((sum, r) => sum + r.h, 0);
-                    const totalH = pad + 66 + 20 + infoTableH + 20 + 88 + 26 + 34 + pad;
+                    const metricsH = 82;
+                    const headerH = 52;
+                    const footerH = 34;
+                    const totalH = pad + headerH + 20 + infoH + 18 + metricsH + (weakRow ? (18 + weakRow.h) : 0) + 22 + footerH + pad;
 
-                    // 2. Render crisp 2x retina PNG
-                    const scale = 2;
+                    const dpr = 2;
                     const canvas = document.createElement('canvas');
-                    canvas.width = W * scale;
-                    canvas.height = totalH * scale;
+                    canvas.width = W * dpr;
+                    canvas.height = totalH * dpr;
                     const ctx = canvas.getContext('2d');
-                    ctx.scale(scale, scale);
+                    ctx.scale(dpr, dpr);
 
-                    // White canvas + clean official outer frame
+                    // সাদা ব্যাকগ্রাউন্ড ও ফিক্সড বর্ডার ফ্রেম
                     ctx.fillStyle = '#ffffff';
                     ctx.fillRect(0, 0, W, totalH);
-                    ctx.strokeStyle = '#1e293b';
+                    ctx.strokeStyle = '#111827';
                     ctx.lineWidth = 1.5;
-                    ctx.strokeRect(margin, margin, W - margin * 2, totalH - margin * 2);
+                    ctx.strokeRect(frameM, frameM, W - frameM * 2, totalH - frameM * 2);
 
                     let y = pad;
 
-                    // Header left
+                    // হেডার (বামে ইনস্টিটিউট, ডানে Slip ID ও তারিখ — কোনো লাইন ভাঙবে না)
                     ctx.textBaseline = 'top';
                     ctx.textAlign = 'left';
                     ctx.fillStyle = '#0f172a';
-                    ctx.font = `800 20px ${fontMain}`;
+                    ctx.font = `800 19px ${fontMain}`;
                     ctx.fillText('FARIDPUR IT INSTITUTE', pad, y);
                     ctx.fillStyle = '#64748b';
-                    ctx.font = `600 11px ${fontMain}`;
-                    ctx.fillText('SKILL ASSESSMENT RESULT SLIP', pad, y + 26);
+                    ctx.font = `600 10.5px ${fontMain}`;
+                    ctx.fillText('SKILL ASSESSMENT RESULT SLIP', pad, y + 25);
 
-                    // Header right
                     ctx.textAlign = 'right';
-                    ctx.fillStyle = '#334155';
-                    ctx.font = `700 12px monospace`;
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = `700 11.5px monospace`;
                     ctx.fillText(`Slip ID: ${s.examId || 'N/A'}`, W - pad, y + 2);
                     ctx.fillStyle = '#64748b';
                     ctx.font = `500 11px ${fontMain}`;
                     ctx.fillText(moment(s.completedAt || new Date()).format('DD MMM YYYY, hh:mm A'), W - pad, y + 22);
 
-                    // Header divider
-                    y += 54;
+                    y += headerH;
                     ctx.strokeStyle = '#0f172a';
                     ctx.lineWidth = 2;
                     ctx.beginPath();
@@ -21317,73 +21489,77 @@ const SmartPhoneAction = ({ phone }) => {
                     ctx.lineTo(W - pad, y);
                     ctx.stroke();
 
-                    // Student & Module Info Table
-                    y += 22;
+                    // স্টুডেন্ট ও মডিউল ডিটেইলস টেবিল
+                    y += 20;
                     ctx.lineWidth = 1;
-                    measuredRows.forEach(row => {
+                    const drawTwoColRow = (row) => {
                         ctx.fillStyle = '#f8fafc';
                         ctx.fillRect(pad, y, labelW, row.h);
                         ctx.fillStyle = '#ffffff';
                         ctx.fillRect(pad + labelW, y, valW, row.h);
-
                         ctx.strokeStyle = '#cbd5e1';
                         ctx.strokeRect(pad, y, labelW, row.h);
                         ctx.strokeRect(pad + labelW, y, valW, row.h);
 
                         ctx.textAlign = 'left';
                         ctx.textBaseline = 'middle';
-                        ctx.fillStyle = '#475569';
-                        ctx.font = `700 13px ${fontMain}`;
-                        ctx.fillText(row.label, pad + 14, y + row.h / 2);
+                        ctx.fillStyle = '#334155';
+                        ctx.font = `700 12.5px ${fontMain}`;
+                        ctx.fillText(row.label, pad + 12, y + row.h / 2);
 
                         ctx.fillStyle = '#0f172a';
-                        ctx.font = `${row.bold ? '700' : '500'} 14px ${fontMain}`;
-                        const blockH = row.lines.length * 20;
-                        const startTextY = y + (row.h - blockH) / 2 + 10;
-                        row.lines.forEach((ln, li) => {
-                            ctx.fillText(ln, pad + labelW + 14, startTextY + li * 20);
-                        });
-
+                        ctx.font = `${row.bold ? '700' : '500'} 13.5px ${fontMain}`;
+                        const blockH = row.lines.length * 19;
+                        const firstY = y + (row.h - blockH) / 2 + 9.5;
+                        row.lines.forEach((ln, idx) => ctx.fillText(ln, pad + labelW + 12, firstY + idx * 19));
                         y += row.h;
-                    });
+                    };
 
-                    // 5-Column Result Summary Box
-                    y += 20;
-                    const metricsCols = [
+                    measuredInfo.forEach(drawTwoColRow);
+
+                    // ৫-কলাম রেজাল্ট বক্স (প্রতিটি লেখা গাণিতিকভাবে ঠিক মাঝখানে)
+                    y += 18;
+                    const cols = [
                         { title: 'SCORE', val: `${s.scorePct ?? 0}%`, color: '#0f172a' },
                         { title: 'CORRECT', val: `${s.correct ?? 0}/${s.total ?? 10}`, color: '#0f172a' },
                         { title: 'GRADE', val: String(s.grade || 'B'), color: '#005fb8' },
                         { title: 'STATUS', val: s.passed ? 'PASSED' : 'RETRY', color: s.passed ? '#059669' : '#e11d48' },
                         { title: 'OVERALL SKILL', val: `${s.newSkillProgress ?? 0}%`, color: '#0f172a' }
                     ];
-                    const colW = innerW / metricsCols.length;
-                    const hdrH = 34;
-                    const valH = 54;
+                    const colW = innerW / 5;
+                    const hTop = 32;
+                    const hBot = 50;
 
-                    metricsCols.forEach((col, ci) => {
-                        const cx = pad + ci * colW;
+                    cols.forEach((c, idx) => {
+                        const x = pad + idx * colW;
                         ctx.fillStyle = '#f1f5f9';
-                        ctx.fillRect(cx, y, colW, hdrH);
+                        ctx.fillRect(x, y, colW, hTop);
                         ctx.fillStyle = '#ffffff';
-                        ctx.fillRect(cx, y + hdrH, colW, valH);
-
+                        ctx.fillRect(x, y + hTop, colW, hBot);
                         ctx.strokeStyle = '#cbd5e1';
-                        ctx.strokeRect(cx, y, colW, hdrH);
-                        ctx.strokeRect(cx, y + hdrH, colW, valH);
+                        ctx.strokeRect(x, y, colW, hTop);
+                        ctx.strokeRect(x, y + hTop, colW, hBot);
 
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
                         ctx.fillStyle = '#475569';
-                        ctx.font = `700 11px ${fontMain}`;
-                        ctx.fillText(col.title, cx + colW / 2, y + hdrH / 2);
+                        ctx.font = `700 10px ${fontMain}`;
+                        ctx.fillText(c.title, x + colW / 2, y + hTop / 2);
 
-                        ctx.fillStyle = col.color;
-                        ctx.font = `800 18px ${fontMain}`;
-                        ctx.fillText(col.val, cx + colW / 2, y + hdrH + valH / 2);
+                        ctx.fillStyle = c.color;
+                        ctx.font = `800 17px ${fontMain}`;
+                        ctx.fillText(c.val, x + colW / 2, y + hTop + hBot / 2);
                     });
+                    y += hTop + hBot;
 
-                    // Footer
-                    y += hdrH + valH + 24;
+                    // Topics to Revise (থাকলে)
+                    if (weakRow) {
+                        y += 18;
+                        drawTwoColRow(weakRow);
+                    }
+
+                    // ফুটার
+                    y += 22;
                     ctx.strokeStyle = '#cbd5e1';
                     ctx.beginPath();
                     ctx.moveTo(pad, y);
@@ -21874,76 +22050,80 @@ const SmartPhoneAction = ({ phone }) => {
                     <Modal isOpen={!!slipModal} onClose={() => setSlipModal(null)} title="Official Exam Result Slip" maxWidth="max-w-xl" compact={true}>
                         {slipModal && (
                             <div className="space-y-4">
-                                {/* 🟢 100% Mobile-Responsive Official Exam Result Slip (Zero Overflow) */}
-                                <div id="skill-exam-slip-card" className="w-full max-w-full bg-white text-gray-900 border border-gray-800 rounded-lg p-3.5 sm:p-5 overflow-hidden">
-                                    {/* Responsive Header */}
-                                    <div className="pb-2.5 mb-3.5 border-b-2 border-gray-900 flex flex-col sm:flex-row sm:items-end justify-between gap-1.5">
+                                {/* 🟢 100% Mobile-Responsive Fixed-Proportion Exam Result Slip (No Table Overflow) */}
+                                <div id="skill-exam-slip-card" className="w-full max-w-full bg-white text-gray-900 border border-gray-800 p-3 sm:p-5 overflow-hidden box-border">
+                                    {/* Compact Single-Block Responsive Header */}
+                                    <div className="pb-2.5 mb-3 border-b-2 border-gray-900 flex flex-col sm:flex-row sm:items-end justify-between gap-1.5">
                                         <div className="min-w-0">
-                                            <h3 className="text-sm sm:text-base font-bold tracking-wide uppercase text-gray-900 leading-tight">Faridpur IT Institute</h3>
-                                            <p className="text-[9px] sm:text-[10px] text-gray-500 tracking-widest uppercase mt-0.5">Skill Assessment Result Slip</p>
+                                            <h3 className="text-[13px] sm:text-base font-extrabold tracking-tight uppercase text-gray-900 leading-tight whitespace-nowrap">
+                                                Faridpur IT Institute
+                                            </h3>
+                                            <p className="text-[8.5px] sm:text-[10px] text-gray-500 tracking-wider uppercase mt-0.5">
+                                                Skill Assessment Result Slip
+                                            </p>
                                         </div>
-                                        <div className="sm:text-right font-mono-code text-[10px] text-gray-600 leading-snug">
-                                            <div>Slip ID: <strong className="text-gray-900">{slipModal.examId}</strong></div>
-                                            <div>{moment(slipModal.completedAt).format('DD MMM YYYY, hh:mm A')}</div>
+                                        <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 sm:gap-0.5 font-mono-code text-[9px] sm:text-[10px] text-gray-600 leading-tight">
+                                            <span className="whitespace-nowrap">Slip ID: <strong className="text-gray-900">{slipModal.examId}</strong></span>
+                                            <span className="whitespace-nowrap">{moment(slipModal.completedAt).format('DD MMM YYYY, hh:mm A')}</span>
                                         </div>
                                     </div>
 
-                                    {/* Responsive Student & Module Details */}
-                                    <div className="border border-gray-300 divide-y divide-gray-200 text-xs mb-3.5 overflow-hidden">
+                                    {/* Student & Module Details Grid */}
+                                    <div className="border border-gray-300 divide-y divide-gray-200 mb-3 overflow-hidden">
                                         {[
-                                            { lbl: 'Student Name', val: slipModal.studentName, cls: 'font-bold text-gray-900' },
-                                            { lbl: 'Student ID', val: slipModal.studentId || 'Student', cls: 'font-mono-code text-gray-800' },
-                                            { lbl: 'Course', val: slipModal.course, cls: 'text-gray-800' },
-                                            { lbl: 'Module', val: `Module ${slipModal.moduleSerial}: ${slipModal.moduleTitle}`, cls: 'font-semibold text-gray-900' }
+                                            { label: 'Student Name', value: slipModal.studentName, cls: 'font-bold text-gray-900' },
+                                            { label: 'Student ID', value: slipModal.studentId || 'Student', cls: 'font-mono-code text-gray-800' },
+                                            { label: 'Course', value: slipModal.course, cls: 'text-gray-800' },
+                                            { label: 'Module', value: `Module ${slipModal.moduleSerial}: ${slipModal.moduleTitle}`, cls: 'font-semibold text-gray-900' }
                                         ].map(row => (
-                                            <div key={row.lbl} className="grid grid-cols-12 min-w-0">
-                                                <div className="col-span-4 sm:col-span-4 bg-gray-50 px-2.5 py-2 font-bold text-gray-700 border-r border-gray-200 text-[11px] sm:text-xs break-words">
-                                                    {row.lbl}
+                                            <div key={row.label} className="grid grid-cols-[90px_1fr] sm:grid-cols-[135px_1fr] min-w-0">
+                                                <div className="bg-gray-50 px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold text-gray-700 border-r border-gray-200 flex items-center">
+                                                    {row.label}
                                                 </div>
-                                                <div className={`col-span-8 sm:col-span-8 px-2.5 py-2 text-[11px] sm:text-xs break-words min-w-0 ${row.cls}`}>
-                                                    {row.val}
+                                                <div className={`px-2 sm:px-3 py-1.5 sm:py-2 text-[10.5px] sm:text-xs break-words min-w-0 flex items-center leading-snug ${row.cls}`}>
+                                                    {row.value}
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
 
-                                    {/* Responsive Result Metrics Grid (2-Col on Mobile, 5-Col on Desktop — Never Overflows!) */}
-                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 sm:gap-2 mb-3.5 text-center">
-                                        <div className="border border-gray-300 bg-gray-50/70 p-2 min-w-0">
-                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-gray-500">Score</span>
-                                            <span className="block text-sm sm:text-base font-numbers font-bold text-gray-900 mt-0.5">{slipModal.scorePct}%</span>
-                                        </div>
-                                        <div className="border border-gray-300 bg-gray-50/70 p-2 min-w-0">
-                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-gray-500">Correct</span>
-                                            <span className="block text-sm sm:text-base font-numbers font-bold text-gray-900 mt-0.5">{slipModal.correct}/{slipModal.total}</span>
-                                        </div>
-                                        <div className="border border-gray-300 bg-gray-50/70 p-2 min-w-0">
-                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-gray-500">Grade</span>
-                                            <span className="block text-sm sm:text-base font-numbers font-bold text-[#005fb8] mt-0.5">{slipModal.grade}</span>
-                                        </div>
-                                        <div className="border border-gray-300 bg-gray-50/70 p-2 min-w-0">
-                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-gray-500">Status</span>
-                                            <span className={`block text-xs sm:text-sm font-bold uppercase mt-1 ${slipModal.passed ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                {slipModal.passed ? 'PASSED' : 'RETRY'}
-                                            </span>
-                                        </div>
-                                        <div className="col-span-2 sm:col-span-1 border border-gray-300 bg-blue-50/60 p-2 min-w-0">
-                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-[#005fb8]">Overall Skill</span>
-                                            <span className="block text-sm sm:text-base font-numbers font-bold text-gray-900 mt-0.5">{slipModal.newSkillProgress}%</span>
-                                        </div>
+                                    {/* 5-Column Fixed-Fit Result Bar (Fits Even 320px Phones Without Overflow) */}
+                                    <div className="grid grid-cols-5 border border-gray-300 divide-x divide-gray-300 text-center mb-3 overflow-hidden">
+                                        {[
+                                            { title: 'Score', val: `${slipModal.scorePct}%`, cls: 'text-gray-900' },
+                                            { title: 'Correct', val: `${slipModal.correct}/${slipModal.total}`, cls: 'text-gray-900' },
+                                            { title: 'Grade', val: slipModal.grade, cls: 'text-[#005fb8]' },
+                                            { title: 'Status', val: slipModal.passed ? 'PASS' : 'RETRY', cls: slipModal.passed ? 'text-emerald-600' : 'text-rose-600' },
+                                            { title: 'Overall Skill', val: `${slipModal.newSkillProgress}%`, cls: 'text-gray-900' }
+                                        ].map(col => (
+                                            <div key={col.title} className="flex flex-col min-w-0">
+                                                <div className="bg-gray-100 border-b border-gray-300 px-0.5 py-1.5 text-[7.5px] sm:text-[9.5px] font-bold uppercase tracking-tight sm:tracking-wider text-gray-600 leading-[1.15] flex items-center justify-center min-h-[28px] sm:min-h-[30px] break-words">
+                                                    {col.title}
+                                                </div>
+                                                <div className={`px-0.5 py-2 text-[11px] sm:text-sm font-numbers font-bold flex items-center justify-center min-h-[34px] sm:min-h-[40px] whitespace-nowrap ${col.cls}`}>
+                                                    {col.val}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
 
                                     {Array.isArray(slipModal.weakTopics) && slipModal.weakTopics.length > 0 && (
-                                        <div className="border border-gray-300 p-2.5 bg-amber-50/40 text-[11px] sm:text-xs mb-3.5 break-words">
-                                            <span className="font-bold text-gray-700">Topics to Revise: </span>
-                                            <span className="text-gray-800">{slipModal.weakTopics.join(', ')}</span>
+                                        <div className="border border-gray-300 grid grid-cols-[90px_1fr] sm:grid-cols-[135px_1fr] mb-3 overflow-hidden">
+                                            <div className="bg-gray-50 px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold text-gray-700 border-r border-gray-200 flex items-center">
+                                                Topics to Revise
+                                            </div>
+                                            <div className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-gray-800 break-words min-w-0 leading-snug">
+                                                {slipModal.weakTopics.join(', ')}
+                                            </div>
                                         </div>
                                     )}
 
-                                    {/* Responsive Footer */}
-                                    <div className="pt-2.5 border-t border-gray-300 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[10px] text-gray-500">
-                                        <span className="break-words">Faridpur IT Institute • faridpurit.com • +880 1642890942</span>
-                                        <span className="font-semibold shrink-0">Retake Lock: 24 Hours</span>
+                                    {/* Clean Responsive Footer */}
+                                    <div className="pt-2 border-t border-gray-300 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[8.5px] sm:text-[10px] text-gray-500">
+                                        <span>
+                                            Faridpur IT Institute • faridpurit.com • <span className="whitespace-nowrap">+880 1642890942</span>
+                                        </span>
+                                        <span className="font-semibold whitespace-nowrap">Retake Lock: 24 Hours</span>
                                     </div>
                                 </div>
 
