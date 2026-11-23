@@ -24514,7 +24514,7 @@ const [courseModules, setCourseModules] = useState([]);
     </>
 )}
 
-                      <div className={`flex-1 min-h-0 w-full max-w-full relative ${currentRoute === 'community' ? 'overflow-hidden p-0 flex flex-col' : 'overflow-y-auto overflow-x-hidden p-3 md:p-5 lg:p-6'}`}>
+                      <div id="fit-main-scroll" className={`flex-1 min-h-0 w-full max-w-full relative overscroll-y-contain ${currentRoute === 'community' ? 'overflow-hidden p-0 flex flex-col' : 'overflow-y-auto overflow-x-hidden p-3 md:p-5 lg:p-6'}`} style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
                             {loading || isRouteLoading ? (
                                 <div className="w-full h-full p-2 md:p-4 space-y-6 animate-pulse">
                                     {/* Common Header Skeleton */}
