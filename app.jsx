@@ -172,6 +172,15 @@
             return new Date();
         }
 
+        function toSafeYMD(val) {
+            if (!val) return '';
+            const s = String(val).replace(/^'/, '').trim();
+            if (!s || s === '-' || s === 'Invalid date') return '';
+            if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+            const m = moment(parseCustomDate(s));
+            return m.isValid() ? m.format('YYYY-MM-DD') : '';
+        }
+
         const playSound = (type) => {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -276,7 +285,7 @@
             );
         };
 
-        // 💳 REUSABLE INLINE INSTALLMENT PAYMENT BOX (Total + Paid with '+' Button + Date per Installment)
+        // 💳 MOBILE-FIRST INLINE INSTALLMENT PAYMENT BOX (Zero Overflow on Any Phone)
         const InstallmentPaymentBox = ({ total, onTotalChange, installments = [], onInstallmentsChange, totalLabel = 'Total Amount (৳)', defaultDate }) => {
             const safeList = (Array.isArray(installments) && installments.length > 0)
                 ? installments
@@ -301,98 +310,93 @@
             };
 
             return (
-                <div className="bg-gray-50/90 dark:bg-dark-900/40 p-3.5 sm:p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-3">
-                    {/* Top Row: Total Amount | Paid Summary + '+' Button | Auto Due */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                        <div>
+                <div className="w-full min-w-0 bg-gray-50/90 dark:bg-dark-900/40 p-3 sm:p-3.5 rounded-xl border border-gray-200/70 dark:border-white/10 space-y-3 overflow-hidden">
+                    {/* Top Summary: Total Input + Paid/Due Compact Chips */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 min-w-0">
+                        <div className="min-w-0">
                             <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">{totalLabel}</label>
                             <input
                                 type="number"
                                 min="0"
                                 value={total}
                                 onChange={e => onTotalChange(e.target.value)}
-                                className="w-full input-style px-3 py-2 text-sm font-bold font-numbers text-gray-900 dark:text-white"
+                                className="w-full min-w-0 input-style px-3 py-2 text-sm font-bold font-numbers text-gray-900 dark:text-white"
                                 placeholder="0"
                             />
                         </div>
 
-                        <div>
-                            <div className="flex items-center justify-between mb-1">
-                                <label className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Total Paid (৳)</label>
-                                <button
-                                    type="button"
-                                    onClick={addRow}
-                                    className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold flex items-center gap-0.5 shadow-sm win-button"
-                                    title="নতুন কিস্তি যুক্ত করুন"
-                                >
-                                    <Icon name="plus" className="w-3 h-3" /> কিস্তি
-                                </button>
+                        <div className="grid grid-cols-2 sm:col-span-2 gap-2 min-w-0">
+                            <div className="min-w-0 p-2 rounded-lg bg-emerald-500/[0.08] border border-emerald-300/50 dark:border-emerald-500/25 flex flex-col justify-center">
+                                <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Total Paid</span>
+                                <span className="text-sm sm:text-base font-bold font-numbers text-emerald-700 dark:text-emerald-300 truncate">৳{paidSum.toLocaleString()}</span>
                             </div>
-                            <input
-                                type="text"
-                                readOnly
-                                value={paidSum}
-                                className="w-full input-style px-3 py-2 text-sm font-bold font-numbers text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/20 cursor-default"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-1">Due (৳)</label>
-                            <input
-                                type="text"
-                                readOnly
-                                value={dueNum}
-                                className="w-full input-style px-3 py-2 text-sm font-bold font-numbers text-rose-600 dark:text-rose-400 bg-rose-50/60 dark:bg-rose-950/20 cursor-default"
-                            />
+                            <div className="min-w-0 p-2 rounded-lg bg-rose-500/[0.08] border border-rose-300/50 dark:border-rose-500/25 flex flex-col justify-center">
+                                <span className="text-[9px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Due Balance</span>
+                                <span className="text-sm sm:text-base font-bold font-numbers text-rose-600 dark:text-rose-300 truncate">৳{dueNum.toLocaleString()}</span>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Installment Rows (Each with Amount + Date + Method + Remove) */}
+                    {/* Installments Header + Add Button */}
                     <div className="space-y-2 pt-2 border-t border-gray-200/70 dark:border-white/10">
-                        <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                পেমেন্ট / কিস্তি সমূহ ({safeList.length})
+                        <div className="flex items-center justify-between gap-2 flex-nowrap">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300 truncate">
+                                কিস্তি / পেমেন্ট ({safeList.length})
                             </span>
-                            <span className="text-[10px] text-gray-400">প্রতিটি কিস্তি তার নিজস্ব তারিখের মাসে হিসাব হবে</span>
+                            <button
+                                type="button"
+                                onClick={addRow}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm shrink-0 whitespace-nowrap win-button"
+                            >
+                                <Icon name="plus" className="w-3.5 h-3.5 shrink-0" /> কিস্তি যোগ করুন
+                            </button>
                         </div>
 
                         {safeList.map((row, idx) => (
-                            <div key={idx} className="grid grid-cols-12 gap-1.5 sm:gap-2 items-center bg-white dark:bg-dark-800 p-2 rounded-xl border border-gray-200/70 dark:border-white/10">
-                                <span className="col-span-2 sm:col-span-1 text-[10px] font-bold font-numbers text-center px-1 py-1 rounded bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff]">
-                                    #{idx + 1}
-                                </span>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    value={row.amount}
-                                    onChange={e => updateRow(idx, 'amount', e.target.value)}
-                                    placeholder="Paid ৳"
-                                    className="col-span-4 sm:col-span-4 input-style px-2 py-1.5 text-xs sm:text-sm font-bold font-numbers text-emerald-600"
-                                />
-                                <input
-                                    type="date"
-                                    value={row.date || ''}
-                                    onChange={e => updateRow(idx, 'date', e.target.value)}
-                                    className="col-span-5 sm:col-span-4 input-style px-1.5 py-1.5 text-[11px] font-semibold dark:[color-scheme:dark]"
-                                />
-                                <select
-                                    value={row.method || 'Cash'}
-                                    onChange={e => updateRow(idx, 'method', e.target.value)}
-                                    className="col-span-10 sm:col-span-2 input-style px-1.5 py-1.5 text-[11px] font-semibold"
-                                >
-                                    <option value="Cash">Cash</option>
-                                    <option value="bKash">bKash</option>
-                                    <option value="Nagad">Nagad</option>
-                                    <option value="Bank">Bank</option>
-                                </select>
-                                <button
-                                    type="button"
-                                    onClick={() => removeRow(idx)}
-                                    className="col-span-2 sm:col-span-1 p-1.5 rounded-lg bg-rose-50 dark:bg-rose-900/25 text-rose-500 hover:bg-rose-500 hover:text-white flex items-center justify-center transition-colors"
-                                    title="Remove"
-                                >
-                                    <Icon name="x" className="w-3.5 h-3.5" />
-                                </button>
+                            <div key={idx} className="w-full min-w-0 bg-white dark:bg-dark-800 p-2.5 rounded-xl border border-gray-200/70 dark:border-white/10 space-y-2">
+                                {/* Row 1: Badge + Amount + Remove */}
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="px-2 py-1 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold font-numbers shrink-0">
+                                        #{idx + 1}
+                                    </span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={row.amount}
+                                        onChange={e => updateRow(idx, 'amount', e.target.value)}
+                                        placeholder="টাকার পরিমাণ (৳)"
+                                        className="flex-1 min-w-0 w-full input-style px-2.5 py-1.5 text-sm font-bold font-numbers text-emerald-600"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => removeRow(idx)}
+                                        className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-900/25 text-rose-500 hover:bg-rose-500 hover:text-white flex items-center justify-center shrink-0 transition-colors"
+                                        title="Remove"
+                                    >
+                                        <Icon name="x" className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+
+                                {/* Row 2: Date + Method (Stacks safely without overflow) */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
+                                    <input
+                                        type="date"
+                                        value={row.date || ''}
+                                        onChange={e => updateRow(idx, 'date', e.target.value)}
+                                        className="w-full min-w-0 max-w-full input-style px-2.5 py-1.5 text-xs font-semibold dark:[color-scheme:dark]"
+                                    />
+                                    <select
+                                        value={row.method || 'Cash'}
+                                        onChange={e => updateRow(idx, 'method', e.target.value)}
+                                        className="w-full min-w-0 max-w-full input-style px-2.5 py-1.5 text-xs font-semibold"
+                                    >
+                                        <option value="Cash">Cash</option>
+                                        <option value="bKash">bKash</option>
+                                        <option value="Nagad">Nagad</option>
+                                        <option value="Rocket">Rocket</option>
+                                        <option value="Bank">Bank Transfer</option>
+                                    </select>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -402,21 +406,22 @@
 
         const Modal = ({ isOpen, onClose, title, children, actions, fullWidthContent = false, maxWidth = 'max-w-4xl', compact = false }) => {
             if (!isOpen) return null;
-            // ReactDOM Portal ensures the modal overlays EVERYTHING (Sidebar, Header, App background)
             return ReactDOM.createPortal(
-                <div className="fixed inset-0 z-[999999] flex items-center justify-center p-2.5 sm:p-4" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}>
-                    <div className={`bg-white/95 dark:bg-dark-800/95 backdrop-blur-2xl rounded-xl shadow-win-modal w-full ${maxWidth} max-h-[92vh] flex flex-col modal-enter overflow-hidden relative border border-gray-200 dark:border-white/10`} onClick={e => e.stopPropagation()}>
-                        <div className={`${compact ? 'px-4 py-3' : 'p-4'} border-b border-gray-200/50 dark:border-white/5 flex justify-between items-center shrink-0`}>
-                            <h3 className="font-semibold text-base text-gray-900 dark:text-gray-100 truncate pr-2">{title}</h3>
-                            <button onClick={onClose} className="p-1.5 hover:bg-gray-200 dark:hover:bg-red-500 hover:text-white rounded-md transition-colors shrink-0"><Icon name="x" className="w-4 h-4 text-gray-600 dark:text-gray-400" /></button>
+                <div className="fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 overflow-hidden" style={{ background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(6px)' }}>
+                    <div className={`bg-white/95 dark:bg-dark-800/95 backdrop-blur-2xl rounded-xl shadow-win-modal w-full max-w-full ${maxWidth} max-h-[92dvh] flex flex-col modal-enter overflow-hidden relative border border-gray-200 dark:border-white/10`} onClick={e => e.stopPropagation()}>
+                        <div className="px-3.5 py-2.5 sm:px-5 sm:py-3.5 border-b border-gray-200/60 dark:border-white/10 flex justify-between items-center gap-2 shrink-0 bg-gray-50/70 dark:bg-dark-900/40">
+                            <h3 className="font-bold text-sm sm:text-base text-gray-900 dark:text-gray-100 truncate pr-2">{title}</h3>
+                            <button type="button" onClick={onClose} className="w-7 h-7 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-rose-500 hover:text-white rounded-lg transition-colors shrink-0">
+                                <Icon name="x" className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                            </button>
                         </div>
-                        <div className={`overflow-y-auto overscroll-y-contain flex-1 w-full ${compact ? 'p-3 sm:p-4' : (fullWidthContent ? 'p-2 md:p-6' : 'p-4 md:p-6')}`} style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
-                            <div className={compact ? 'w-full' : 'w-full max-w-3xl mx-auto pb-4'}>
+                        <div className={`overflow-y-auto overflow-x-hidden overscroll-y-contain flex-1 w-full max-w-full ${compact ? 'p-3 sm:p-4' : (fullWidthContent ? 'p-2.5 sm:p-5' : 'p-3.5 sm:p-5')}`} style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
+                            <div className={compact ? 'w-full min-w-0 max-w-full' : 'w-full min-w-0 max-w-3xl mx-auto pb-2'}>
                                 {children}
                             </div>
                         </div>
                         {actions && (
-                            <div className="p-4 bg-gray-50/50 dark:bg-dark-900/30 border-t border-gray-200/50 dark:border-white/5 flex justify-end gap-3 shrink-0 flex-nowrap overflow-x-auto hide-scrollbar">
+                            <div className="px-3.5 py-2.5 sm:px-5 sm:py-3 bg-gray-50/70 dark:bg-dark-900/40 border-t border-gray-200/60 dark:border-white/10 flex justify-end gap-2 shrink-0 flex-wrap">
                                 {actions}
                             </div>
                         )}
@@ -5994,8 +5999,16 @@
 
             const handleEdit = (record) => {
                 if (typeof window.playSound === 'function') window.playSound('click');
-                const recDate = moment(parseCustomDate(record.Timestamp || new Date())).format('YYYY-MM-DD');
+                const recDate = toSafeYMD(record.Timestamp) || moment().format('YYYY-MM-DD');
                 const isSingleInstRow = Number(record.installmentNo) > 0 || record.sourceSheet === 'Incomes';
+                const pId = String(record.parentId || record.id || '').trim();
+                const existingInsts = (!isSingleInstRow && pId)
+                    ? (orders || [])
+                        .filter(o => String(o.parentId || '').trim() === pId && Number(o.installmentNo) > 0)
+                        .sort((a, b) => (Number(a.installmentNo) || 0) - (Number(b.installmentNo) || 0))
+                        .map(o => ({ amount: o.Paid || '', date: toSafeYMD(o.Timestamp) || recDate, method: o.PaymentMethod || 'Cash' }))
+                    : [];
+
                 setFormData({
                     id: record.id,
                     name: record.name,
@@ -6011,7 +6024,7 @@
                     date: recDate,
                     sourceSheet: record.sourceSheet || '',
                     isSingleInstRow: isSingleInstRow,
-                    installments: [{ amount: record.paid || '', date: recDate, method: record.method || 'Cash' }]
+                    installments: existingInsts.length > 0 ? existingInsts : [{ amount: record.paid || '', date: recDate, method: record.method || 'Cash' }]
                 });
                 setShowAddModal(true);
             };
@@ -6231,8 +6244,8 @@
                                                     <button onClick={() => handleCopy(r)} className="p-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:text-green-500 rounded transition-colors border border-gray-200/50 dark:border-white/5" title="Copy"><Icon name="copy" className="w-4 h-4" /></button>
                                                     {canManageFinance && (
                                                         <>
-                                                            {r.due > 0 && !r.isFinanceIncome && (
-                                                                <button onClick={() => openInstallmentModal(r)} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded transition-colors flex items-center gap-1 whitespace-nowrap win-button" title="নতুন কিস্তি যুক্ত করুন">
+                                                            {!r.isFinanceIncome && (
+                                                                <button onClick={() => openInstallmentModal(r)} className={`px-2 py-1 text-[10px] font-bold rounded transition-colors flex items-center gap-1 whitespace-nowrap win-button ${r.due > 0 ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-blue-500/10 hover:bg-[#005fb8] text-[#005fb8] hover:text-white dark:text-[#60cdff]'}`} title="নতুন কিস্তি যুক্ত করুন">
                                                                     <Icon name="plus" className="w-3 h-3" /> কিস্তি
                                                                 </button>
                                                             )}
@@ -6965,121 +6978,144 @@ const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrder
                 </div>
             </div>
 
-            {/* Add/Edit Form Modal */}
-            <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title={formData.id ? "Edit Client Data" : "Add New Client Data"} fullWidthContent={true}>
-                <form onSubmit={handleSave} className="space-y-4 px-2 py-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Client Name *</label>
-                            {typeof AutocompleteInput !== 'undefined' ? (
-                                <AutocompleteInput 
-                                    value={formData.name} 
-                                    onChange={e=>setFormData({...formData, name: e.target.value})} 
-                                    onSelect={(c) => setFormData({...formData, name: c.name, phone: c.phone || formData.phone, email: c.email || formData.email})} 
-                                    placeholder="Type name to search..." 
-                                    contacts={globalContacts} 
-                                    required={true} 
-                                />
-                            ) : (
-                                <input type="text" required value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-semibold focus:ring-[#005fb8]" placeholder="Client Full Name" />
-                            )}
+           {/* 🟢 Responsive Sectioned Client Lead Add/Edit Modal */}
+            <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title={formData.id ? "Edit Client Lead" : "Add New Client Lead"} maxWidth="max-w-2xl" compact={true}>
+                <form onSubmit={handleSave} className="space-y-3.5 w-full min-w-0">
+                    {/* Section 1: Client & Contact Info */}
+                    <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5 min-w-0">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">
+                            <Icon name="user" className="w-3.5 h-3.5 shrink-0" />
+                            <span>Client &amp; Contact Information</span>
                         </div>
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Company Background / Info</label>
-                            <input type="text" value={formData.info} onChange={e=>setFormData({...formData, info: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm focus:ring-[#005fb8]" placeholder="e.g. Real Estate Agency" />
-                        </div>
-                        
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">WhatsApp / Phone *</label>
-                            {auth?.role === 'Admin' || !formData.id ? (
-                                <input type="text" required value={formData.phone} onChange={e=>setFormData({...formData, phone: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-mono-code font-bold focus:ring-[#005fb8]" placeholder="e.g. 01700000000" />
-                            ) : (
-                                <input type="text" disabled value="Not Provided" className="w-full input-style px-3 py-2.5 text-sm font-mono-code font-bold bg-gray-100 dark:bg-dark-800 text-gray-400 cursor-not-allowed border border-transparent shadow-none" />
-                            )}
-                        </div>
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Email</label>
-                            {auth?.role === 'Admin' || !formData.id ? (
-                                <input type="email" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm focus:ring-[#005fb8]" placeholder="e.g. client@gmail.com" />
-                            ) : (
-                                <input type="text" disabled value="Not Provided" className="w-full input-style px-3 py-2.5 text-sm bg-gray-100 dark:bg-dark-800 text-gray-400 cursor-not-allowed border border-transparent shadow-none" />
-                            )}
-                        </div>
-                        
-                        <div className="md:col-span-2">
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Interested Services (Select multiple)</label>
-                            <div className="flex flex-wrap gap-2 p-2 bg-gray-50 dark:bg-dark-900/30 rounded-xl border border-gray-200/50 dark:border-white/5">
-                                {uniqueServices.length === 0 && <span className="text-xs text-gray-400 px-2 py-1">No services found. Type below.</span>}
-                                {uniqueServices.map(c => {
-                                    const isSelected = formData.interestedIn && formData.interestedIn.includes(c);
-                                    return (
-                                        <label key={c} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors ${isSelected ? 'bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900/40 dark:border-blue-700 dark:text-blue-300' : 'bg-white border-gray-200 text-gray-600 dark:bg-dark-800 dark:border-dark-600 dark:text-gray-400'}`}>
-                                            <input 
-                                                type="checkbox" 
-                                                className="w-3.5 h-3.5 accent-[#005fb8]" 
-                                                checked={isSelected}
-                                                onChange={(e) => {
-                                                    let selected = formData.interestedIn ? formData.interestedIn.split(', ') : [];
-                                                    if (e.target.checked) selected.push(c);
-                                                    else selected = selected.filter(item => item !== c);
-                                                    setFormData({...formData, interestedIn: selected.join(', ')});
-                                                }} 
-                                            />
-                                            {c}
-                                        </label>
-                                    );
-                                })}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 min-w-0">
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Client Name *</label>
+                                {typeof AutocompleteInput !== 'undefined' ? (
+                                    <AutocompleteInput
+                                        value={formData.name}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        onSelect={(c) => setFormData({ ...formData, name: c.name, phone: c.phone || formData.phone, email: c.email || formData.email })}
+                                        placeholder="Client full name..."
+                                        contacts={globalContacts}
+                                        required={true}
+                                    />
+                                ) : (
+                                    <input type="text" required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm font-semibold" placeholder="Client Full Name" />
+                                )}
+                            </div>
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Company / Background</label>
+                                <input type="text" value={formData.info} onChange={e => setFormData({ ...formData, info: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm" placeholder="e.g. E-commerce / Agency" />
+                            </div>
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">WhatsApp / Phone *</label>
+                                {auth?.role === 'Admin' || !formData.id ? (
+                                    <input type="tel" required value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm font-mono-code font-bold" placeholder="017XXXXXXXX" />
+                                ) : (
+                                    <input type="text" disabled value="Not Provided" className="w-full min-w-0 input-style px-3 py-2 text-sm bg-gray-100 dark:bg-dark-800 text-gray-400 cursor-not-allowed" />
+                                )}
+                            </div>
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Email</label>
+                                {auth?.role === 'Admin' || !formData.id ? (
+                                    <input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm" placeholder="client@gmail.com" />
+                                ) : (
+                                    <input type="text" disabled value="Not Provided" className="w-full min-w-0 input-style px-3 py-2 text-sm bg-gray-100 dark:bg-dark-800 text-gray-400 cursor-not-allowed" />
+                                )}
                             </div>
                         </div>
+                    </div>
 
-                        <div className="md:col-span-2">
-                            <InstallmentPaymentBox
-                                total={formData.amount}
-                                onTotalChange={v => setFormData({ ...formData, amount: v })}
-                                installments={formData.installments}
-                                onInstallmentsChange={list => {
-                                    const paidSum = list.reduce((s, it) => s + (Number(it.amount) || 0), 0);
-                                    setFormData({ ...formData, installments: list, paid: paidSum });
-                                }}
-                                totalLabel="Total Deal / Budget (৳)"
-                                defaultDate={formData.startDate}
-                            />
+                    {/* Section 2: Interested Services */}
+                    <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2 min-w-0">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                            <Icon name="briefcase" className="w-3.5 h-3.5 shrink-0" />
+                            <span>Interested Services</span>
                         </div>
-                        
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Status</label>
-                            <select value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-semibold focus:ring-[#005fb8]">
-                                <option value="Active">Active (কাজ চলছে)</option>
-                                <option value="Completed">Completed (কাজ শেষ)</option>
-                                <option value="Following">Following Up</option>
-                                <option value="Interested">Interested</option>
-                                <option value="Pending">Pending / Just Asked</option>
-                                <option value="Dropped">Dropped (বাতিল)</option>
-                                <option value="Not Interested">Not Interested</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Contacted?</label>
-                            <select value={formData.contacted} onChange={e=>setFormData({...formData, contacted: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-semibold focus:ring-[#005fb8]">
-                                <option value="Yes">Yes</option>
-                                <option value="No">No</option>
-                            </select>
-                        </div>
-
-                        <div><label className="block text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] uppercase tracking-widest mb-1.5">Action / Start Date</label><input type="date" value={formData.startDate} onChange={e=>setFormData({...formData, startDate: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm focus:ring-[#005fb8] dark:[color-scheme:dark]" /></div>
-                        <div><label className="block text-[11px] font-bold text-orange-500 dark:text-orange-400 uppercase tracking-widest mb-1.5">Next Follow-up (Date & Time)</label><input type="datetime-local" value={formData.nextContact} onChange={e=>setFormData({...formData, nextContact: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm focus:ring-[#005fb8] dark:[color-scheme:dark]" /></div>
-                        
-                        <div className="md:col-span-2">
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Details / Note</label>
-                            <textarea rows="2" value={formData.desc} onChange={e=>setFormData({...formData, desc: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm resize-none focus:ring-[#005fb8]" placeholder="Add specific notes about this client..."></textarea>
+                        <div className="flex flex-wrap gap-1.5">
+                            {uniqueServices.length === 0 && <span className="text-xs text-gray-400">No services found.</span>}
+                            {uniqueServices.map(c => {
+                                const isSelected = formData.interestedIn && formData.interestedIn.includes(c);
+                                return (
+                                    <label key={c} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors ${isSelected ? 'bg-blue-500/15 border-blue-400 text-[#005fb8] dark:text-[#60cdff]' : 'bg-white dark:bg-dark-800 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300'}`}>
+                                        <input
+                                            type="checkbox"
+                                            className="w-3.5 h-3.5 accent-[#005fb8]"
+                                            checked={isSelected}
+                                            onChange={(e) => {
+                                                let selected = formData.interestedIn ? formData.interestedIn.split(', ').filter(Boolean) : [];
+                                                if (e.target.checked) selected.push(c);
+                                                else selected = selected.filter(item => item !== c);
+                                                setFormData({ ...formData, interestedIn: selected.join(', ') });
+                                            }}
+                                        />
+                                        <span>{c}</span>
+                                    </label>
+                                );
+                            })}
                         </div>
                     </div>
-                    <div className="flex justify-end pt-5 border-t border-gray-200/50 dark:border-white/10 mt-6 gap-3">
-                        <button type="button" onClick={() => { playSound('cancel'); setShowAddModal(false); }} className="px-6 py-2.5 text-gray-600 dark:text-gray-300 font-bold hover:bg-gray-100 dark:bg-dark-800 rounded-xl transition-colors win-button">Cancel</button>
-                        <button type="submit" disabled={isSaving} className="bg-[#005fb8] hover:bg-[#004a94] text-white px-8 py-2.5 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2 text-sm transition-colors win-button w-full sm:w-auto disabled:opacity-50">
-                            {isSaving ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="save" className="w-4 h-4" />} 
-                            {isSaving ? 'Saving...' : 'Save Data'}
+
+                    {/* Section 3: Payment & Installments */}
+                    <InstallmentPaymentBox
+                        total={formData.amount}
+                        onTotalChange={v => setFormData({ ...formData, amount: v })}
+                        installments={formData.installments}
+                        onInstallmentsChange={list => {
+                            const paidSum = list.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+                            setFormData({ ...formData, installments: list, paid: paidSum });
+                        }}
+                        totalLabel="Total Deal / Budget (৳)"
+                        defaultDate={formData.startDate}
+                    />
+
+                    {/* Section 4: Status, Follow-up Timeline & Notes */}
+                    <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5 min-w-0">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                            <Icon name="calendar" className="w-3.5 h-3.5 shrink-0" />
+                            <span>Status, Timeline &amp; Notes</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 min-w-0">
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Status</label>
+                                <select value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm font-semibold">
+                                    <option value="Active">Active (কাজ চলছে)</option>
+                                    <option value="Completed">Completed (কাজ শেষ)</option>
+                                    <option value="Following">Following Up</option>
+                                    <option value="Interested">Interested</option>
+                                    <option value="Pending">Pending / Just Asked</option>
+                                    <option value="Dropped">Dropped (বাতিল)</option>
+                                    <option value="Not Interested">Not Interested</option>
+                                </select>
+                            </div>
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Contacted?</label>
+                                <select value={formData.contacted} onChange={e => setFormData({ ...formData, contacted: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm font-semibold">
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                </select>
+                            </div>
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-[#005fb8] dark:text-[#60cdff] uppercase tracking-wider mb-1">Action / Start Date</label>
+                                <input type="date" value={formData.startDate || ''} onChange={e => setFormData({ ...formData, startDate: e.target.value })} className="w-full min-w-0 max-w-full input-style px-3 py-2 text-sm dark:[color-scheme:dark]" />
+                            </div>
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Next Follow-up</label>
+                                <input type="datetime-local" value={formData.nextContact || ''} onChange={e => setFormData({ ...formData, nextContact: e.target.value })} className="w-full min-w-0 max-w-full input-style px-3 py-2 text-sm dark:[color-scheme:dark]" />
+                            </div>
+                            <div className="sm:col-span-2 min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Details / Note</label>
+                                <textarea rows="2" value={formData.desc} onChange={e => setFormData({ ...formData, desc: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm resize-none" placeholder="Add specific notes about this client..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Responsive Footer Buttons */}
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                        <button type="button" onClick={() => { playSound('cancel'); setShowAddModal(false); }} className="w-full sm:w-auto px-5 py-2.5 bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 font-bold text-xs sm:text-sm rounded-xl win-button">Cancel</button>
+                        <button type="submit" disabled={isSaving} className="w-full sm:w-auto bg-[#005fb8] hover:bg-[#004a94] text-white px-7 py-2.5 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2 text-xs sm:text-sm win-button disabled:opacity-50">
+                            {isSaving ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="save" className="w-4 h-4" />}
+                            <span>{isSaving ? 'Saving...' : 'Save Client'}</span>
                         </button>
                     </div>
                 </form>
@@ -10208,23 +10244,7 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, orders = [], fetchOrders
                 addToast(data.message, "success");
 
                 if (leadDataToSave.status === 'Admitted') {
-                    const existingStudent = studentsPanel.find(s => s.phone === leadDataToSave.phone || s.name === leadDataToSave.name);
-                    const stData = {
-                        id: existingStudent ? existingStudent.id : `STU-${Math.floor(1000 + Math.random() * 9000)}`,
-                        name: leadDataToSave.name,
-                        phone: leadDataToSave.phone,
-                        email: leadDataToSave.email,
-                        course: leadDataToSave.interestedIn,
-                        durationMonths: leadDataToSave.duration || 3,
-                        startDate: leadDataToSave.admissionDate || moment().format('YYYY-MM-DD'),
-                        attendance: existingStudent ? existingStudent.attendance : [],
-                        skillProgress: existingStudent ? existingStudent.skillProgress : 0,
-                        recentReview: existingStudent ? existingStudent.recentReview : '',
-                        status: existingStudent ? existingStudent.status : 'Active',
-                        isNew: !existingStudent
-                    };
-                    await executeAPI({ action: 'save_student_panel', student: stData });
-                    addToast("Auto-synced to Student Panel!", "success");
+                    addToast("Student Panel-এ অটো-সিঙ্ক হয়েছে!", "success");
                 }
 
                 fetchOrders(true);
@@ -10250,15 +10270,16 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, orders = [], fetchOrders
                 date: moment(parseCustomDate(o.Timestamp)).format('YYYY-MM-DD'),
                 method: o.PaymentMethod || 'Cash'
             }));
+        const safeAdmYMD = toSafeYMD(lead.admissionDate) || toSafeYMD(lead.startDate) || toSafeYMD(lead.timestamp) || moment().format('YYYY-MM-DD');
         const fallbackInsts = existingInsts.length > 0
             ? existingInsts
-            : [{ amount: Number(lead.paid) > 0 ? lead.paid : '', date: lead.admissionDate ? moment(parseCustomDate(lead.admissionDate)).format('YYYY-MM-DD') : moment().format('YYYY-MM-DD'), method: 'Cash' }];
+            : [{ amount: Number(lead.paid) > 0 ? lead.paid : '', date: safeAdmYMD, method: 'Cash' }];
 
         setFormData({
             ...lead,
             amount: totalAmount || '',
             paid: lead.paid || '',
-            admissionDate: lead.admissionDate ? moment(parseCustomDate(lead.admissionDate)).format('YYYY-MM-DD') : moment().format('YYYY-MM-DD'),
+            admissionDate: safeAdmYMD,
             duration: lead.duration || 3,
             installments: fallbackInsts
         });
@@ -10587,14 +10608,15 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, orders = [], fetchOrders
                                         {/* 6. Timeline / Action Date */}
                                         <td className="px-4 py-3 align-middle w-[140px] max-w-[160px]">
                                             <div className="w-full min-w-0">
-                                                {lead.status === 'Admitted' && lead.admissionDate ? (
+                                                {['Admitted', 'Active', 'Completed'].includes(lead.status) && toSafeYMD(lead.admissionDate) ? (
                                                     (() => {
-                                                        const expireDate = moment(lead.admissionDate).add(lead.duration || 3, 'months');
+                                                        const cleanAdm = toSafeYMD(lead.admissionDate);
+                                                        const expireDate = moment(cleanAdm, 'YYYY-MM-DD').add(Number(lead.duration) || 3, 'months');
                                                         const daysLeft = expireDate.diff(moment(), 'days');
                                                         const isExpired = daysLeft < 0;
                                                         return (
                                                             <div className="flex flex-col gap-1">
-                                                                <p className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 truncate w-full flex items-center gap-1.5"><Icon name="calendar-check" className="w-3 h-3 inline text-blue-500 shrink-0"/>{moment(lead.admissionDate).format('DD MMM YYYY')}</p>
+                                                                <p className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 truncate w-full flex items-center gap-1.5"><Icon name="calendar-check" className="w-3 h-3 inline text-blue-500 shrink-0"/>{moment(cleanAdm, 'YYYY-MM-DD').format('DD MMM YYYY')}</p>
                                                                 <p className={`text-[10px] font-bold truncate w-full flex items-center gap-1.5 ${isExpired ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                                                     <Icon name={isExpired ? "alert-circle" : "clock"} className="w-3 h-3 shrink-0"/>
                                                                     {isExpired ? 'Expired' : `${daysLeft} Days Left`}
@@ -10694,119 +10716,139 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, orders = [], fetchOrders
                 </div>
             </div>
 
-            {/* Add/Edit Form Modal */}
-            <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title={formData.id ? "Edit Student Lead" : "Add New Student Lead"} fullWidthContent={true}>
-                <form onSubmit={handleSave} className="space-y-4 px-2 py-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Student Name *</label>
-                            {typeof AutocompleteInput !== 'undefined' ? (
-                                <AutocompleteInput 
-                                    value={formData.name} 
-                                    onChange={e=>setFormData({...formData, name: e.target.value})} 
-                                    onSelect={(c) => setFormData({...formData, name: c.name, phone: c.phone || formData.phone, email: c.email || formData.email})} 
-                                    placeholder="e.g. Rakibul Islam (Type to search)" 
-                                    contacts={globalContacts} 
-                                    required={true} 
-                                />
-                            ) : (
-                                <input type="text" required value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-semibold focus:ring-[#005fb8]" placeholder="Student Full Name" />
-                            )}
+            {/* 🟢 Responsive Sectioned Student Lead Add/Edit Modal */}
+            <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title={formData.id ? "Edit Student Lead" : "Add New Student Lead"} maxWidth="max-w-2xl" compact={true}>
+                <form onSubmit={handleSave} className="space-y-3.5 w-full min-w-0">
+                    {/* Section 1: Student Identity & Contact */}
+                    <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5 min-w-0">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">
+                            <Icon name="graduation-cap" className="w-3.5 h-3.5 shrink-0" />
+                            <span>Student &amp; Contact Information</span>
                         </div>
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Background / Info</label>
-                            <input type="text" value={formData.info} onChange={e=>setFormData({...formData, info: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm focus:ring-[#005fb8]" placeholder="e.g. HSC Candidate" />
-                        </div>
-                        
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">WhatsApp / Phone *</label>
-                            <input type="text" required value={formData.phone} onChange={e=>setFormData({...formData, phone: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-mono-code font-bold focus:ring-[#005fb8]" placeholder="e.g. 01700000000" />
-                        </div>
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Email</label>
-                            <input type="email" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm focus:ring-[#005fb8]" placeholder="e.g. student@gmail.com" />
-                        </div>
-                        
-                        <div className="md:col-span-2">
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Interested / Admitted Courses (Select multiple)</label>
-                            <div className="flex flex-wrap gap-2 p-2 bg-gray-50 dark:bg-dark-900/30 rounded-xl border border-gray-200/50 dark:border-white/5">
-                                {globalCourseList.map(c => {
-                                    const isSelected = formData.interestedIn && formData.interestedIn.includes(c);
-                                    return (
-                                        <label key={c} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors ${isSelected ? 'bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900/40 dark:border-blue-700 dark:text-blue-300' : 'bg-white border-gray-200 text-gray-600 dark:bg-dark-800 dark:border-dark-600 dark:text-gray-400'}`}>
-                                            <input 
-                                                type="checkbox" 
-                                                className="w-3.5 h-3.5 accent-[#005fb8]" 
-                                                checked={isSelected}
-                                                onChange={(e) => {
-                                                    let selected = formData.interestedIn ? formData.interestedIn.split(', ') : [];
-                                                    if (e.target.checked) selected.push(c);
-                                                    else selected = selected.filter(item => item !== c);
-                                                    setFormData({...formData, interestedIn: selected.join(', ')});
-                                                }} 
-                                            />
-                                            {c}
-                                        </label>
-                                    );
-                                })}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 min-w-0">
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Student Name *</label>
+                                {typeof AutocompleteInput !== 'undefined' ? (
+                                    <AutocompleteInput
+                                        value={formData.name}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        onSelect={(c) => setFormData({ ...formData, name: c.name, phone: c.phone || formData.phone, email: c.email || formData.email })}
+                                        placeholder="Student full name..."
+                                        contacts={globalContacts}
+                                        required={true}
+                                    />
+                                ) : (
+                                    <input type="text" required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm font-semibold" placeholder="Student Full Name" />
+                                )}
                             </div>
-                        </div>
-
-                       <div className="md:col-span-2">
-                            <InstallmentPaymentBox
-                                total={formData.amount}
-                                onTotalChange={v => setFormData({ ...formData, amount: v })}
-                                installments={formData.installments}
-                                onInstallmentsChange={list => {
-                                    const paidSum = list.reduce((s, it) => s + (Number(it.amount) || 0), 0);
-                                    setFormData({ ...formData, installments: list, paid: paidSum });
-                                }}
-                                totalLabel="Total Course Fee (৳)"
-                                defaultDate={formData.admissionDate}
-                            />
-                        </div>
-                        
-                        <div>
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Status</label>
-                            <select value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-semibold focus:ring-[#005fb8]">
-                                <option value="Admitted">Admitted</option>
-                                <option value="Following">Following</option>
-                                <option value="Interested">Interested</option>
-                                <option value="Pending">Pending / Just Asked</option>
-                                <option value="Completed">Completed (কোর্স শেষ)</option>
-                                <option value="Dropped">Dropped (ড্রপ আউট)</option>
-                                <option value="Not Interested">Not Interested</option>
-                            </select>
-                        </div>
-
-                        {formData.status === 'Admitted' || formData.status === 'Completed' ? (
-                            <div className="grid grid-cols-2 gap-3 col-span-1">
-                                <div>
-                                    <label className="block text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest mb-1.5">Admission Date</label>
-                                    <input type="date" value={formData.admissionDate} onChange={e=>setFormData({...formData, admissionDate: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm focus:ring-[#005fb8] dark:[color-scheme:dark]" />
-                                </div>
-                                <div>
-                                    <label className="block text-[11px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest mb-1.5">Duration (Months)</label>
-                                    <input type="number" min="1" value={formData.duration} onChange={e=>setFormData({...formData, duration: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-bold focus:ring-[#005fb8] font-numbers" />
-                                </div>
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Background / Info</label>
+                                <input type="text" value={formData.info} onChange={e => setFormData({ ...formData, info: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm" placeholder="e.g. HSC / Honours" />
                             </div>
-                        ) : (
-                            <div>
-                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Next Action / Follow-up</label>
-                                <input type="datetime-local" value={formData.nextContact} onChange={e=>setFormData({...formData, nextContact: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm focus:ring-[#005fb8] dark:[color-scheme:dark]" />
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">WhatsApp / Phone *</label>
+                                <input type="tel" required value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm font-mono-code font-bold" placeholder="017XXXXXXXX" />
                             </div>
-                        )}
-                        
-                        <div className="md:col-span-2">
-                            <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Details / Note</label>
-                            <textarea rows="2" value={formData.desc} onChange={e=>setFormData({...formData, desc: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm resize-none focus:ring-[#005fb8]" placeholder="Add specific notes about this student..."></textarea>
+                            <div className="min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Email</label>
+                                <input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm" placeholder="student@gmail.com" />
+                            </div>
                         </div>
                     </div>
-                    <div className="flex justify-end pt-5 border-t border-gray-200/50 dark:border-white/10 mt-6 gap-3">
-                        <button type="button" onClick={() => { playSound('cancel'); setShowAddModal(false); }} className="px-6 py-2.5 text-gray-600 dark:text-gray-300 font-bold hover:bg-gray-100 dark:hover:bg-dark-800 rounded-xl transition-colors win-button">Cancel</button>
-                        <button type="submit" disabled={isSaving} className="bg-[#005fb8] hover:bg-[#004a94] text-white px-8 py-2.5 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2 text-sm transition-colors win-button w-full sm:w-auto disabled:opacity-50">
-                            {isSaving ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="save" className="w-4 h-4" />} 
-                            {isSaving ? 'Saving...' : 'Save Data'}
+
+                    {/* Section 2: Courses Selection */}
+                    <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2 min-w-0">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                            <Icon name="book-open" className="w-3.5 h-3.5 shrink-0" />
+                            <span>Interested / Admitted Courses</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {globalCourseList.map(c => {
+                                const isSelected = formData.interestedIn && formData.interestedIn.includes(c);
+                                return (
+                                    <label key={c} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors ${isSelected ? 'bg-blue-500/15 border-blue-400 text-[#005fb8] dark:text-[#60cdff]' : 'bg-white dark:bg-dark-800 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300'}`}>
+                                        <input
+                                            type="checkbox"
+                                            className="w-3.5 h-3.5 accent-[#005fb8]"
+                                            checked={isSelected}
+                                            onChange={(e) => {
+                                                let selected = formData.interestedIn ? formData.interestedIn.split(', ').filter(Boolean) : [];
+                                                if (e.target.checked) selected.push(c);
+                                                else selected = selected.filter(item => item !== c);
+                                                setFormData({ ...formData, interestedIn: selected.join(', ') });
+                                            }}
+                                        />
+                                        <span>{c}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Section 3: Course Fee & Installments */}
+                    <InstallmentPaymentBox
+                        total={formData.amount}
+                        onTotalChange={v => setFormData({ ...formData, amount: v })}
+                        installments={formData.installments}
+                        onInstallmentsChange={list => {
+                            const paidSum = list.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+                            setFormData({ ...formData, installments: list, paid: paidSum });
+                        }}
+                        totalLabel="Total Course Fee (৳)"
+                        defaultDate={formData.admissionDate}
+                    />
+
+                    {/* Section 4: Admission Status, Date & Notes */}
+                    <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5 min-w-0">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                            <Icon name="calendar-check" className="w-3.5 h-3.5 shrink-0" />
+                            <span>Status, Timeline &amp; Notes</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 min-w-0">
+                            <div className="min-w-0 sm:col-span-2">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Status</label>
+                                <select value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm font-semibold">
+                                    <option value="Admitted">Admitted</option>
+                                    <option value="Following">Following</option>
+                                    <option value="Interested">Interested</option>
+                                    <option value="Pending">Pending / Just Asked</option>
+                                    <option value="Completed">Completed (কোর্স শেষ)</option>
+                                    <option value="Dropped">Dropped (ড্রপ আউট)</option>
+                                    <option value="Not Interested">Not Interested</option>
+                                </select>
+                            </div>
+
+                            {['Admitted', 'Active', 'Completed'].includes(formData.status) ? (
+                                <>
+                                    <div className="min-w-0">
+                                        <label className="block text-[10px] font-bold text-[#005fb8] dark:text-[#60cdff] uppercase tracking-wider mb-1">Admission Date</label>
+                                        <input type="date" value={formData.admissionDate || ''} onChange={e => setFormData({ ...formData, admissionDate: e.target.value })} className="w-full min-w-0 max-w-full input-style px-3 py-2 text-sm dark:[color-scheme:dark]" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <label className="block text-[10px] font-bold text-[#005fb8] dark:text-[#60cdff] uppercase tracking-wider mb-1">Duration (Months)</label>
+                                        <input type="number" min="1" value={formData.duration} onChange={e => setFormData({ ...formData, duration: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm font-bold font-numbers" />
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="min-w-0 sm:col-span-2">
+                                    <label className="block text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">Next Follow-up (Date &amp; Time)</label>
+                                    <input type="datetime-local" value={formData.nextContact || ''} onChange={e => setFormData({ ...formData, nextContact: e.target.value })} className="w-full min-w-0 max-w-full input-style px-3 py-2 text-sm dark:[color-scheme:dark]" />
+                                </div>
+                            )}
+
+                            <div className="sm:col-span-2 min-w-0">
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Details / Note</label>
+                                <textarea rows="2" value={formData.desc} onChange={e => setFormData({ ...formData, desc: e.target.value })} className="w-full min-w-0 input-style px-3 py-2 text-sm resize-none" placeholder="Add specific notes about this student..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Responsive Footer Buttons */}
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                        <button type="button" onClick={() => { playSound('cancel'); setShowAddModal(false); }} className="w-full sm:w-auto px-5 py-2.5 bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 font-bold text-xs sm:text-sm rounded-xl win-button">Cancel</button>
+                        <button type="submit" disabled={isSaving} className="w-full sm:w-auto bg-[#005fb8] hover:bg-[#004a94] text-white px-7 py-2.5 rounded-xl font-bold shadow-sm flex items-center justify-center gap-2 text-xs sm:text-sm win-button disabled:opacity-50">
+                            {isSaving ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="save" className="w-4 h-4" />}
+                            <span>{isSaving ? 'Saving...' : 'Save Student'}</span>
                         </button>
                     </div>
                 </form>
@@ -11624,7 +11666,11 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, orders = [], fetchOrders
 
             const editStudent = (student) => {
                 playSound('click');
-                setFormData({ ...student });
+                setFormData({
+                    ...student,
+                    startDate: toSafeYMD(student.startDate) || moment().format('YYYY-MM-DD'),
+                    durationMonths: Number(student.durationMonths) || 3
+                });
                 setShowAddModal(true);
             };
 
@@ -12866,34 +12912,148 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, orders = [], fetchOrders
                         </form>
                     </Modal>
 
-                    {/* 🟢 Compact Narrow Assignment Details & Submission Modal (Students & Admins) */}
+                    {/* 🟢 Responsive Student-Friendly Assignment Details & Step-by-Step Submission Modal */}
                     <Modal isOpen={!!activeAsnDetail} onClose={() => setActiveAsnDetail(null)} title="Assignment Details" maxWidth="max-w-2xl" compact={true}>
-                        {activeAsnDetail && (
-                            <div className="flex flex-col gap-3">
-                                <div className="space-y-2.5">
-                                    <div className="flex items-center gap-2">
-                                        <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase">Task {activeAsnDetail.serial}</span>
-                                        <span className="text-[10px] font-bold bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 px-2 py-0.5 rounded">Marks: {activeAsnDetail.totalMarks || 100}</span>
-                                    </div>
-                                    <h2 className="font-bold text-lg sm:text-xl text-gray-900 dark:text-white leading-snug">{activeAsnDetail.title}</h2>
-                                    
-                                    <div className="bg-gray-50 dark:bg-dark-900/40 p-3 rounded-lg border border-gray-200/60 dark:border-white/5 max-h-[45vh] overflow-y-auto hide-scrollbar">
-                                        <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 border-b border-gray-200/80 dark:border-white/10 pb-1">Instructions</h4>
-                                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">{activeAsnDetail.description}</p>
-                                    </div>
-                                </div>
+                        {activeAsnDetail && (() => {
+                            const existingSub = myAssignments.find(a =>
+                                String(a.taskTitle || '').trim().toLowerCase() === String(activeAsnDetail.title || '').trim().toLowerCase() &&
+                                String(a.studentId || '').trim().toLowerCase() === String(auth?.userId || '').trim().toLowerCase()
+                            );
+                            const maxMarks = activeAsnDetail.totalMarks || 100;
 
-                                <div className="border-t border-gray-200/60 dark:border-white/10 pt-3">
-                                    <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Submit Your Work</h4>
-                                    <form onSubmit={(e) => handleSubmit(e, true, activeAsnDetail.title)} className="flex flex-col sm:flex-row gap-2">
-                                        <input type="url" required value={form.link} onChange={e=>setForm({...form, link: e.target.value})} className="flex-1 input-style px-3 py-2 text-sm font-mono-code focus:ring-[#005fb8]" placeholder="Paste Google Drive / GitHub / Doc link here..." />
-                                        <button type="submit" disabled={isProcessing} className="bg-[#005fb8] hover:bg-[#004a94] text-white px-5 py-2 rounded-lg text-sm font-bold transition-colors win-button disabled:opacity-50 shrink-0 flex items-center justify-center gap-1.5">
-                                            {isProcessing ? <Icon name="loader" className="w-4 h-4 animate-spin"/> : <Icon name="send" className="w-4 h-4"/>} Submit
-                                        </button>
-                                    </form>
+                            return (
+                                <div className="flex flex-col gap-3.5">
+                                    {/* Top Header Card */}
+                                    <div className="p-3.5 rounded-2xl bg-blue-500/[0.07] dark:bg-blue-500/[0.11] border border-blue-200/70 dark:border-blue-500/25 space-y-2">
+                                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="px-2 py-0.5 rounded-md bg-[#005fb8] text-white text-[10px] font-bold uppercase tracking-wider">
+                                                    Task #{activeAsnDetail.serial}
+                                                </span>
+                                                <span className="px-2 py-0.5 rounded-md bg-white/80 dark:bg-dark-800 text-gray-700 dark:text-gray-200 text-[10px] font-bold border border-gray-200/70 dark:border-white/10">
+                                                    {activeAsnDetail.course}
+                                                </span>
+                                                <span className="px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-700 dark:text-purple-300 text-[10px] font-numbers font-bold">
+                                                    Marks: {maxMarks}
+                                                </span>
+                                            </div>
+                                            {existingSub && (
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${
+                                                    existingSub.status === 'Graded'
+                                                        ? 'bg-emerald-600 text-white'
+                                                        : existingSub.status === 'Resubmit'
+                                                            ? 'bg-rose-600 text-white'
+                                                            : 'bg-amber-500 text-white'
+                                                }`}>
+                                                    {existingSub.status === 'Graded' ? `Graded: ${existingSub.mark}/${maxMarks}` : existingSub.status}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <h2 className="font-bold text-base sm:text-lg text-gray-900 dark:text-white leading-snug break-words">
+                                            {activeAsnDetail.title}
+                                        </h2>
+                                    </div>
+
+                                    {/* Existing Submission Status Banner (If already submitted) */}
+                                    {existingSub && (
+                                        <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                                            existingSub.status === 'Graded'
+                                                ? 'bg-emerald-500/[0.08] border-emerald-300/60 dark:border-emerald-500/30'
+                                                : existingSub.status === 'Resubmit'
+                                                    ? 'bg-rose-500/[0.08] border-rose-300/60 dark:border-rose-500/30'
+                                                    : 'bg-amber-500/[0.08] border-amber-300/60 dark:border-amber-500/30'
+                                        }`}>
+                                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                <span className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                                                    <Icon name={existingSub.status === 'Graded' ? 'check-circle' : 'clock'} className="w-4 h-4 text-emerald-600 shrink-0" />
+                                                    আপনার জমা দেওয়া কাজ
+                                                </span>
+                                                <a href={existingSub.link} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline inline-flex items-center gap-1">
+                                                    <Icon name="external-link" className="w-3 h-3" /> Open Submitted Link
+                                                </a>
+                                            </div>
+                                            {existingSub.feedback && (
+                                                <p className="text-[11px] text-gray-700 dark:text-gray-300 bg-white/70 dark:bg-black/20 p-2 rounded-lg italic">
+                                                    <strong>Mentor Feedback:</strong> "{existingSub.feedback}"
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Clear Step-by-Step Task Instructions */}
+                                    <div className="rounded-2xl bg-gray-50/90 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 overflow-hidden">
+                                        <div className="px-3.5 py-2 border-b border-gray-200/70 dark:border-white/10 flex items-center justify-between gap-2 bg-white/60 dark:bg-white/[0.02]">
+                                            <span className="text-[11px] font-bold text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
+                                                <Icon name="clipboard-list" className="w-3.5 h-3.5 text-[#005fb8]" />
+                                                কী করতে হবে (Instructions)
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    playSound('click');
+                                                    if (navigator.clipboard) navigator.clipboard.writeText(`${activeAsnDetail.title}\n\n${activeAsnDetail.description || ''}`);
+                                                    addToast('Instructions copied!', 'success');
+                                                }}
+                                                className="text-[10px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline inline-flex items-center gap-1"
+                                            >
+                                                <Icon name="copy" className="w-3 h-3" /> Copy
+                                            </button>
+                                        </div>
+                                        <div className="p-3.5 max-h-[34vh] overflow-y-auto overscroll-y-contain text-[13px] sm:text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
+                                            {activeAsnDetail.description ? (
+                                                <LinkifyText text={activeAsnDetail.description} />
+                                            ) : (
+                                                <span className="text-gray-400 italic">এই টাস্কের জন্য আলাদা নির্দেশনা লেখা নেই—ক্লাসে দেখানো নিয়ম অনুযায়ী কাজটি সম্পন্ন করে লিংক জমা দিন।</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* 3 Simple Visual Steps in Bangla */}
+                                    <div className="grid grid-cols-3 gap-2 text-center">
+                                        <div className="p-2 rounded-xl bg-gray-50 dark:bg-dark-800 border border-gray-200/60 dark:border-white/10">
+                                            <span className="inline-flex w-5 h-5 rounded-full bg-[#005fb8] text-white text-[10px] font-bold items-center justify-center mb-1 font-numbers">1</span>
+                                            <p className="text-[10px] sm:text-[11px] font-bold text-gray-800 dark:text-gray-200 leading-tight">কাজটি তৈরি করুন</p>
+                                        </div>
+                                        <div className="p-2 rounded-xl bg-gray-50 dark:bg-dark-800 border border-gray-200/60 dark:border-white/10">
+                                            <span className="inline-flex w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold items-center justify-center mb-1 font-numbers">2</span>
+                                            <p className="text-[10px] sm:text-[11px] font-bold text-gray-800 dark:text-gray-200 leading-tight">Drive/GitHub-এ Public লিংক</p>
+                                        </div>
+                                        <div className="p-2 rounded-xl bg-gray-50 dark:bg-dark-800 border border-gray-200/60 dark:border-white/10">
+                                            <span className="inline-flex w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold items-center justify-center mb-1 font-numbers">3</span>
+                                            <p className="text-[10px] sm:text-[11px] font-bold text-gray-800 dark:text-gray-200 leading-tight">লিংক পেস্ট করে Submit</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Mobile-Friendly Submission Form */}
+                                    <div className="pt-2.5 border-t border-gray-200/70 dark:border-white/10 space-y-2">
+                                        <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300">
+                                            {existingSub ? 'নতুন লিংক দিয়ে আপডেট করতে চান?' : 'আপনার কাজের লিংক এখানে পেস্ট করুন *'}
+                                        </label>
+                                        <form onSubmit={(e) => handleSubmit(e, true, activeAsnDetail.title)} className="flex flex-col sm:flex-row gap-2">
+                                            <input
+                                                type="url"
+                                                required
+                                                value={form.link}
+                                                onChange={e => setForm({ ...form, link: e.target.value })}
+                                                className="flex-1 input-style px-3 py-2.5 text-sm font-mono-code focus:ring-[#005fb8]"
+                                                placeholder="https://drive.google.com/... বা https://github.com/..."
+                                            />
+                                            <button
+                                                type="submit"
+                                                disabled={isProcessing}
+                                                className="w-full sm:w-auto bg-[#005fb8] hover:bg-[#004a94] text-white px-6 py-2.5 rounded-xl text-sm font-bold transition-colors win-button disabled:opacity-50 shrink-0 flex items-center justify-center gap-1.5"
+                                            >
+                                                {isProcessing ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="send" className="w-4 h-4" />}
+                                                <span>{isProcessing ? 'Submitting...' : (existingSub ? 'Submit Again' : 'Submit Work')}</span>
+                                            </button>
+                                        </form>
+                                        <p className="text-[10px] text-gray-400">
+                                            টিপস: Google Drive লিংক হলে Share সেটিংস অবশ্যই <strong>Anyone with the link</strong> করে দিন।
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                     </Modal>
 
                 </div>
@@ -16411,18 +16571,20 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
                         </div>
                     )}
 
-                    {/* 🏆 রেসপনসিভ অন-স্ক্রিন লিডারবোর্ড টেবিল */}
-                    <div className="glass-panel border border-gray-200/80 dark:border-white/10 overflow-hidden">
-                        <div className="overflow-x-auto hide-scrollbar">
-                            <table className="w-full text-left border-collapse text-xs md:text-sm">
-                                <thead className="text-[10px] md:text-xs font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-dark-900/70 border-b border-gray-200 dark:border-white/10 uppercase">
+                    {/* 🏆 রেসপনসিভ লিডারবোর্ড (Desktop: 7-Column Full Table | Mobile: Full 4-Category Score Cards) */}
+                    <div className="glass-panel border border-gray-200/80 dark:border-white/10 overflow-hidden rounded-2xl">
+                        {/* Desktop & Tablet Full Table (All Columns Visible) */}
+                        <div className="hidden md:block overflow-x-auto hide-scrollbar">
+                            <table className="w-full text-left border-collapse text-xs lg:text-sm">
+                                <thead className="text-[10px] lg:text-xs font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-dark-900/70 border-b border-gray-200 dark:border-white/10 uppercase">
                                     <tr>
-                                        <th className="px-2.5 md:px-4 py-3 border-r border-gray-200/60 dark:border-white/5 w-14 text-center">Rank</th>
-                                        <th className="px-3 md:px-4 py-3 border-r border-gray-200/60 dark:border-white/5">Student Name</th>
-                                        <th className="px-2.5 md:px-3 py-3 border-r border-gray-200/60 dark:border-white/5 text-center hidden sm:table-cell">Modules (40)</th>
-                                        <th className="px-2.5 md:px-3 py-3 border-r border-gray-200/60 dark:border-white/5 text-center">Assignments (30)</th>
-                                        <th className="px-2.5 md:px-3 py-3 border-r border-gray-200/60 dark:border-white/5 text-center hidden md:table-cell">Attend. + Skill (30)</th>
-                                        <th className="px-3 md:px-4 py-3 text-right">Total (100)</th>
+                                        <th className="px-3 py-3 border-r border-gray-200/60 dark:border-white/5 w-14 text-center">Rank</th>
+                                        <th className="px-3.5 py-3 border-r border-gray-200/60 dark:border-white/5">Student Name</th>
+                                        <th className="px-2.5 py-3 border-r border-gray-200/60 dark:border-white/5 text-center">Modules (40)</th>
+                                        <th className="px-2.5 py-3 border-r border-gray-200/60 dark:border-white/5 text-center">Assignments (30)</th>
+                                        <th className="px-2.5 py-3 border-r border-gray-200/60 dark:border-white/5 text-center">Attend. (15)</th>
+                                        <th className="px-2.5 py-3 border-r border-gray-200/60 dark:border-white/5 text-center">Skill (15)</th>
+                                        <th className="px-3.5 py-3 text-right">Total (100)</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200/70 dark:divide-white/5 font-semibold">
@@ -16442,8 +16604,8 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
                                                         : 'bg-gray-50/60 dark:bg-[#1d1d1d] text-gray-800 dark:text-gray-200'
                                                 }`}
                                             >
-                                                <td className="px-2.5 md:px-4 py-3 text-center border-r border-gray-200/50 dark:border-white/5">
-                                                    <span className={`inline-flex w-7 h-7 items-center justify-center  font-numbers text-xs border ${
+                                                <td className="px-3 py-3 text-center border-r border-gray-200/50 dark:border-white/5">
+                                                    <span className={`inline-flex w-7 h-7 items-center justify-center rounded-md font-numbers text-xs border ${
                                                         isMe ? 'bg-white text-[#005fb8] border-white' :
                                                         i === 0 && !st.isEmptySlot ? 'bg-yellow-100 text-yellow-800 border-yellow-400' :
                                                         i === 1 && !st.isEmptySlot ? 'bg-gray-200 text-gray-800 border-gray-400' :
@@ -16453,62 +16615,59 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
                                                         #{String(i + 1).padStart(2, '0')}
                                                     </span>
                                                 </td>
-                                                <td className="px-3 md:px-4 py-3 border-r border-gray-200/50 dark:border-white/5 min-w-[160px]">
+                                                <td className="px-3.5 py-3 border-r border-gray-200/50 dark:border-white/5 min-w-[160px]">
                                                     <div className="flex items-center gap-2">
                                                         {!st.isEmptySlot && <UserAvatar name={st.name} size="sm" />}
                                                         <div className="min-w-0 flex-1">
                                                             <div className="flex items-center gap-1.5 flex-wrap">
-                                                                <span className="truncate max-w-[140px] sm:max-w-none">{st.name}</span>
-                                                        {isMe && <span className="bg-[#facc15] text-gray-900 text-[9px]  px-1.5 py-0.2 uppercase">You</span>}
-                                                        {!st.isEmptySlot && i === 0 && <span>🏆</span>}
-                                                        {!st.isEmptySlot && i === 1 && <span>🥈</span>}
-                                                        {!st.isEmptySlot && i === 2 && <span>🥉</span>}
-                                                    </div>
-                                                    {!st.isEmptySlot && (
-                                                                <p className={`text-[10px] font-normal truncate ${isMe ? 'text-blue-100' : 'text-gray-400'}`}>
-                                                                    {st.course}
-                                                                    <span className="sm:hidden"> • Mod: {st.modPoints}/40</span>
-                                                                </p>
+                                                                <span className="truncate">{st.name}</span>
+                                                                {isMe && <span className="bg-[#facc15] text-gray-900 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase">You</span>}
+                                                                {!st.isEmptySlot && i === 0 && <span>🏆</span>}
+                                                                {!st.isEmptySlot && i === 1 && <span>🥈</span>}
+                                                                {!st.isEmptySlot && i === 2 && <span>🥉</span>}
+                                                            </div>
+                                                            {!st.isEmptySlot && (
+                                                                <p className={`text-[10px] font-normal truncate ${isMe ? 'text-blue-100' : 'text-gray-400'}`}>{st.course}</p>
                                                             )}
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-2.5 md:px-3 py-3 text-center font-numbers border-r border-gray-200/50 dark:border-white/5 hidden sm:table-cell">
+                                                <td className="px-2.5 py-3 text-center font-numbers border-r border-gray-200/50 dark:border-white/5">
                                                     {st.isEmptySlot ? '—' : (
                                                         <div>
-                                                            <span className="">{st.modPoints}/40</span>
-                                                            <span className={`block text-[10px] ${isMe ? 'text-blue-100' : 'text-gray-400'}`}>({st.completedMods}/{st.totalMods} ডান)</span>
+                                                            <span className="font-bold">{st.modPoints}/40</span>
+                                                            <span className={`block text-[10px] ${isMe ? 'text-blue-100' : 'text-gray-400'}`}>{st.completedMods}/{st.totalMods} done</span>
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="px-2.5 md:px-3 py-3 text-center font-numbers border-r border-gray-200/50 dark:border-white/5">
+                                                <td className="px-2.5 py-3 text-center font-numbers border-r border-gray-200/50 dark:border-white/5">
                                                     {st.isEmptySlot ? '—' : (
                                                         <div>
-                                                            <span className={` ${isMe ? 'text-white' : 'text-purple-600 dark:text-purple-400'}`}>{st.asnPoints}/30</span>
-                                                            <span className={`block text-[10px] ${isMe ? 'text-blue-100' : 'text-gray-500'}`}>
-                                                                {st.asnDoneCount}/20টি • {st.gradedMarksSum} মার্কস
-                                                            </span>
+                                                            <span className={`font-bold ${isMe ? 'text-white' : 'text-purple-600 dark:text-purple-400'}`}>{st.asnPoints}/30</span>
+                                                            <span className={`block text-[10px] ${isMe ? 'text-blue-100' : 'text-gray-500'}`}>{st.asnDoneCount}/20 • {st.gradedMarksSum}m</span>
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="px-2.5 md:px-3 py-3 text-center font-numbers border-r border-gray-200/50 dark:border-white/5 hidden md:table-cell">
+                                                <td className="px-2.5 py-3 text-center font-numbers border-r border-gray-200/50 dark:border-white/5">
                                                     {st.isEmptySlot ? '—' : (
                                                         <div>
-                                                            <span className="">{st.attPoints + st.skillPoints}/30</span>
-                                                            <span className={`block text-[10px] ${isMe ? 'text-blue-100' : 'text-gray-400'}`}>
-                                                                Att: {st.attPoints} ({st.presentCount}/{st.totalAtt}d) • Skill: {st.skillPoints}
-                                                            </span>
+                                                            <span className={`font-bold ${isMe ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`}>{st.attPoints}/15</span>
+                                                            <span className={`block text-[10px] ${isMe ? 'text-blue-100' : 'text-gray-400'}`}>{st.presentCount}/{st.totalAtt}d</span>
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="px-3 md:px-4 py-3 text-right align-middle">
-                                                    {st.isEmptySlot ? (
-                                                        <span className="text-gray-400">—</span>
-                                                    ) : (
+                                                <td className="px-2.5 py-3 text-center font-numbers border-r border-gray-200/50 dark:border-white/5">
+                                                    {st.isEmptySlot ? '—' : (
                                                         <div>
-                                                            <span className={`text-sm md:text-lg  font-numbers ${isMe ? 'text-white' : isTop3 ? 'text-[#005fb8] dark:text-[#60cdff]' : 'text-gray-900 dark:text-white'}`}>
-                                                                {st.score}
-                                                            </span>
+                                                            <span className={`font-bold ${isMe ? 'text-white' : 'text-amber-600 dark:text-amber-400'}`}>{st.skillPoints}/15</span>
+                                                            <span className={`block text-[10px] ${isMe ? 'text-blue-100' : 'text-gray-400'}`}>{st.skillRatio}%</span>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="px-3.5 py-3 text-right align-middle">
+                                                    {st.isEmptySlot ? <span className="text-gray-400">—</span> : (
+                                                        <div>
+                                                            <span className={`text-base lg:text-lg font-bold font-numbers ${isMe ? 'text-white' : isTop3 ? 'text-[#005fb8] dark:text-[#60cdff]' : 'text-gray-900 dark:text-white'}`}>{st.score}</span>
                                                             <span className={`text-[10px] font-bold ml-0.5 ${isMe ? 'text-blue-100' : 'text-gray-400'}`}>/100</span>
                                                         </div>
                                                     )}
@@ -16517,65 +16676,111 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
                                         );
                                     })}
 
-                                    {/* স্টুডেন্ট Top 10-এর বাইরে থাকলে টেবিলের নিচে তার নিজের র‍্যাঙ্ক দেখাবে */}
                                     {!showAllRows && !isInTop10 && myStudentEntry && (
                                         <>
                                             <tr>
-                                                <td colSpan="6" className="px-4 py-1.5 text-center text-[10px] text-gray-400 font-bold tracking-widest bg-gray-100 dark:bg-dark-900">
+                                                <td colSpan="7" className="px-4 py-1.5 text-center text-[10px] text-gray-400 font-bold tracking-widest bg-gray-100 dark:bg-dark-900">
                                                     ••• আপনার অবস্থান (YOUR POSITION) •••
                                                 </td>
                                             </tr>
                                             <tr className="bg-[#005fb8] text-white font-bold">
-                                                <td className="px-2.5 md:px-4 py-3 text-center border-r border-blue-400/30">
-                                                    <span className="inline-flex w-7 h-7 items-center justify-center  font-numbers text-xs bg-white text-[#005fb8]">
-                                                        #{String(myRankNum).padStart(2, '0')}
-                                                    </span>
+                                                <td className="px-3 py-3 text-center border-r border-blue-400/30">
+                                                    <span className="inline-flex w-7 h-7 items-center justify-center rounded-md font-numbers text-xs bg-white text-[#005fb8]">#{String(myRankNum).padStart(2, '0')}</span>
                                                 </td>
-                                                <td className="px-3 md:px-4 py-3 border-r border-blue-400/30">
+                                                <td className="px-3.5 py-3 border-r border-blue-400/30">
                                                     <div className="flex items-center gap-1.5 flex-wrap">
                                                         <span>{myStudentEntry.name}</span>
-                                                        <span className="bg-[#facc15] text-gray-900 text-[9px]  px-1.5 py-0.2 uppercase">You</span>
+                                                        <span className="bg-[#facc15] text-gray-900 text-[9px] px-1.5 py-0.2 rounded uppercase">You</span>
                                                     </div>
-                                                    <p className="text-[10px] font-normal truncate text-blue-100">
-                                                        {myStudentEntry.course}
-                                                        <span className="sm:hidden"> • Mod: {myStudentEntry.modPoints}/40</span>
-                                                    </p>
+                                                    <p className="text-[10px] font-normal truncate text-blue-100">{myStudentEntry.course}</p>
                                                 </td>
-                                                <td className="px-2.5 md:px-3 py-3 text-center font-numbers border-r border-blue-400/30 hidden sm:table-cell">
-                                                    <div>
-                                                        <span>{myStudentEntry.modPoints}/40</span>
-                                                        <span className="block text-[10px] text-blue-100">({myStudentEntry.completedMods}/{myStudentEntry.totalMods} ডান)</span>
-                                                    </div>
+                                                <td className="px-2.5 py-3 text-center font-numbers border-r border-blue-400/30">
+                                                    <span>{myStudentEntry.modPoints}/40</span>
+                                                    <span className="block text-[10px] text-blue-100">{myStudentEntry.completedMods}/{myStudentEntry.totalMods} done</span>
                                                 </td>
-                                                <td className="px-2.5 md:px-3 py-3 text-center font-numbers border-r border-blue-400/30">
-                                                    <div>
-                                                        <span>{myStudentEntry.asnPoints}/30</span>
-                                                        <span className="block text-[10px] text-blue-100">
-                                                            {myStudentEntry.asnDoneCount}/20টি • {myStudentEntry.gradedMarksSum} মার্কস
-                                                        </span>
-                                                    </div>
+                                                <td className="px-2.5 py-3 text-center font-numbers border-r border-blue-400/30">
+                                                    <span>{myStudentEntry.asnPoints}/30</span>
+                                                    <span className="block text-[10px] text-blue-100">{myStudentEntry.asnDoneCount}/20 • {myStudentEntry.gradedMarksSum}m</span>
                                                 </td>
-                                                <td className="px-2.5 md:px-3 py-3 text-center font-numbers border-r border-blue-400/30 hidden md:table-cell">
-                                                    <div>
-                                                        <span>{myStudentEntry.attPoints + myStudentEntry.skillPoints}/30</span>
-                                                        <span className="block text-[10px] text-blue-100">
-                                                            Att: {myStudentEntry.attPoints} • Skill: {myStudentEntry.skillPoints}
-                                                        </span>
-                                                    </div>
+                                                <td className="px-2.5 py-3 text-center font-numbers border-r border-blue-400/30">
+                                                    <span>{myStudentEntry.attPoints}/15</span>
+                                                    <span className="block text-[10px] text-blue-100">{myStudentEntry.presentCount}/{myStudentEntry.totalAtt}d</span>
                                                 </td>
-                                                <td className="px-3 md:px-4 py-3 text-right">
-                                                    <div>
-                                                        <span className="text-sm md:text-lg  font-numbers text-white">
-                                                            {myStudentEntry.score}
-                                                        </span>
-                                                        <span className="text-[10px] font-bold ml-0.5 text-blue-100">/100</span>
-                                                    </div>
+                                                <td className="px-2.5 py-3 text-center font-numbers border-r border-blue-400/30">
+                                                    <span>{myStudentEntry.skillPoints}/15</span>
+                                                    <span className="block text-[10px] text-blue-100">{myStudentEntry.skillRatio}%</span>
+                                                </td>
+                                                <td className="px-3.5 py-3 text-right font-numbers">
+                                                    <span className="text-lg">{myStudentEntry.score}</span><span className="text-[10px] text-blue-100">/100</span>
                                                 </td>
                                             </tr>
                                         </>
                                     )}
                                 </tbody>
                             </table>
+                        </div>
+
+                        {/* Mobile Full-Breakdown Cards (Shows Modules + Assignments + Attendance + Skill + Total) */}
+                        <div className="block md:hidden divide-y divide-gray-100 dark:divide-white/10">
+                            {[...displayedRows, ...(!showAllRows && !isInTop10 && myStudentEntry ? [{ ...myStudentEntry, _customRank: myRankNum, _isMyExtra: true }] : [])].map((st, i) => {
+                                const isMe = st._isMyExtra || isUserMatch(st);
+                                const rankNo = st._customRank || (i + 1);
+                                if (st.isEmptySlot) {
+                                    return (
+                                        <div key={i} className="p-3 text-center text-[11px] text-gray-400 italic">
+                                            #{String(rankNo).padStart(2, '0')} — খালি পজিশন
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <div key={st._isMyExtra ? 'my-pos' : i} className={`p-3 space-y-2.5 ${isMe ? 'bg-blue-500/[0.11] dark:bg-blue-500/[0.18]' : ''}`}>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-numbers font-bold text-xs shrink-0 ${
+                                                    isMe ? 'bg-[#005fb8] text-white' : rankNo === 1 ? 'bg-amber-400 text-gray-900' : 'bg-gray-100 dark:bg-dark-800 text-gray-700 dark:text-gray-200'
+                                                }`}>
+                                                    #{String(rankNo).padStart(2, '0')}
+                                                </span>
+                                                <UserAvatar name={st.name} size="sm" />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-1">
+                                                        <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{st.name}</p>
+                                                        {isMe && <span className="bg-[#facc15] text-gray-900 text-[8px] font-bold px-1 rounded uppercase shrink-0">You</span>}
+                                                        {rankNo === 1 && <span>🏆</span>}
+                                                        {rankNo === 2 && <span>🥈</span>}
+                                                        {rankNo === 3 && <span>🥉</span>}
+                                                    </div>
+                                                    <p className="text-[10px] text-gray-500 truncate">{st.course}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right shrink-0 font-numbers">
+                                                <span className="text-base font-bold text-[#005fb8] dark:text-[#60cdff]">{st.score}</span>
+                                                <span className="text-[10px] text-gray-400 font-bold">/100</span>
+                                            </div>
+                                        </div>
+
+                                        {/* 4-Column Visible Breakdown: Modules | Tasks | Attend | Skill */}
+                                        <div className="grid grid-cols-4 gap-1.5 text-center font-numbers">
+                                            <div className="p-1.5 rounded-lg bg-blue-500/[0.08] border border-blue-200/50 dark:border-blue-500/20">
+                                                <span className="block text-[8px] font-sans font-bold uppercase text-[#005fb8] dark:text-[#60cdff]">Modules</span>
+                                                <span className="text-[11px] font-bold text-gray-900 dark:text-white">{st.modPoints}/40</span>
+                                            </div>
+                                            <div className="p-1.5 rounded-lg bg-purple-500/[0.08] border border-purple-200/50 dark:border-purple-500/20">
+                                                <span className="block text-[8px] font-sans font-bold uppercase text-purple-600 dark:text-purple-400">Tasks</span>
+                                                <span className="text-[11px] font-bold text-gray-900 dark:text-white">{st.asnPoints}/30</span>
+                                            </div>
+                                            <div className="p-1.5 rounded-lg bg-emerald-500/[0.08] border border-emerald-200/50 dark:border-emerald-500/20">
+                                                <span className="block text-[8px] font-sans font-bold uppercase text-emerald-700 dark:text-emerald-400">Attend</span>
+                                                <span className="text-[11px] font-bold text-gray-900 dark:text-white">{st.attPoints}/15</span>
+                                            </div>
+                                            <div className="p-1.5 rounded-lg bg-amber-500/[0.08] border border-amber-200/50 dark:border-amber-500/20">
+                                                <span className="block text-[8px] font-sans font-bold uppercase text-amber-700 dark:text-amber-400">Skill</span>
+                                                <span className="text-[11px] font-bold text-gray-900 dark:text-white">{st.skillPoints}/15</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
@@ -21010,20 +21215,202 @@ const SmartPhoneAction = ({ phone }) => {
                 });
             };
 
-            // স্লিপ PNG ডাউনলোড (html2canvas)
+            // 🟢 Pixel-Perfect High-DPI Canvas Slip Generator (Zero Text Shift & Zero Border Overflow)
             const handleDownloadSlipImage = async () => {
-                const el = document.getElementById('skill-exam-slip-card');
-                if (!el || typeof html2canvas === 'undefined') {
-                    return addToast('Slip preview not ready.', 'error');
-                }
+                if (!slipModal) return;
                 playAudio('action');
                 setDownloadingSlip(true);
                 try {
-                    const canvas = await html2canvas(el, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
-                    const link = document.createElement('a');
-                    link.download = `FaridpurIT_Exam_Slip_${slipModal?.examId || 'Result'}.png`;
-                    link.href = canvas.toDataURL('image/png');
-                    link.click();
+                    const s = slipModal;
+                    const W = 760;
+                    const margin = 20;
+                    const pad = 42;
+                    const innerW = W - pad * 2;
+                    const labelW = 180;
+                    const valW = innerW - labelW;
+                    const fontMain = "'Inter', 'Hind Siliguri', 'Segoe UI', Arial, sans-serif";
+
+                    const measureCanvas = document.createElement('canvas');
+                    const mCtx = measureCanvas.getContext('2d');
+
+                    const wrapText = (ctx, text, maxWidth) => {
+                        const raw = String(text || '—').trim();
+                        const words = raw.split(/\s+/);
+                        const lines = [];
+                        let line = '';
+                        words.forEach(w => {
+                            const test = line ? `${line} ${w}` : w;
+                            if (ctx.measureText(test).width > maxWidth && line) {
+                                lines.push(line);
+                                line = w;
+                            } else {
+                                line = test;
+                            }
+                        });
+                        if (line) lines.push(line);
+                        return lines.length > 0 ? lines : ['—'];
+                    };
+
+                    const infoRows = [
+                        { label: 'Student Name', value: s.studentName || 'Student', bold: true },
+                        { label: 'Student ID', value: s.studentId || 'Student', bold: false },
+                        { label: 'Course', value: s.course || 'IT Course', bold: false },
+                        { label: 'Module', value: `Module ${s.moduleSerial || 1}: ${s.moduleTitle || ''}`, bold: true }
+                    ];
+                    if (Array.isArray(s.weakTopics) && s.weakTopics.length > 0) {
+                        infoRows.push({ label: 'Topics to Revise', value: s.weakTopics.join(', '), bold: false });
+                    }
+
+                    // 1. Pre-measure exact dynamic heights
+                    mCtx.font = `600 14px ${fontMain}`;
+                    const measuredRows = infoRows.map(r => {
+                        mCtx.font = `${r.bold ? '700' : '500'} 14px ${fontMain}`;
+                        const lines = wrapText(mCtx, r.value, valW - 28);
+                        const h = Math.max(40, lines.length * 20 + 20);
+                        return { ...r, lines, h };
+                    });
+                    const infoTableH = measuredRows.reduce((sum, r) => sum + r.h, 0);
+                    const totalH = pad + 66 + 20 + infoTableH + 20 + 88 + 26 + 34 + pad;
+
+                    // 2. Render crisp 2x retina PNG
+                    const scale = 2;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = W * scale;
+                    canvas.height = totalH * scale;
+                    const ctx = canvas.getContext('2d');
+                    ctx.scale(scale, scale);
+
+                    // White canvas + clean official outer frame
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, W, totalH);
+                    ctx.strokeStyle = '#1e293b';
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeRect(margin, margin, W - margin * 2, totalH - margin * 2);
+
+                    let y = pad;
+
+                    // Header left
+                    ctx.textBaseline = 'top';
+                    ctx.textAlign = 'left';
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = `800 20px ${fontMain}`;
+                    ctx.fillText('FARIDPUR IT INSTITUTE', pad, y);
+                    ctx.fillStyle = '#64748b';
+                    ctx.font = `600 11px ${fontMain}`;
+                    ctx.fillText('SKILL ASSESSMENT RESULT SLIP', pad, y + 26);
+
+                    // Header right
+                    ctx.textAlign = 'right';
+                    ctx.fillStyle = '#334155';
+                    ctx.font = `700 12px monospace`;
+                    ctx.fillText(`Slip ID: ${s.examId || 'N/A'}`, W - pad, y + 2);
+                    ctx.fillStyle = '#64748b';
+                    ctx.font = `500 11px ${fontMain}`;
+                    ctx.fillText(moment(s.completedAt || new Date()).format('DD MMM YYYY, hh:mm A'), W - pad, y + 22);
+
+                    // Header divider
+                    y += 54;
+                    ctx.strokeStyle = '#0f172a';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(pad, y);
+                    ctx.lineTo(W - pad, y);
+                    ctx.stroke();
+
+                    // Student & Module Info Table
+                    y += 22;
+                    ctx.lineWidth = 1;
+                    measuredRows.forEach(row => {
+                        ctx.fillStyle = '#f8fafc';
+                        ctx.fillRect(pad, y, labelW, row.h);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(pad + labelW, y, valW, row.h);
+
+                        ctx.strokeStyle = '#cbd5e1';
+                        ctx.strokeRect(pad, y, labelW, row.h);
+                        ctx.strokeRect(pad + labelW, y, valW, row.h);
+
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillStyle = '#475569';
+                        ctx.font = `700 13px ${fontMain}`;
+                        ctx.fillText(row.label, pad + 14, y + row.h / 2);
+
+                        ctx.fillStyle = '#0f172a';
+                        ctx.font = `${row.bold ? '700' : '500'} 14px ${fontMain}`;
+                        const blockH = row.lines.length * 20;
+                        const startTextY = y + (row.h - blockH) / 2 + 10;
+                        row.lines.forEach((ln, li) => {
+                            ctx.fillText(ln, pad + labelW + 14, startTextY + li * 20);
+                        });
+
+                        y += row.h;
+                    });
+
+                    // 5-Column Result Summary Box
+                    y += 20;
+                    const metricsCols = [
+                        { title: 'SCORE', val: `${s.scorePct ?? 0}%`, color: '#0f172a' },
+                        { title: 'CORRECT', val: `${s.correct ?? 0}/${s.total ?? 10}`, color: '#0f172a' },
+                        { title: 'GRADE', val: String(s.grade || 'B'), color: '#005fb8' },
+                        { title: 'STATUS', val: s.passed ? 'PASSED' : 'RETRY', color: s.passed ? '#059669' : '#e11d48' },
+                        { title: 'OVERALL SKILL', val: `${s.newSkillProgress ?? 0}%`, color: '#0f172a' }
+                    ];
+                    const colW = innerW / metricsCols.length;
+                    const hdrH = 34;
+                    const valH = 54;
+
+                    metricsCols.forEach((col, ci) => {
+                        const cx = pad + ci * colW;
+                        ctx.fillStyle = '#f1f5f9';
+                        ctx.fillRect(cx, y, colW, hdrH);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(cx, y + hdrH, colW, valH);
+
+                        ctx.strokeStyle = '#cbd5e1';
+                        ctx.strokeRect(cx, y, colW, hdrH);
+                        ctx.strokeRect(cx, y + hdrH, colW, valH);
+
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillStyle = '#475569';
+                        ctx.font = `700 11px ${fontMain}`;
+                        ctx.fillText(col.title, cx + colW / 2, y + hdrH / 2);
+
+                        ctx.fillStyle = col.color;
+                        ctx.font = `800 18px ${fontMain}`;
+                        ctx.fillText(col.val, cx + colW / 2, y + hdrH + valH / 2);
+                    });
+
+                    // Footer
+                    y += hdrH + valH + 24;
+                    ctx.strokeStyle = '#cbd5e1';
+                    ctx.beginPath();
+                    ctx.moveTo(pad, y);
+                    ctx.lineTo(W - pad, y);
+                    ctx.stroke();
+
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#64748b';
+                    ctx.font = `600 11px ${fontMain}`;
+                    ctx.textAlign = 'left';
+                    ctx.fillText('Faridpur IT Institute  •  faridpurit.com  •  +880 1642890942', pad, y + 20);
+                    ctx.textAlign = 'right';
+                    ctx.fillText('Retake Lock: 24 Hours', W - pad, y + 20);
+
+                    const dataUrl = canvas.toDataURL('image/png');
+                    const fileName = `FaridpurIT_Exam_Slip_${s.examId || 'Result'}.png`;
+
+                    if (window.AndroidApp && typeof window.AndroidApp.saveBase64File === 'function') {
+                        window.AndroidApp.saveBase64File(dataUrl, fileName, 'image/png');
+                    } else {
+                        const link = document.createElement('a');
+                        link.download = fileName;
+                        link.href = dataUrl;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
                     playAudio('success');
                     addToast('Exam Slip downloaded!', 'success');
                 } catch (e) {
@@ -21487,79 +21874,76 @@ const SmartPhoneAction = ({ phone }) => {
                     <Modal isOpen={!!slipModal} onClose={() => setSlipModal(null)} title="Official Exam Result Slip" maxWidth="max-w-xl" compact={true}>
                         {slipModal && (
                             <div className="space-y-4">
-                                {/* Minimalist Plain Table Exam Slip (No Shapes, No Rounded Badges, Clean Margins) */}
-                                <div id="skill-exam-slip-card" className="bg-white text-gray-900 border border-gray-800 p-5 sm:p-6">
-                                    {/* Minimal Text Header with Thin Divider */}
-                                    <div className="pb-3 mb-4 border-b-2 border-gray-900 flex items-end justify-between gap-2">
-                                        <div>
-                                            <h3 className="text-base font-bold tracking-wide uppercase text-gray-900 leading-tight">Faridpur IT Institute</h3>
-                                            <p className="text-[10px] text-gray-500 tracking-widest uppercase mt-0.5">Skill Assessment Result Slip</p>
+                                {/* 🟢 100% Mobile-Responsive Official Exam Result Slip (Zero Overflow) */}
+                                <div id="skill-exam-slip-card" className="w-full max-w-full bg-white text-gray-900 border border-gray-800 rounded-lg p-3.5 sm:p-5 overflow-hidden">
+                                    {/* Responsive Header */}
+                                    <div className="pb-2.5 mb-3.5 border-b-2 border-gray-900 flex flex-col sm:flex-row sm:items-end justify-between gap-1.5">
+                                        <div className="min-w-0">
+                                            <h3 className="text-sm sm:text-base font-bold tracking-wide uppercase text-gray-900 leading-tight">Faridpur IT Institute</h3>
+                                            <p className="text-[9px] sm:text-[10px] text-gray-500 tracking-widest uppercase mt-0.5">Skill Assessment Result Slip</p>
                                         </div>
-                                        <div className="text-right font-mono-code text-[10px] text-gray-600 leading-snug">
+                                        <div className="sm:text-right font-mono-code text-[10px] text-gray-600 leading-snug">
                                             <div>Slip ID: <strong className="text-gray-900">{slipModal.examId}</strong></div>
                                             <div>{moment(slipModal.completedAt).format('DD MMM YYYY, hh:mm A')}</div>
                                         </div>
                                     </div>
 
-                                    {/* Student & Module Details Table */}
-                                    <table className="w-full border-collapse text-xs mb-4">
-                                        <tbody>
-                                            <tr>
-                                                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-bold text-gray-700 w-[34%]">Student Name</td>
-                                                <td className="border border-gray-300 px-3 py-2 font-bold text-gray-900">{slipModal.studentName}</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-bold text-gray-700">Student ID</td>
-                                                <td className="border border-gray-300 px-3 py-2 font-mono-code text-gray-800">{slipModal.studentId || 'Student'}</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-bold text-gray-700">Course</td>
-                                                <td className="border border-gray-300 px-3 py-2 text-gray-800">{slipModal.course}</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-bold text-gray-700">Module</td>
-                                                <td className="border border-gray-300 px-3 py-2 font-semibold text-gray-900">Module {slipModal.moduleSerial}: {slipModal.moduleTitle}</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                    {/* Responsive Student & Module Details */}
+                                    <div className="border border-gray-300 divide-y divide-gray-200 text-xs mb-3.5 overflow-hidden">
+                                        {[
+                                            { lbl: 'Student Name', val: slipModal.studentName, cls: 'font-bold text-gray-900' },
+                                            { lbl: 'Student ID', val: slipModal.studentId || 'Student', cls: 'font-mono-code text-gray-800' },
+                                            { lbl: 'Course', val: slipModal.course, cls: 'text-gray-800' },
+                                            { lbl: 'Module', val: `Module ${slipModal.moduleSerial}: ${slipModal.moduleTitle}`, cls: 'font-semibold text-gray-900' }
+                                        ].map(row => (
+                                            <div key={row.lbl} className="grid grid-cols-12 min-w-0">
+                                                <div className="col-span-4 sm:col-span-4 bg-gray-50 px-2.5 py-2 font-bold text-gray-700 border-r border-gray-200 text-[11px] sm:text-xs break-words">
+                                                    {row.lbl}
+                                                </div>
+                                                <div className={`col-span-8 sm:col-span-8 px-2.5 py-2 text-[11px] sm:text-xs break-words min-w-0 ${row.cls}`}>
+                                                    {row.val}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
 
-                                    {/* Result Summary Table */}
-                                    <table className="w-full border-collapse text-xs mb-4 text-center">
-                                        <thead>
-                                            <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-600">
-                                                <th className="border border-gray-300 px-2 py-2 font-bold">Score</th>
-                                                <th className="border border-gray-300 px-2 py-2 font-bold">Correct</th>
-                                                <th className="border border-gray-300 px-2 py-2 font-bold">Grade</th>
-                                                <th className="border border-gray-300 px-2 py-2 font-bold">Status</th>
-                                                <th className="border border-gray-300 px-2 py-2 font-bold">Overall Skill</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr className="font-numbers text-sm text-gray-900">
-                                                <td className="border border-gray-300 px-2 py-2.5 font-bold">{slipModal.scorePct}%</td>
-                                                <td className="border border-gray-300 px-2 py-2.5">{slipModal.correct}/{slipModal.total}</td>
-                                                <td className="border border-gray-300 px-2 py-2.5 font-bold">{slipModal.grade}</td>
-                                                <td className="border border-gray-300 px-2 py-2.5 font-bold text-xs uppercase">{slipModal.passed ? 'PASSED' : 'RETRY'}</td>
-                                                <td className="border border-gray-300 px-2 py-2.5 font-bold">{slipModal.newSkillProgress}%</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                    {/* Responsive Result Metrics Grid (2-Col on Mobile, 5-Col on Desktop — Never Overflows!) */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 sm:gap-2 mb-3.5 text-center">
+                                        <div className="border border-gray-300 bg-gray-50/70 p-2 min-w-0">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-gray-500">Score</span>
+                                            <span className="block text-sm sm:text-base font-numbers font-bold text-gray-900 mt-0.5">{slipModal.scorePct}%</span>
+                                        </div>
+                                        <div className="border border-gray-300 bg-gray-50/70 p-2 min-w-0">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-gray-500">Correct</span>
+                                            <span className="block text-sm sm:text-base font-numbers font-bold text-gray-900 mt-0.5">{slipModal.correct}/{slipModal.total}</span>
+                                        </div>
+                                        <div className="border border-gray-300 bg-gray-50/70 p-2 min-w-0">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-gray-500">Grade</span>
+                                            <span className="block text-sm sm:text-base font-numbers font-bold text-[#005fb8] mt-0.5">{slipModal.grade}</span>
+                                        </div>
+                                        <div className="border border-gray-300 bg-gray-50/70 p-2 min-w-0">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-gray-500">Status</span>
+                                            <span className={`block text-xs sm:text-sm font-bold uppercase mt-1 ${slipModal.passed ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                {slipModal.passed ? 'PASSED' : 'RETRY'}
+                                            </span>
+                                        </div>
+                                        <div className="col-span-2 sm:col-span-1 border border-gray-300 bg-blue-50/60 p-2 min-w-0">
+                                            <span className="block text-[9px] font-bold uppercase tracking-wider text-[#005fb8]">Overall Skill</span>
+                                            <span className="block text-sm sm:text-base font-numbers font-bold text-gray-900 mt-0.5">{slipModal.newSkillProgress}%</span>
+                                        </div>
+                                    </div>
 
                                     {Array.isArray(slipModal.weakTopics) && slipModal.weakTopics.length > 0 && (
-                                        <table className="w-full border-collapse text-xs mb-4">
-                                            <tbody>
-                                                <tr>
-                                                    <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-bold text-gray-700 w-[34%]">Topics to Revise</td>
-                                                    <td className="border border-gray-300 px-3 py-2 text-gray-800">{slipModal.weakTopics.join(', ')}</td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
+                                        <div className="border border-gray-300 p-2.5 bg-amber-50/40 text-[11px] sm:text-xs mb-3.5 break-words">
+                                            <span className="font-bold text-gray-700">Topics to Revise: </span>
+                                            <span className="text-gray-800">{slipModal.weakTopics.join(', ')}</span>
+                                        </div>
                                     )}
 
-                                    {/* Minimal Footer */}
-                                    <div className="pt-3 border-t border-gray-300 flex items-center justify-between text-[10px] text-gray-500">
-                                        <span>Faridpur IT Institute • faridpurit.com • +880 1642890942</span>
-                                        <span>Retake Lock: 24 Hours</span>
+                                    {/* Responsive Footer */}
+                                    <div className="pt-2.5 border-t border-gray-300 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[10px] text-gray-500">
+                                        <span className="break-words">Faridpur IT Institute • faridpurit.com • +880 1642890942</span>
+                                        <span className="font-semibold shrink-0">Retake Lock: 24 Hours</span>
                                     </div>
                                 </div>
 
@@ -22730,6 +23114,36 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 ))}
                             </div>
+
+                            {/* 🏆 100-Point Leaderboard Marks Breakdown Directly Inside Profile */}
+                            {myRankEntry && (
+                                <div className="mt-4 pt-3.5 border-t border-gray-100 dark:border-white/10 space-y-2.5">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Leaderboard Marks</span>
+                                        <a href="#leaderboard" onClick={() => playAudio('click')} className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">
+                                            Rank #{myRankNum} • {myRankEntry.score}/100 →
+                                        </a>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2 font-numbers">
+                                        <div className="p-2 rounded-xl bg-blue-500/[0.08] border border-blue-200/60 dark:border-blue-500/20 flex items-center justify-between">
+                                            <span className="text-[10px] font-sans font-bold text-[#005fb8] dark:text-[#60cdff]">Modules</span>
+                                            <span className="text-xs font-bold text-gray-900 dark:text-white">{myRankEntry.modPoints}/40</span>
+                                        </div>
+                                        <div className="p-2 rounded-xl bg-purple-500/[0.08] border border-purple-200/60 dark:border-purple-500/20 flex items-center justify-between">
+                                            <span className="text-[10px] font-sans font-bold text-purple-600 dark:text-purple-400">Assignments</span>
+                                            <span className="text-xs font-bold text-gray-900 dark:text-white">{myRankEntry.asnPoints}/30</span>
+                                        </div>
+                                        <div className="p-2 rounded-xl bg-emerald-500/[0.08] border border-emerald-200/60 dark:border-emerald-500/20 flex items-center justify-between">
+                                            <span className="text-[10px] font-sans font-bold text-emerald-700 dark:text-emerald-400">Attendance</span>
+                                            <span className="text-xs font-bold text-gray-900 dark:text-white">{myRankEntry.attPoints}/15</span>
+                                        </div>
+                                        <div className="p-2 rounded-xl bg-amber-500/[0.08] border border-amber-200/60 dark:border-amber-500/20 flex items-center justify-between">
+                                            <span className="text-[10px] font-sans font-bold text-amber-700 dark:text-amber-400">Skill</span>
+                                            <span className="text-xs font-bold text-gray-900 dark:text-white">{myRankEntry.skillPoints}/15</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
