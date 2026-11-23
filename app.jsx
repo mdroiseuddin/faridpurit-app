@@ -23331,12 +23331,962 @@ const SmartPhoneAction = ({ phone }) => {
         };
 
         // ==========================================
+        // 🛒 FIVERR-STYLE MARKETPLACE VIEW (GIG MANAGER + SHAREABLE PORTFOLIO)
+        // ==========================================
+        const MarketplaceView = ({ auth, gigs = [], projects = [], clientLeads = [], executeAPI, fetchOrders, addToast, onOpenPublicPortfolio }) => {
+            const playAudio = (type) => { if (typeof window.playSound === 'function') window.playSound(type); };
+            const [serviceList] = useGlobalServices();
+            const isAdminMgr = ['Admin', 'Manager'].includes(auth?.role);
+            const myId = String(auth?.userId || '').trim();
+            const myName = String(auth?.name || auth?.username || myId).trim();
+
+            const [activeTab, setActiveTab] = useState('my-gigs'); // 'my-gigs' | 'explore' | 'orders'
+            const [searchQ, setSearchQ] = useState('');
+            const [catFilter, setCatFilter] = useState('All');
+            const [modalOpen, setModalOpen] = useState(false);
+            const [saving, setSaving] = useState(false);
+            const [uploadingBanner, setUploadingBanner] = useState(false);
+
+            const makeDefaultPackages = () => ([
+                { tier: 'Basic', price: '1500', deliveryDays: '3', features: 'Clean modern design\nMobile responsive\n2 Revisions' },
+                { tier: 'Standard', price: '3500', deliveryDays: '5', features: 'Full custom setup\nSpeed & SEO optimized\n5 Revisions\nSource files' },
+                { tier: 'Premium', price: '7000', deliveryDays: '7', features: 'Complete A-Z solution\nAdvanced automation\nUnlimited revisions\nPriority support' }
+            ]);
+
+            const defaultGigForm = {
+                id: null,
+                title: '',
+                category: serviceList[0] || 'Web Development',
+                description: '',
+                bannerUrl: '',
+                demoUrl: '',
+                tags: '',
+                status: 'Active',
+                packages: makeDefaultPackages()
+            };
+            const [gigForm, setGigForm] = useState(defaultGigForm);
+
+            const portfolioSlug = encodeURIComponent(myName);
+            const publicPortfolioUrl = `${window.location.origin}/?portfolio=${portfolioSlug}`;
+
+            const myGigs = useMemo(() => {
+                return gigs.filter(g =>
+                    String(g.ownerId || '').toLowerCase() === myId.toLowerCase() ||
+                    String(g.ownerName || '').toLowerCase() === myName.toLowerCase()
+                );
+            }, [gigs, myId, myName]);
+
+            const exploreGigs = useMemo(() => {
+                const q = searchQ.trim().toLowerCase();
+                return gigs.filter(g => {
+                    if (g.status !== 'Active' && !isAdminMgr) return false;
+                    if (catFilter !== 'All' && String(g.category || '').toLowerCase() !== catFilter.toLowerCase()) return false;
+                    if (q && !(`${g.title} ${g.ownerName} ${g.category} ${g.tags} ${g.description}`.toLowerCase().includes(q))) return false;
+                    return true;
+                });
+            }, [gigs, searchQ, catFilter, isAdminMgr]);
+
+            const incomingOrders = useMemo(() => {
+                return (projects || []).filter(p => String(p.description || '').includes('[Marketplace Order]'));
+            }, [projects]);
+
+            const updatePackageField = (idx, field, val) => {
+                setGigForm(prev => ({
+                    ...prev,
+                    packages: prev.packages.map((pk, i) => i === idx ? { ...pk, [field]: val } : pk)
+                }));
+            };
+
+            // গিগ ব্যানার কম্প্রেস করে Google Drive-এ সরাসরি আপলোড
+            const handleBannerUpload = (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                if (!file.type.startsWith('image/')) return addToast('অনুগ্রহ করে শুধু ইমেজ ফাইল সিলেক্ট করুন।', 'error');
+                setUploadingBanner(true);
+                playAudio('click');
+
+                const img = new Image();
+                const objUrl = URL.createObjectURL(file);
+                img.onload = async () => {
+                    try {
+                        const maxW = 960;
+                        const scale = Math.min(1, maxW / img.width);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.round(img.width * scale);
+                        canvas.height = Math.round(img.height * scale);
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+                        const base64 = dataUrl.split(',')[1];
+
+                        const res = await executeAPI({
+                            action: 'upload_chat_file',
+                            filename: `gig_banner_${Date.now()}.jpg`,
+                            mimeType: 'image/jpeg',
+                            data: base64
+                        });
+                        const data = await res.json();
+                        if (data && data.success && data.fileId) {
+                            const directUrl = `https://lh3.googleusercontent.com/d/${data.fileId}=w1000`;
+                            setGigForm(prev => ({ ...prev, bannerUrl: directUrl }));
+                            playAudio('success');
+                            addToast('ব্যানার ছবি আপলোড হয়েছে!', 'success');
+                        } else {
+                            addToast((data && data.message) || 'Upload failed.', 'error');
+                        }
+                    } catch (err) {
+                        addToast('Image upload error.', 'error');
+                    }
+                    URL.revokeObjectURL(objUrl);
+                    setUploadingBanner(false);
+                    e.target.value = '';
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(objUrl);
+                    setUploadingBanner(false);
+                    addToast('Could not read image.', 'error');
+                };
+                img.src = objUrl;
+            };
+
+            const handleSaveGig = async (e) => {
+                e.preventDefault();
+                if (!gigForm.title.trim()) return addToast('গিগের টাইটেল লিখুন।', 'error');
+                setSaving(true);
+                playAudio('action');
+                try {
+                    const cleanPackages = (gigForm.packages || []).map(pk => ({
+                        tier: pk.tier,
+                        price: Math.max(0, Number(pk.price) || 0),
+                        deliveryDays: Math.max(1, Number(pk.deliveryDays) || 3),
+                        features: String(pk.features || '').split('\n').map(f => f.trim()).filter(Boolean)
+                    })).filter(pk => pk.price > 0);
+
+                    if (cleanPackages.length === 0) {
+                        setSaving(false);
+                        return addToast('কমপক্ষে ১টি প্যাকেজের দাম (৳) দিন।', 'error');
+                    }
+
+                    const res = await executeAPI({
+                        action: 'save_marketplace_gig',
+                        gig: { ...gigForm, packages: cleanPackages }
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        playAudio('success');
+                        addToast(data.message || 'Gig saved!', 'success');
+                        setModalOpen(false);
+                        setGigForm(defaultGigForm);
+                        fetchOrders(true);
+                    } else {
+                        addToast((data && data.message) || 'Could not save gig.', 'error');
+                    }
+                } catch (err) {
+                    addToast('Network error saving gig.', 'error');
+                }
+                setSaving(false);
+            };
+
+            const openEditGig = (g) => {
+                playAudio('click');
+                const base = makeDefaultPackages();
+                const mergedPkgs = base.map((defPkg, idx) => {
+                    const ex = (g.packages || []).find(p => String(p.tier).toLowerCase() === defPkg.tier.toLowerCase()) || (g.packages || [])[idx];
+                    if (!ex) return { ...defPkg, price: '' };
+                    return {
+                        tier: defPkg.tier,
+                        price: String(ex.price || ''),
+                        deliveryDays: String(ex.deliveryDays || defPkg.deliveryDays),
+                        features: Array.isArray(ex.features) ? ex.features.join('\n') : String(ex.features || '')
+                    };
+                });
+                setGigForm({
+                    id: g.id,
+                    title: g.title || '',
+                    category: g.category || serviceList[0] || 'Web Development',
+                    description: g.description || '',
+                    bannerUrl: g.bannerUrl || '',
+                    demoUrl: g.demoUrl || '',
+                    tags: g.tags || '',
+                    status: g.status || 'Active',
+                    packages: mergedPkgs
+                });
+                setModalOpen(true);
+            };
+
+            const handleDeleteGig = async (g) => {
+                if (!window.confirm(`"${g.title}" গিগটি ডিলিট করতে চান?`)) return;
+                playAudio('cancel');
+                try {
+                    const res = await executeAPI({ action: 'delete_marketplace_gig', id: g.id });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        addToast(data.message || 'Gig deleted.', 'success');
+                        fetchOrders(true);
+                    } else addToast((data && data.message) || 'Delete failed.', 'error');
+                } catch (err) {
+                    addToast('Network error.', 'error');
+                }
+            };
+
+            const getStartingPrice = (g) => {
+                const prices = (g.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
+                return prices.length > 0 ? Math.min(...prices) : 0;
+            };
+
+            const renderGigCard = (g, allowManage = false) => {
+                const startPrice = getStartingPrice(g);
+                const minDays = Math.min(...((g.packages || []).map(p => Number(p.deliveryDays) || 3)));
+                return (
+                    <div key={g.id} className="glass-panel rounded-2xl border border-gray-200/70 dark:border-white/10 overflow-hidden flex flex-col hover:border-[#005fb8]/60 transition-all">
+                        <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden">
+                            {g.bannerUrl ? (
+                                <img src={g.bannerUrl} alt={g.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center text-white/80 p-4 text-center">
+                                    <Icon name="briefcase" className="w-8 h-8 mb-1.5 text-[#facc15]" />
+                                    <span className="text-[11px] font-bold uppercase tracking-wider">{g.category}</span>
+                                </div>
+                            )}
+                            <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/75 text-white text-[10px] font-bold backdrop-blur-sm">
+                                {g.category}
+                            </span>
+                            {allowManage && (
+                                <span className={`absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase ${g.status === 'Active' ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'}`}>
+                                    {g.status}
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="p-3.5 flex-1 flex flex-col gap-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => { playAudio('click'); onOpenPublicPortfolio(g.ownerName); }}
+                                    className="flex items-center gap-2 min-w-0 text-left group"
+                                >
+                                    <UserAvatar name={g.ownerName} size="xs" showOnline={true} />
+                                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200 group-hover:text-[#005fb8] truncate">{g.ownerName}</span>
+                                </button>
+                                <span className="text-[10px] font-numbers font-bold text-gray-400 shrink-0">
+                                    {g.ordersCount || 0} orders
+                                </span>
+                            </div>
+
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2" title={g.title}>
+                                {g.title}
+                            </h3>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed flex-1">
+                                {g.description}
+                            </p>
+
+                            <div className="pt-2.5 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2">
+                                <div>
+                                    <span className="text-[9px] uppercase font-bold text-gray-400 block leading-none">Starting at</span>
+                                    <span className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">
+                                        {CURRENCY_SYMBOL}{startPrice.toLocaleString()}
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                    {allowManage ? (
+                                        <>
+                                            <button type="button" onClick={() => openEditGig(g)} className="px-2.5 py-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold win-button">
+                                                Edit
+                                            </button>
+                                            <button type="button" onClick={() => handleDeleteGig(g)} className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 win-button" title="Delete">
+                                                <Icon name="trash-2" className="w-3.5 h-3.5" />
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => { playAudio('click'); onOpenPublicPortfolio(g.ownerName); }}
+                                            className="px-3 py-1.5 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold win-button whitespace-nowrap"
+                                        >
+                                            View Portfolio
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="space-y-4 sm:space-y-5 pb-12 w-full max-w-full overflow-x-hidden">
+                    {/* Dedicated Public Portfolio Share Banner */}
+                    <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-blue-200/70 dark:border-white/10 bg-gradient-to-r from-blue-500/[0.06] via-transparent to-emerald-500/[0.06] space-y-3.5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold uppercase tracking-wider mb-1">
+                                    <Icon name="store" className="w-3 h-3 shrink-0" />
+                                    <span>Faridpur IT Freelance Marketplace</span>
+                                </div>
+                                <h2 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight truncate">
+                                    Your Dedicated Portfolio &amp; Gigs
+                                </h2>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                    নিজের সার্ভিস গিগ ও ৩টি প্যাকেজ তৈরি করুন এবং পাবলিক পোর্টফোলিও লিংক শেয়ার করে ক্লায়েন্ট অর্ডার নিন।
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => { playAudio('click'); setGigForm(defaultGigForm); setModalOpen(true); }}
+                                className="h-10 px-4 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm shrink-0 whitespace-nowrap win-button"
+                            >
+                                <Icon name="plus" className="w-4 h-4 shrink-0" /> Create New Gig
+                            </button>
+                        </div>
+
+                        {/* Shareable Public Link Bar */}
+                        <div className="p-2.5 rounded-xl bg-white/85 dark:bg-dark-900/60 border border-gray-200/80 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <Icon name="globe" className="w-4 h-4 text-[#005fb8] shrink-0" />
+                                <span className="text-xs font-mono-code font-semibold text-gray-700 dark:text-gray-200 truncate select-all">
+                                    {publicPortfolioUrl}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 flex-nowrap">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        playAudio('success');
+                                        if (navigator.clipboard) navigator.clipboard.writeText(publicPortfolioUrl);
+                                        addToast('পাবলিক পোর্টফোলিও লিংক কপি হয়েছে!', 'success');
+                                    }}
+                                    className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-[11px] font-bold flex items-center justify-center gap-1 win-button whitespace-nowrap"
+                                >
+                                    <Icon name="copy" className="w-3.5 h-3.5" /> Copy Link
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { playAudio('click'); onOpenPublicPortfolio(myName); }}
+                                    className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold flex items-center justify-center gap-1 win-button whitespace-nowrap"
+                                >
+                                    <Icon name="external-link" className="w-3.5 h-3.5" /> Public View
+                                </button>
+                                <a
+                                    href={`https://wa.me/?text=${encodeURIComponent(`হ্যালো! আমার প্রফেশনাল সার্ভিস ও পোর্টফোলিও দেখুন এবং সরাসরি অর্ডার করুন:\n${publicPortfolioUrl}`)}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center justify-center gap-1 win-button whitespace-nowrap"
+                                    title="Share on WhatsApp"
+                                >
+                                    <Icon name="share-2" className="w-3.5 h-3.5" />
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 3-Tab Navigation */}
+                    <div className="glass-panel p-1.5 rounded-xl border border-gray-200/70 dark:border-white/10 grid grid-cols-3 gap-1.5">
+                        {[
+                            { id: 'my-gigs', label: `My Gigs (${myGigs.length})`, icon: 'layers' },
+                            { id: 'explore', label: `Marketplace (${gigs.length})`, icon: 'compass' },
+                            { id: 'orders', label: `Orders (${incomingOrders.length})`, icon: 'shopping-bag' }
+                        ].map(t => (
+                            <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => { playAudio('click'); setActiveTab(t.id); }}
+                                className={`py-2 px-2 rounded-lg text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors ${
+                                    activeTab === t.id ? 'bg-[#005fb8] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-800'
+                                }`}
+                            >
+                                <Icon name={t.icon} className="w-3.5 h-3.5 shrink-0 hidden sm:inline" />
+                                <span className="truncate">{t.label}</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* TAB 1: MY GIGS */}
+                    {activeTab === 'my-gigs' && (
+                        myGigs.length === 0 ? (
+                            <div className="glass-panel py-12 px-4 rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-center space-y-2.5">
+                                <Icon name="store" className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto" />
+                                <p className="text-sm font-bold text-gray-800 dark:text-gray-200">আপনার এখনো কোনো গিগ নেই</p>
+                                <p className="text-xs text-gray-500 max-w-md mx-auto">আপনার প্রথম সার্ভিস গিগ ও প্যাকেজ যুক্ত করুন, তারপর আপনার ডেডিকেটেড পোর্টফোলিও লিংক সোশ্যাল মিডিয়ায় শেয়ার করে ক্লায়েন্ট অর্ডার নিন।</p>
+                                <button type="button" onClick={() => { setGigForm(defaultGigForm); setModalOpen(true); }} className="mt-2 px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold win-button">
+                                    + প্রথম গিগ তৈরি করুন
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {myGigs.map(g => renderGigCard(g, true))}
+                            </div>
+                        )
+                    )}
+
+                    {/* TAB 2: EXPLORE ALL MARKETPLACE GIGS */}
+                    {activeTab === 'explore' && (
+                        <div className="space-y-3.5">
+                            <div className="glass-panel p-3 rounded-xl border border-gray-200/70 dark:border-white/10 flex flex-col sm:flex-row gap-2.5">
+                                <div className="flex items-center bg-white dark:bg-dark-800 px-3 py-1.5 rounded-lg border border-gray-200/80 dark:border-white/10 flex-1">
+                                    <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
+                                    <input
+                                        type="text"
+                                        value={searchQ}
+                                        onChange={e => setSearchQ(e.target.value)}
+                                        placeholder="গিগ, ক্যাটাগরি বা ফ্রিল্যান্সারের নাম খুঁজুন..."
+                                        className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium text-gray-800 dark:text-white"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                                    {['All', ...serviceList].map(c => (
+                                        <button
+                                            key={c}
+                                            type="button"
+                                            onClick={() => setCatFilter(c)}
+                                            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap shrink-0 ${catFilter === c ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300'}`}
+                                        >
+                                            {c}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {exploreGigs.length === 0 ? (
+                                <div className="glass-panel py-10 text-center text-xs text-gray-500 rounded-2xl border border-dashed">কোনো গিগ পাওয়া যায়নি।</div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {exploreGigs.map(g => renderGigCard(g, isAdminMgr || String(g.ownerId).toLowerCase() === myId.toLowerCase()))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* TAB 3: INCOMING MARKETPLACE ORDERS */}
+                    {activeTab === 'orders' && (
+                        <div className="glass-panel rounded-2xl border border-gray-200/70 dark:border-white/10 overflow-hidden divide-y divide-gray-100 dark:divide-white/10">
+                            {incomingOrders.length === 0 ? (
+                                <div className="py-12 px-4 text-center text-xs text-gray-500">
+                                    এখনো কোনো মার্কেটপ্লেস অর্ডার আসেনি। ক্লায়েন্ট আপনার পোর্টফোলিও থেকে অর্ডার দিলেই এখানে, All Projects এবং Client Leads-এ অটো যুক্ত হবে।
+                                </div>
+                            ) : incomingOrders.map(p => (
+                                <div key={p.id} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="px-2 py-0.5 rounded bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-mono-code font-bold">{p.id}</span>
+                                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">{p.status}</span>
+                                            <span className="text-[10px] text-gray-400 font-numbers">Deadline: {moment(parseCustomDate(p.deadline)).format('DD MMM YYYY')}</span>
+                                        </div>
+                                        <h4 className="text-sm font-bold text-gray-900 dark:text-white mt-1 break-words">{p.name}</h4>
+                                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
+                                            Client: <strong>{p.client}</strong> {p.clientPhone ? `• ${p.clientPhone}` : ''}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center justify-between sm:flex-col sm:items-end gap-1.5 shrink-0">
+                                        <span className="text-base font-numbers font-bold text-emerald-600 dark:text-emerald-400">
+                                            {CURRENCY_SYMBOL}{Number(p.revenue || 0).toLocaleString()}
+                                        </span>
+                                        <a href="#projects" onClick={() => playAudio('click')} className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">
+                                            Open in Projects →
+                                        </a>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Create / Edit Gig & 3-Package Builder Modal */}
+                    <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={gigForm.id ? 'Edit Service Gig' : 'Create New Service Gig'} maxWidth="max-w-2xl" compact={true}>
+                        <form onSubmit={handleSaveGig} className="space-y-3.5 w-full min-w-0">
+                            <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">1. Gig Overview</div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Gig Title *</label>
+                                    <input type="text" required value={gigForm.title} onChange={e => setGigForm({ ...gigForm, title: e.target.value })} className="w-full input-style px-3 py-2 text-sm font-semibold" placeholder="e.g. I will build a modern responsive WordPress website" />
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Category *</label>
+                                        <select value={gigForm.category} onChange={e => setGigForm({ ...gigForm, category: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-semibold">
+                                            {serviceList.map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Visibility</label>
+                                        <select value={gigForm.status} onChange={e => setGigForm({ ...gigForm, status: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-semibold">
+                                            <option value="Active">Active (Public)</option>
+                                            <option value="Paused">Paused (Hidden)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Service Description *</label>
+                                    <textarea rows="3" required value={gigForm.description} onChange={e => setGigForm({ ...gigForm, description: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm" placeholder="ক্লায়েন্টকে বুঝিয়ে লিখুন আপনি কী কী সার্ভিস দেবেন..." />
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Banner Image (Upload or URL)</label>
+                                        <div className="flex gap-1.5">
+                                            <input type="url" value={gigForm.bannerUrl} onChange={e => setGigForm({ ...gigForm, bannerUrl: e.target.value })} className="flex-1 min-w-0 input-style px-2.5 py-1.5 text-xs" placeholder="https://..." />
+                                            <label className="px-2.5 py-1.5 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 shrink-0">
+                                                <Icon name={uploadingBanner ? 'loader' : 'upload'} className={`w-3.5 h-3.5 ${uploadingBanner ? 'animate-spin' : ''}`} />
+                                                <span>Upload</span>
+                                                <input type="file" accept="image/*" onChange={handleBannerUpload} className="hidden" disabled={uploadingBanner} />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Live Demo / Sample Link (Optional)</label>
+                                        <input type="url" value={gigForm.demoUrl} onChange={e => setGigForm({ ...gigForm, demoUrl: e.target.value })} className="w-full input-style px-2.5 py-1.5 text-xs" placeholder="https://..." />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 3 Pricing Packages (Basic, Standard, Premium) */}
+                            <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">2. Pricing Packages (Basic / Standard / Premium)</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                    {gigForm.packages.map((pk, idx) => (
+                                        <div key={pk.tier} className="p-2.5 rounded-xl bg-white dark:bg-dark-800 border border-gray-200/70 dark:border-white/10 space-y-2">
+                                            <div className="text-xs font-bold text-center py-1 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] uppercase">
+                                                {pk.tier}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-1.5">
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-gray-400 uppercase">Price (৳)</label>
+                                                    <input type="number" min="0" value={pk.price} onChange={e => updatePackageField(idx, 'price', e.target.value)} className="w-full input-style px-2 py-1 text-xs font-numbers font-bold text-emerald-600" placeholder="1500" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-bold text-gray-400 uppercase">Days</label>
+                                                    <input type="number" min="1" value={pk.deliveryDays} onChange={e => updatePackageField(idx, 'deliveryDays', e.target.value)} className="w-full input-style px-2 py-1 text-xs font-numbers font-bold" placeholder="3" />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-0.5">Features (1 per line)</label>
+                                                <textarea rows="3" value={pk.features} onChange={e => updatePackageField(idx, 'features', e.target.value)} className="w-full input-style px-2 py-1 text-[11px] leading-snug resize-none" placeholder="Feature 1&#10;Feature 2" />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                                <button type="button" onClick={() => setModalOpen(false)} className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold win-button">Cancel</button>
+                                <button type="submit" disabled={saving || uploadingBanner} className="w-full sm:w-auto px-7 py-2.5 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 win-button">
+                                    {saving ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="save" className="w-4 h-4" />}
+                                    <span>{saving ? 'Publishing...' : (gigForm.id ? 'Update Gig' : 'Publish Gig')}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 🌍 DEDICATED PUBLIC STUDENT PORTFOLIO LANDING PAGE (NO LOGIN REQUIRED)
+        // ==========================================
+        const PublicPortfolioView = ({ slug, isDarkMode, setIsDarkMode, addToast, onClose }) => {
+            const [loading, setLoading] = useState(true);
+            const [portfolio, setPortfolio] = useState(null);
+            const [errorMsg, setErrorMsg] = useState('');
+            const [selectedGig, setSelectedGig] = useState(null);
+            const [selectedPkgIdx, setSelectedPkgIdx] = useState(0);
+            const [orderForm, setOrderForm] = useState({ clientName: '', clientPhone: '', clientEmail: '', brief: '', submitting: false });
+            const [orderSuccess, setOrderSuccess] = useState(null);
+
+            useEffect(() => {
+                let cancelled = false;
+                setLoading(true);
+                setErrorMsg('');
+                fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'get_public_portfolio', slug })
+                })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (cancelled) return;
+                        if (data && data.success && data.portfolio) {
+                            setPortfolio(data.portfolio);
+                            document.title = `${data.portfolio.name} — Verified Talent | Faridpur IT Institute`;
+                        } else {
+                            setErrorMsg((data && data.message) || 'Portfolio not found.');
+                        }
+                        setLoading(false);
+                    })
+                    .catch(() => {
+                        if (!cancelled) { setErrorMsg('Network error loading portfolio.'); setLoading(false); }
+                    });
+                return () => { cancelled = true; };
+            }, [slug]);
+
+            const handlePlaceOrder = async (e) => {
+                e.preventDefault();
+                if (!selectedGig) return;
+                const activePkg = (selectedGig.packages || [])[selectedPkgIdx] || { tier: 'Basic', price: 0, deliveryDays: 3 };
+                setOrderForm(prev => ({ ...prev, submitting: true }));
+                try {
+                    const res = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            action: 'place_marketplace_order',
+                            order: {
+                                gigId: selectedGig.id,
+                                gigTitle: selectedGig.title,
+                                category: selectedGig.category,
+                                ownerName: portfolio?.name || selectedGig.ownerName,
+                                packageName: activePkg.tier,
+                                packagePrice: activePkg.price,
+                                deliveryDays: activePkg.deliveryDays,
+                                clientName: orderForm.clientName,
+                                clientPhone: orderForm.clientPhone,
+                                clientEmail: orderForm.clientEmail,
+                                brief: orderForm.brief
+                            }
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        if (typeof window.playSound === 'function') window.playSound('success');
+                        setOrderSuccess({ orderId: data.orderId, message: data.message, gigTitle: selectedGig.title, pkg: activePkg });
+                        setOrderForm({ clientName: '', clientPhone: '', clientEmail: '', brief: '', submitting: false });
+                        setSelectedGig(null);
+                    } else {
+                        addToast((data && data.message) || 'Order could not be placed.', 'error');
+                        setOrderForm(prev => ({ ...prev, submitting: false }));
+                    }
+                } catch (err) {
+                    addToast('Network error submitting order.', 'error');
+                    setOrderForm(prev => ({ ...prev, submitting: false }));
+                }
+            };
+
+            return (
+                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-slate-50 dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100 flex flex-col">
+                    {/* Clean Minimal Top Bar */}
+                    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#141416]/90 backdrop-blur-xl border-b border-gray-200/70 dark:border-white/10 px-4 py-3">
+                        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-8 h-8 rounded-lg bg-[#005fb8] text-white flex items-center justify-center shrink-0">
+                                    <Icon name="award" className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-xs sm:text-sm font-bold leading-tight truncate">Faridpur IT Talent</p>
+                                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold truncate">Verified Portfolio</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsDarkMode(prev => !prev)}
+                                    className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300"
+                                    title="Toggle Theme"
+                                >
+                                    <Icon name={isDarkMode ? 'sun' : 'moon'} className="w-4 h-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap"
+                                >
+                                    Portal Home
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Body */}
+                    <main className="flex-1 w-full max-w-5xl mx-auto px-3.5 sm:px-6 py-6 sm:py-10 space-y-6 sm:space-y-8">
+                        {loading ? (
+                            <div className="py-24 text-center space-y-3">
+                                <Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" />
+                                <p className="text-xs font-semibold text-gray-500">Loading verified portfolio...</p>
+                            </div>
+                        ) : errorMsg || !portfolio ? (
+                            <div className="py-20 text-center space-y-3 bg-white dark:bg-[#161618] rounded-2xl border border-gray-200 dark:border-white/10 p-6">
+                                <Icon name="user-x" className="w-10 h-10 text-gray-400 mx-auto" />
+                                <h2 className="text-lg font-bold">{errorMsg || 'Portfolio Not Found'}</h2>
+                                <button type="button" onClick={onClose} className="px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">
+                                    Back to Faridpur IT
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                {/* 1. Premium Balanced Profile Hero Card */}
+                                <section className="bg-white dark:bg-[#161618] rounded-3xl p-5 sm:p-7 border border-gray-200/80 dark:border-white/10 shadow-sm relative overflow-hidden">
+                                    <div className="absolute -top-20 -right-20 w-56 h-56 bg-[#005fb8]/10 rounded-full blur-3xl pointer-events-none" />
+                                    <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
+                                        <div className="flex items-center gap-4 min-w-0">
+                                            <div className="relative shrink-0">
+                                                <img
+                                                    src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(portfolio.name)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
+                                                    alt={portfolio.name}
+                                                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-[3px] border-white dark:border-[#242428] shadow-md bg-gray-100"
+                                                />
+                                                <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#161618]" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <h1 className="text-xl sm:text-2xl font-bold tracking-tight truncate">{portfolio.name}</h1>
+                                                    {portfolio.isVerified && (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold">
+                                                            <Icon name="badge-check" className="w-3.5 h-3.5" /> Verified Talent
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                    Certified Professional • Faridpur IT Institute
+                                                </p>
+                                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                                    {(portfolio.courses || []).map(c => (
+                                                        <span key={c} className="px-2.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.07] text-[10px] font-bold text-gray-700 dark:text-gray-200">
+                                                            {c}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Social Links + Quick Hire Stats */}
+                                        <div className="flex flex-col sm:flex-row md:flex-col items-stretch sm:items-center md:items-end gap-3 shrink-0">
+                                            <div className="grid grid-cols-3 gap-2 text-center">
+                                                <div className="px-3 py-2 rounded-xl bg-blue-500/[0.08] border border-blue-200/60 dark:border-blue-500/20">
+                                                    <span className="block text-sm sm:text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{portfolio.skillProgress}%</span>
+                                                    <span className="text-[9px] font-bold uppercase text-gray-500">Skill</span>
+                                                </div>
+                                                <div className="px-3 py-2 rounded-xl bg-emerald-500/[0.08] border border-emerald-200/60 dark:border-emerald-500/20">
+                                                    <span className="block text-sm sm:text-base font-numbers font-bold text-emerald-600 dark:text-emerald-400">{(portfolio.gigs || []).length}</span>
+                                                    <span className="text-[9px] font-bold uppercase text-gray-500">Services</span>
+                                                </div>
+                                                <div className="px-3 py-2 rounded-xl bg-amber-500/[0.08] border border-amber-200/60 dark:border-amber-500/20">
+                                                    <span className="block text-sm sm:text-base font-numbers font-bold text-amber-600 dark:text-amber-400">{portfolio.totalOrders || 0}</span>
+                                                    <span className="text-[9px] font-bold uppercase text-gray-500">Orders</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-start md:justify-end gap-1.5 flex-wrap">
+                                                {portfolio.linkedin && <a href={portfolio.linkedin} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-[#0A66C2]/10 text-[#0A66C2] text-[11px] font-bold">LinkedIn</a>}
+                                                {portfolio.fbProfile && <a href={portfolio.fbProfile} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-[#1877F2]/10 text-[#1877F2] text-[11px] font-bold">Facebook</a>}
+                                                {portfolio.website && <a href={portfolio.website} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold">Website</a>}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Verified Institute Exam Badges */}
+                                    {Array.isArray(portfolio.passedExams) && portfolio.passedExams.length > 0 && (
+                                        <div className="mt-5 pt-4 border-t border-gray-100 dark:border-white/10">
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Verified Skill Assessments</p>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {portfolio.passedExams.slice(0, 6).map((ex, idx) => (
+                                                    <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/[0.09] border border-emerald-300/50 dark:border-emerald-500/25 text-[11px] font-semibold text-emerald-800 dark:text-emerald-200">
+                                                        <Icon name="check-circle" className="w-3 h-3 text-emerald-600 shrink-0" />
+                                                        <span>{ex.moduleTitle} ({ex.bestScore}%)</span>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </section>
+
+                                {/* 2. Fiverr-Style Services & Gigs Showcase */}
+                                <section className="space-y-4">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <h2 className="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2">
+                                            <Icon name="briefcase" className="w-5 h-5 text-[#005fb8]" />
+                                            <span>Services &amp; Packages ({(portfolio.gigs || []).length})</span>
+                                        </h2>
+                                        <span className="text-xs text-gray-500">Click any service to view packages &amp; order</span>
+                                    </div>
+
+                                    {(!portfolio.gigs || portfolio.gigs.length === 0) ? (
+                                        <div className="bg-white dark:bg-[#161618] rounded-2xl p-10 text-center border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
+                                            এই প্রোফাইলে এখনো কোনো সার্ভিস গিগ পাবলিশ করা হয়নি।
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+                                            {portfolio.gigs.map(gig => {
+                                                const prices = (gig.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
+                                                const startPrice = prices.length > 0 ? Math.min(...prices) : 0;
+                                                const fastDays = Math.min(...((gig.packages || []).map(p => Number(p.deliveryDays) || 3)));
+                                                return (
+                                                    <div
+                                                        key={gig.id}
+                                                        onClick={() => { setSelectedGig(gig); setSelectedPkgIdx(0); }}
+                                                        className="bg-white dark:bg-[#161618] rounded-2xl border border-gray-200/80 dark:border-white/10 overflow-hidden cursor-pointer hover:border-[#005fb8] shadow-sm transition-all flex flex-col group"
+                                                    >
+                                                        <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden">
+                                                            {gig.bannerUrl ? (
+                                                                <img src={gig.bannerUrl} alt={gig.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                            ) : (
+                                                                <div className="w-full h-full flex flex-col items-center justify-center text-white/80 p-4 text-center">
+                                                                    <Icon name="sparkles" className="w-8 h-8 text-[#facc15] mb-1.5" />
+                                                                    <span className="text-xs font-bold uppercase">{gig.category}</span>
+                                                                </div>
+                                                            )}
+                                                            <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-md bg-black/75 text-white text-[10px] font-bold">
+                                                                {gig.category}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="p-4 flex-1 flex flex-col gap-2">
+                                                            <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] transition-colors">
+                                                                {gig.title}
+                                                            </h3>
+                                                            <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed flex-1">
+                                                                {gig.description}
+                                                            </p>
+
+                                                            <div className="pt-3 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2">
+                                                                <div>
+                                                                    <span className="text-[9px] uppercase font-bold text-gray-400 block leading-none">Starting at</span>
+                                                                    <span className="text-lg font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">
+                                                                        {CURRENCY_SYMBOL}{startPrice.toLocaleString()}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-right">
+                                                                    <span className="text-[10px] text-gray-500 block font-semibold">{fastDays}d delivery</span>
+                                                                    <span className="inline-block mt-0.5 px-3 py-1 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold">
+                                                                        Order Now
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </section>
+                            </>
+                        )}
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="py-5 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs text-gray-500">
+                        Verified Talent Portfolio • Powered by <strong className="text-gray-800 dark:text-gray-200">Faridpur IT Institute</strong> (faridpurit.com)
+                    </footer>
+
+                    {/* Interactive 3-Package Selection & Client Order Modal */}
+                    <Modal isOpen={!!selectedGig} onClose={() => setSelectedGig(null)} title={selectedGig?.title || 'Service Packages'} maxWidth="max-w-2xl" compact={true}>
+                        {selectedGig && (() => {
+                            const pkgs = Array.isArray(selectedGig.packages) && selectedGig.packages.length > 0
+                                ? selectedGig.packages
+                                : [{ tier: 'Basic', price: 1500, deliveryDays: 3, features: ['Professional delivery'] }];
+                            const activePkg = pkgs[selectedPkgIdx] || pkgs[0];
+
+                            return (
+                                <div className="space-y-4">
+                                    {selectedGig.bannerUrl && (
+                                        <img src={selectedGig.bannerUrl} alt={selectedGig.title} referrerPolicy="no-referrer" className="w-full max-h-48 object-cover rounded-xl border border-gray-200 dark:border-white/10" />
+                                    )}
+
+                                    <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
+                                        {selectedGig.description}
+                                    </p>
+
+                                    {selectedGig.demoUrl && (
+                                        <a href={selectedGig.demoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">
+                                            <Icon name="external-link" className="w-3.5 h-3.5" /> View Live Sample / Demo
+                                        </a>
+                                    )}
+
+                                    {/* Basic / Standard / Premium Tabs */}
+                                    <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden">
+                                        <div className="grid grid-cols-3 bg-gray-100 dark:bg-dark-900 p-1 gap-1">
+                                            {pkgs.map((pk, idx) => (
+                                                <button
+                                                    key={pk.tier || idx}
+                                                    type="button"
+                                                    onClick={() => setSelectedPkgIdx(idx)}
+                                                    className={`py-2 rounded-lg text-xs font-bold transition-colors ${selectedPkgIdx === idx ? 'bg-[#005fb8] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}
+                                                >
+                                                    {pk.tier}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <div className="p-3.5 sm:p-4 bg-white dark:bg-dark-800 space-y-2.5">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-bold text-gray-500 uppercase">{activePkg.tier} Package</span>
+                                                <span className="text-xl font-numbers font-bold text-emerald-600 dark:text-emerald-400">
+                                                    {CURRENCY_SYMBOL}{Number(activePkg.price || 0).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
+                                                <Icon name="clock" className="w-3.5 h-3.5 text-[#005fb8]" /> {activePkg.deliveryDays || 3} Days Delivery
+                                            </p>
+                                            <ul className="space-y-1.5 pt-2 border-t border-gray-100 dark:border-white/10">
+                                                {(Array.isArray(activePkg.features) ? activePkg.features : []).map((ft, fi) => (
+                                                    <li key={fi} className="text-xs text-gray-700 dark:text-gray-200 flex items-start gap-2">
+                                                        <Icon name="check" className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                                                        <span>{ft}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    {/* Client Order Submission Form */}
+                                    <form onSubmit={handlePlaceOrder} className="p-3.5 rounded-2xl bg-blue-500/[0.06] border border-blue-200/70 dark:border-blue-500/25 space-y-2.5">
+                                        <p className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff]">
+                                            Order "{activePkg.tier}" Package ({CURRENCY_SYMBOL}{Number(activePkg.price || 0).toLocaleString()})
+                                        </p>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <input type="text" required value={orderForm.clientName} onChange={e => setOrderForm({ ...orderForm, clientName: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm" placeholder="আপনার নাম *" />
+                                            <input type="tel" required minLength={10} value={orderForm.clientPhone} onChange={e => setOrderForm({ ...orderForm, clientPhone: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-mono-code" placeholder="হোয়াটসঅ্যাপ / ফোন নাম্বার *" />
+                                        </div>
+                                        <input type="email" value={orderForm.clientEmail} onChange={e => setOrderForm({ ...orderForm, clientEmail: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm" placeholder="ইমেইল (Optional)" />
+                                        <textarea rows="2" value={orderForm.brief} onChange={e => setOrderForm({ ...orderForm, brief: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm resize-none" placeholder="আপনার প্রজেক্ট সম্পর্কে সংক্ষেপে লিখুন..." />
+                                        <button type="submit" disabled={orderForm.submitting} className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 win-button">
+                                            {orderForm.submitting ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="check-circle" className="w-4 h-4" />}
+                                            <span>{orderForm.submitting ? 'Placing Order...' : `Confirm Order (${CURRENCY_SYMBOL}${Number(activePkg.price || 0).toLocaleString()})`}</span>
+                                        </button>
+                                    </form>
+                                </div>
+                            );
+                        })()}
+                    </Modal>
+
+                    {/* Order Confirmed Success Modal */}
+                    <Modal isOpen={!!orderSuccess} onClose={() => setOrderSuccess(null)} title="Order Placed Successfully!" maxWidth="max-w-md" compact={true}>
+                        {orderSuccess && (
+                            <div className="text-center space-y-3 py-2">
+                                <div className="w-12 h-12 rounded-full bg-emerald-500/15 text-emerald-600 flex items-center justify-center mx-auto">
+                                    <Icon name="check-circle" className="w-7 h-7" />
+                                </div>
+                                <h3 className="text-base font-bold text-gray-900 dark:text-white">অর্ডার কনফার্ম হয়েছে!</h3>
+                                <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{orderSuccess.message}</p>
+                                <div className="p-3 rounded-xl bg-gray-50 dark:bg-dark-800 border border-gray-200 dark:border-white/10 text-xs font-numbers space-y-1">
+                                    <div>Order ID: <strong>{orderSuccess.orderId}</strong></div>
+                                    <div>Service: <strong>{orderSuccess.gigTitle}</strong> ({orderSuccess.pkg?.tier})</div>
+                                    <div>Budget: <strong className="text-emerald-600">{CURRENCY_SYMBOL}{Number(orderSuccess.pkg?.price || 0).toLocaleString()}</strong></div>
+                                </div>
+                                <button type="button" onClick={() => setOrderSuccess(null)} className="w-full py-2.5 rounded-xl bg-[#005fb8] text-white text-xs font-bold">
+                                    Done
+                                </button>
+                            </div>
+                        )}
+                    </Modal>
+                </div>
+            );
+        };
+
+        // ==========================================
         // MAIN APP COMPONENT
         // ==========================================
         const App = () => {
             // 🟢 MISSING AUTH & CORE APP STATES RECOVERED
-            const [auth, setAuth] = useState(() => { try { return JSON.parse(localStorage.getItem('faridpurit_auth')) || null; } catch(e) { return null; } });
+           const [auth, setAuth] = useState(() => { try { return JSON.parse(localStorage.getItem('faridpurit_auth')) || null; } catch(e) { return null; } });
             const [currentRoute, setCurrentRoute] = useState('dashboard');
+            const [publicPortfolioSlug, setPublicPortfolioSlug] = useState(() => {
+                try {
+                    const sp = new URLSearchParams(window.location.search);
+                    const qp = sp.get('portfolio');
+                    if (qp && qp.trim()) return qp.trim();
+                } catch (e) {}
+                const h = String(window.location.hash || '');
+                const m = h.match(/^#portfolio\/(.+)$/i);
+                return (m && m[1]) ? decodeURIComponent(m[1]).trim() : '';
+            });
             const [isRouteLoading, setIsRouteLoading] = useState(false); // 🟢 NEW: Page Transition State
             // 🟢 কমিউনিটি চ্যাট ফিল্টার ও দৈনিক মেসেজ লিমিট (ডিফল্ট ১২ — এখান থেকে অথবা ড্যাশবোর্ড থেকেই যেকোনো সময় বদলানো যাবে)
             const [communityFilterOnlyMine, setCommunityFilterOnlyMine] = useState(false);
@@ -23790,6 +24740,7 @@ const handleAISubmit = async (e) => {
                     'daily-tasks': 'Daily Work Planner',
                     'id-card': 'Official Student ID Card',
                     'skill-exam': 'Skill Exam & Assessment',
+                    marketplace: 'Freelance Marketplace & Gigs',
                     analytics: 'Institute Analytics',
                     orders: 'Billing & Payments',
                     trash: 'Trash & Recovery Bin',
@@ -23869,6 +24820,7 @@ const [courseModules, setCourseModules] = useState([]);
             const [studentLeads, setStudentLeads] = useState([]);
             const [dailyTasks, setDailyTasks] = useState([]);
             const [workspaceLinks, setWorkspaceLinks] = useState([]); // 🟢 NEW: Quick Links
+            const [marketplaceGigs, setMarketplaceGigs] = useState([]);
             const [loading, setLoading] = useState(true);
 
             // 🟢 GLOBAL SMART AUTOCOMPLETE ENGINE (SECURE & ISOLATED)
@@ -24166,6 +25118,7 @@ const [courseModules, setCourseModules] = useState([]);
 				setResources(d.resources || []);
                 setDailyTasks(d.dailyTasks || []);
                 setWorkspaceLinks(d.workspaceLinks || []); // 🟢 Load Links
+                setMarketplaceGigs(d.marketplaceGigs || []);
                 if (typeof d.communityTodayCount === 'number') {
                     setCommunityAllTodayCount(d.communityTodayCount);
                 }
@@ -24844,12 +25797,12 @@ const [courseModules, setCourseModules] = useState([]);
             const canAccessRoute = useCallback((route) => {
                 const role = auth?.role || 'Student';
                 const permissions = {
-                    Admin: ['community', 'dashboard', 'daily-tasks', 'projects', 'clients', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'id-card', 'students', 'seats', 'leaderboard', 'analytics', 'orders', 'abandoned', 'ranking', 'expenses', 'trash', 'affiliates', 'payouts', 'products', 'omni-search', 'notes', 'settings'],
-                    Manager: ['community', 'dashboard', 'daily-tasks', 'projects', 'clients', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'students', 'seats', 'leaderboard', 'orders', 'abandoned', 'products', 'omni-search', 'notes', 'settings'],
-                    Trainer: ['community', 'dashboard', 'daily-tasks', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'students', 'seats', 'leaderboard', 'notes', 'settings'],
-                    Team: ['community', 'dashboard', 'daily-tasks', 'projects', 'clients', 'enrollments', 'orders', 'notes', 'settings'],
-                    Student: ['community', 'dashboard', 'courses', 'modules', 'assignments', 'resources', 'id-card', 'seats', 'leaderboard', 'orders', 'notes', 'settings', 'clients', 'enrollments', 'products'],
-                    Affiliator: ['community', 'dashboard', 'orders', 'abandoned', 'affiliates', 'payouts', 'products', 'omni-search', 'notes', 'settings']
+                    Admin: ['community', 'dashboard', 'daily-tasks', 'marketplace', 'projects', 'clients', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'id-card', 'students', 'seats', 'leaderboard', 'analytics', 'orders', 'abandoned', 'ranking', 'expenses', 'trash', 'affiliates', 'payouts', 'products', 'omni-search', 'notes', 'settings'],
+                    Manager: ['community', 'dashboard', 'daily-tasks', 'marketplace', 'projects', 'clients', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'students', 'seats', 'leaderboard', 'orders', 'abandoned', 'products', 'omni-search', 'notes', 'settings'],
+                    Trainer: ['community', 'dashboard', 'daily-tasks', 'marketplace', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'students', 'seats', 'leaderboard', 'notes', 'settings'],
+                    Team: ['community', 'dashboard', 'daily-tasks', 'marketplace', 'projects', 'clients', 'enrollments', 'orders', 'notes', 'settings'],
+                    Student: ['community', 'dashboard', 'marketplace', 'projects', 'courses', 'modules', 'assignments', 'resources', 'id-card', 'seats', 'leaderboard', 'orders', 'notes', 'settings', 'clients', 'enrollments', 'products'],
+                    Affiliator: ['community', 'dashboard', 'marketplace', 'orders', 'abandoned', 'affiliates', 'payouts', 'products', 'omni-search', 'notes', 'settings']
                 };
                 const allowed = permissions[role] || permissions.Student;
                 if (route === 'skill-exam' && ['Admin', 'Manager', 'Trainer', 'Student'].includes(role)) return true;
@@ -25156,8 +26109,30 @@ const [courseModules, setCourseModules] = useState([]);
                 };
             }, [filteredOrders, myFilteredOrders, orders, filteredExpensesData, payouts, myPayouts, startDate, endDate, auth, networkList]);
 
-         if (!auth) return <><ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} /><LandingView auth={auth} currentRoute={currentRoute} setAuth={setAuth} addToast={addToast} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></>;
+         if (publicPortfolioSlug) {
+             return (
+                 <>
+                     <ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
+                     <PublicPortfolioView
+                         slug={publicPortfolioSlug}
+                         isDarkMode={isDarkMode}
+                         setIsDarkMode={setIsDarkMode}
+                         addToast={addToast}
+                         onClose={() => {
+                             setPublicPortfolioSlug('');
+                             try {
+                                 const u = new URL(window.location.href);
+                                 u.searchParams.delete('portfolio');
+                                 u.hash = '';
+                                 window.history.replaceState({}, '', u.toString());
+                             } catch (e) { window.location.hash = ''; }
+                         }}
+                     />
+                 </>
+             );
+         }
 
+         if (!auth) return <><ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} /><LandingView auth={auth} currentRoute={currentRoute} setAuth={setAuth} addToast={addToast} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></>;
             return (
                 <div className="flex h-[100dvh] w-full max-w-[100vw] overflow-hidden text-gray-800 dark:text-gray-200 transition-colors bg-cover bg-center">
                     {/* 🧠 Global Smart Suggestions (Auto-Suggests Saved Usernames, Emails & Phones App-Wide) */}
@@ -25217,13 +26192,12 @@ const [courseModules, setCourseModules] = useState([]);
                                 )}
                             </div>
 
-                           {/* 💼 Agency Hub Block */}
+                           {/* 💼 Agency & Marketplace Hub Block */}
                             {['Admin', 'Manager', 'Team', 'Student'].includes(auth?.role) && (
                                 <div className="space-y-0.5">
-                                    {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 mb-1.5 text-left mt-3">Agency Hub</p>}
-                                    {auth?.role !== 'Student' && (
-                                        <NavItem route="projects" current={currentRoute} icon="briefcase">All Projects</NavItem>
-                                    )}
+                                    {isSidebarOpen && <p className="px-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 mb-1.5 text-left mt-3">Agency &amp; Market</p>}
+                                    <NavItem route="marketplace" current={currentRoute} icon="store">Marketplace</NavItem>
+                                    <NavItem route="projects" current={currentRoute} icon="briefcase">{auth?.role === 'Student' ? 'My Projects' : 'All Projects'}</NavItem>
                                     <NavItem route="clients" current={currentRoute} icon="phone-call">Client Leads</NavItem>
                                 </div>
                             )}
@@ -25794,6 +26768,18 @@ const [courseModules, setCourseModules] = useState([]);
 {false && <NotesView notes={myNotes} executeAPI={executeAPI} addToast={addToast} fetchOrders={fetchOrders} auth={auth} />}
                                                 {currentRoute === 'products' && <ProductsView addToast={addToast} auth={auth} metrics={metrics} />}
                                                 {currentRoute === 'daily-tasks' && <DailyTasksView dailyTasks={dailyTasks} setDailyTasks={setDailyTasks} projects={projects} orders={orders} expenses={filteredExpensesData} clientLeads={clientLeads} studentLeads={studentLeads} executeAPI={executeAPI} fetchOrders={fetchOrders} addToast={addToast} auth={auth} globalContacts={globalContacts} batches={batches} bookings={bookings} workspaceLinks={workspaceLinks} />}
+                                                {currentRoute === 'marketplace' && (
+                                                    <MarketplaceView
+                                                        auth={auth}
+                                                        gigs={marketplaceGigs}
+                                                        projects={myProjects}
+                                                        clientLeads={myClientLeads}
+                                                        executeAPI={executeAPI}
+                                                        fetchOrders={fetchOrders}
+                                                        addToast={addToast}
+                                                        onOpenPublicPortfolio={(slug) => setPublicPortfolioSlug(slug)}
+                                                    />
+                                                )}
                                                 {currentRoute === 'projects' && <ProjectsView addToast={addToast} executeAPI={executeAPI} projects={myProjects} orders={orders} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} />}
                                                 {currentRoute === 'enrollments' && <EnrollmentsView addToast={addToast} executeAPI={executeAPI} leads={myStudentLeads} orders={orders} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} studentsPanel={myStudentsPanel} usersList={usersList} />}
                                                 {currentRoute === 'courses' && <CoursesView addToast={addToast} auth={auth} videos={videos} executeAPI={executeAPI} fetchOrders={fetchOrders} studentsPanel={studentsPanel} enrolledCourses={myEnrolledCourses} />}
