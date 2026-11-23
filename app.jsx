@@ -2374,598 +2374,8 @@
             const [currentTime, setCurrentTime] = useState(new Date());
             useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(timer); }, []);
 
-          // 🟢 REALISTIC DATABASE-BACKED STUDENT DASHBOARD & LEADERBOARD ENGINE
-            if (auth?.role === 'Student') {
-                const normStr = (v) => String(v || '').replace(/^'/, '').replace(/^\+88/, '').replace(/\s+/g, '').toLowerCase();
-                const myIdNorm = normStr(auth?.userId);
-                const myNameNorm = normStr(auth?.name || auth?.username);
-
-                // Merge all real students from StudentsPanel & Admitted StudentLeads
-                const studentDirectory = new Map();
-                const registerStudent = (stObj, source) => {
-                    const rawName = String(stObj.name || stObj.Username || '').trim();
-                    const rawPhone = String(stObj.phone || '').replace(/^'/, '').trim();
-                    const rawId = String(stObj.id || '').trim();
-                    if (!rawName && !rawPhone) return;
-
-                    let matchKey = null;
-                    for (const [k, v] of studentDirectory.entries()) {
-                        if (
-                            (rawPhone && normStr(v.phone) === normStr(rawPhone)) ||
-                            (rawName && normStr(v.name) === normStr(rawName)) ||
-                            (rawId && normStr(v.id) === normStr(rawId))
-                        ) {
-                            matchKey = k;
-                            break;
-                        }
-                    }
-
-                    if (matchKey) {
-                        const ex = studentDirectory.get(matchKey);
-                        studentDirectory.set(matchKey, {
-                            ...ex,
-                            id: ex.id || rawId,
-                            name: ex.name || rawName,
-                            phone: ex.phone || rawPhone,
-                            course: (stObj.course && stObj.course.length > (ex.course || '').length) ? stObj.course : (ex.course || stObj.interestedIn || 'Academy Course'),
-                            attendance: (Array.isArray(stObj.attendance) && stObj.attendance.length > 0) ? stObj.attendance : (ex.attendance || []),
-                            skillProgress: Math.max(Number(ex.skillProgress || 0), Number(stObj.skillProgress || 0))
-                        });
-                    } else {
-                        const newKey = normStr(rawPhone) || normStr(rawName) || normStr(rawId);
-                        studentDirectory.set(newKey, {
-                            id: rawId,
-                            name: rawName || rawPhone,
-                            phone: rawPhone,
-                            course: stObj.course || stObj.interestedIn || 'Academy Course',
-                            attendance: Array.isArray(stObj.attendance) ? stObj.attendance : [],
-                            skillProgress: Number(stObj.skillProgress || 0)
-                        });
-                    }
-                };
-
-                studentsPanel.forEach(s => registerStudent(s, 'panel'));
-                studentLeads.filter(s => s.status === 'Admitted').forEach(s => registerStudent(s, 'lead'));
-                registerStudent({ name: auth?.name || auth?.username, phone: auth?.userId, course: auth?.course }, 'self');
-
-                // Calculate 100% Real Score for each student
-                const leaderboard = Array.from(studentDirectory.values()).map(student => {
-                    const sPhoneNorm = normStr(student.phone);
-                    const sNameNorm = normStr(student.name);
-                    const sIdNorm = normStr(student.id);
-
-                    const sSafeCourses = student.course
-                        ? student.course.split(',').map(c => normStr(c)).filter(Boolean)
-                        : [];
-
-                    const sCourseModules = modules.filter(m => sSafeCourses.includes(normStr(m.course)));
-                    const targetModules = sCourseModules.length > 0 ? sCourseModules : modules;
-                    const sTotalMods = targetModules.length || 1;
-
-                    // Match student's module progress records
-                    const sModRecords = moduleProgress.filter(m => {
-                        const mId = normStr(m.studentId);
-                        return mId && (mId === sPhoneNorm || mId === sNameNorm || mId === sIdNorm);
-                    });
-
-                    let totalModConfidence = 0;
-                    let completedModsCount = 0;
-                    let completedTopicsCount = 0;
-
-                    targetModules.forEach(mod => {
-                        const rec = sModRecords.find(r => String(r.moduleId).trim() === String(mod.id).trim());
-                        if (rec) {
-                            const conf = Math.min(100, Math.max(0, Number(rec.confidence || 0)));
-                            totalModConfidence += conf;
-                            if (conf === 100) completedModsCount++;
-                            if (rec.checkedTopics) {
-                                const topicsArr = String(rec.checkedTopics).replace(/[\[\]"']/g, '').split(',').map(t => t.trim()).filter(Boolean);
-                                completedTopicsCount += topicsArr.length;
-                            }
-                        }
-                    });
-
-                    const sModRatio = targetModules.length > 0 ? Math.round(totalModConfidence / sTotalMods) : 0;
-                    const modPoints = Math.round(sModRatio * 0.40); // Max 40 Points
-
-                   // Match student's assignments (Based on 20 Target Assignments)
-                    const TARGET_ASN_COUNT = 20;
-                    const sAsn = assignments.filter(a => {
-                        const aId = normStr(a.studentId);
-                        const aName = normStr(a.studentName);
-                        return (aId && (aId === sPhoneNorm || aId === sNameNorm || aId === sIdNorm)) ||
-                               (aName && (aName === sNameNorm || aName === sPhoneNorm));
-                    });
-                    const sGraded = sAsn.filter(a => a.status === 'Graded');
-                    const sSubmittedCount = Math.min(TARGET_ASN_COUNT, sAsn.filter(a => a.status !== 'Resubmit').length);
-                    const gradedMarksSum = sGraded.slice(0, TARGET_ASN_COUNT).reduce((sum, a) => sum + Math.min(100, Math.max(0, Number(a.mark || 0))), 0);
-                    const sAvgMark = sGraded.length > 0 ? Math.round(gradedMarksSum / sGraded.length) : 0;
-
-                    // 10 pts for how many done out of 20 + 20 pts for marks obtained out of 2000 (20 * 100)
-                    const asnCountPoints = (sSubmittedCount / TARGET_ASN_COUNT) * 10;
-                    const asnMarksPoints = (gradedMarksSum / (TARGET_ASN_COUNT * 100)) * 20;
-                    const asnPoints = Math.min(30, Math.round(asnCountPoints + asnMarksPoints)); // Max 30 Points
-
-                    // Attendance (Max 15 Points)
-                    const attArr = Array.isArray(student.attendance) ? student.attendance : [];
-                    const presentCount = attArr.filter(a => a.status === 'present').length;
-                    const totalAtt = attArr.length;
-                    const attRatio = totalAtt > 0 ? Math.round((presentCount / totalAtt) * 100) : 0;
-                    const attPoints = Math.round(attRatio * 0.15);
-
-                    // Mentor Skill Evaluation (Max 15 Points)
-                    const skillRatio = Math.min(100, Math.max(0, Number(student.skillProgress || 0)));
-                    const skillPoints = Math.round(skillRatio * 0.15);
-
-                    const totalScore = Math.min(100, modPoints + asnPoints + attPoints + skillPoints);
-
-                    return {
-                        ...student,
-                        completedMods: completedModsCount,
-                        totalCourseMods: targetModules.length,
-                        modRatio: sModRatio,
-                        modPoints,
-                        avgAsnMark: sAvgMark,
-                        asnPoints,
-                        gradedCount: sGraded.length,
-                        gradedMarksSum,
-                        attRatio,
-                        attPoints,
-                        presentCount,
-                        skillRatio,
-                        skillPoints,
-                        completedTopicsCount,
-                        score: totalScore
-                    };
-                }).sort((a, b) =>
-                    b.score - a.score ||
-                    b.modPoints - a.modPoints ||
-                    b.gradedMarksSum - a.gradedMarksSum ||
-                    b.completedTopicsCount - a.completedTopicsCount ||
-                    b.presentCount - a.presentCount ||
-                    String(a.name).localeCompare(String(b.name))
-                );
-
-                const isMeCheck = (st) => {
-                    const p = normStr(st.phone);
-                    const n = normStr(st.name);
-                    const id = normStr(st.id);
-                    return (myIdNorm && (p === myIdNorm || n === myIdNorm || id === myIdNorm)) ||
-                           (myNameNorm && (n === myNameNorm || p === myNameNorm));
-                };
-
-                const myRankIndex = leaderboard.findIndex(isMeCheck);
-                const myEntry = myRankIndex !== -1 ? leaderboard[myRankIndex] : leaderboard[0] || { completedMods: 0, totalCourseMods: 1, modRatio: 0, score: 0 };
-                const myProfile = myEntry;
-
-                const completedMods = myEntry.completedMods || 0;
-                const totalCourseMods = myEntry.totalCourseMods || 1;
-                const moduleRatio = myEntry.modRatio || 0;
-
-                // Videos watched on this device (For Course Video Card display only)
-                const safeCourses = auth?.course ? auth.course.split(',').map(s => normStr(s)) : [];
-                const myVideos = videos.filter(v => safeCourses.includes(normStr(v.course)));
-                const totalVids = myVideos.length || 1;
-                const userProgCache = JSON.parse(localStorage.getItem('fit_vid_prog_' + auth?.userId)) || {};
-                const completedVids = myVideos.filter(v => userProgCache[v.id] >= 95).length;
-                const vidRatio = myVideos.length > 0 ? Math.round((completedVids / totalVids) * 100) : 0;
-
-                // Student's Assignments for checklist
-                const myAssignments = assignments.filter(a => {
-                    const aId = normStr(a.studentId);
-                    const aName = normStr(a.studentName);
-                    return (myIdNorm && (aId === myIdNorm || aName === myIdNorm)) || (myNameNorm && (aName === myNameNorm || aId === myNameNorm));
-                });
-                const gradedAsn = myAssignments.filter(a => a.status === 'Graded');
-                const pendingAsn = myAssignments.filter(a => a.status !== 'Graded');
-
-                const overallScore = myEntry.score || 0;
-                const rad = Math.PI * (overallScore / 100);
-                const dotX = 50 - 40 * Math.cos(rad);
-                const dotY = 50 - 40 * Math.sin(rad);
-
-                const myRankNum = myRankIndex !== -1 ? myRankIndex + 1 : 1;
-                const formatOrd = (n) => { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
-                const displayRank = formatOrd(myRankNum);
-                const top10 = leaderboard.slice(0, 10);
-                const isInTop10 = myRankIndex >= 0 && myRankIndex < 10;
-
-                const recentVideos = [...myVideos].sort((a,b) => b.serial - a.serial).slice(0, 2);
-
-                return (
-                    <div className="space-y-6 pb-10 w-full" style={{ fontFamily: "'Inter', sans-serif" }}>
-                        
-                       {/* 🟢 CUSTOM CSS INJECTED GLOBALLY FOR THE WIDGETS */}
-                        <style>{`
-                          /* 🟢 FIX: Ultra-Compact Mobile 2-column Grid */
-                          .db-cards { display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; width:100%; margin:0 auto; margin-bottom: 24px; }
-                          @media (min-width: 768px) { .db-cards { grid-template-columns:repeat(4, 1fr); gap:20px; } }
-                          
-                          .db-card { position:relative; display:flex; flex-direction:column; min-height:100px; padding:12px; border-radius:12px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,.05); transition:transform .3s ease,box-shadow .3s ease; opacity:0; transform:translateY(14px); animation:db-rise .6s cubic-bezier(.2,.8,.2,1) forwards; }
-                          @media (min-width: 768px) { .db-card { min-height: 180px; padding: 20px; border-radius:16px; } }
-                          .db-card:nth-child(2) { animation-delay:.08s; } .db-card:nth-child(3) { animation-delay:.16s; } .db-card:nth-child(4) { animation-delay:.24s; }
-                          .db-card:hover { transform:translateY(-4px); box-shadow:0 10px 25px rgba(0,0,0,.15); }
-                          .db-card::before { content:""; position:absolute; width:160px; height:160px; border-radius:50%; right:-50px; top:-60px; background:rgba(255,255,255,.10); pointer-events:none; }
-                          @keyframes db-rise { to { opacity:1; transform:none; } }
-
-                          .db-title { font-size:10px; font-weight:700; color:rgba(255,255,255,0.95); z-index: 10; margin-bottom:2px; text-transform:uppercase; letter-spacing: 0.5px;}
-                          @media (min-width: 768px) { .db-title { font-size:14px; margin-bottom:8px; text-transform:none; } }
-                          .db-body { flex:1; display:flex; align-items:center; justify-content:space-between; gap:5px; z-index: 10; }
-                          .db-stat { min-width:0; color: #fff; }
-                          .db-big { font-size:22px; font-weight:800; line-height:1; letter-spacing:-0.5px; color: #fff; }
-                          @media (min-width: 768px) { .db-big { font-size:38px; } }
-                          .db-sub { font-size:9px; font-weight:600; margin-top:2px; color:rgba(255,255,255,0.85); text-transform:uppercase; letter-spacing:0.5px; }
-                          @media (min-width: 768px) { .db-sub { font-size:11px; margin-top:4px; } }
-                          .db-illus { flex:none; width:45px; height:auto; transition:transform .4s ease; z-index: 10; filter: drop-shadow(0 10px 15px rgba(0,0,0,0.2)); }
-                          @media (min-width: 768px) { .db-illus { width:80px; } }
-                          .db-card:hover .db-illus { transform:scale(1.08) rotate(-3deg); }
-
-                          .db-progress { position:relative; display:flex; align-items:center; gap:6px; z-index: 10; margin-top: 6px; }
-                          @media (min-width: 768px) { .db-progress { margin-top: 10px; gap:8px; } }
-                          .db-track { flex:1; height:4px; border-radius:99px; background:rgba(0,0,0,.25); overflow:hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); }
-                          @media (min-width: 768px) { .db-track { height:6px; } }
-                          .db-fill { height:100%; width:0; border-radius:inherit; background:linear-gradient(90deg,#60cdff,#ffffff); position:relative; overflow:hidden; animation:db-grow 1.4s .5s cubic-bezier(.2,.8,.2,1) forwards; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
-                          .db-pct { font-size:9px; font-weight:800; min-width:24px; text-align:right; color: #fff; }
-                          @media (min-width: 768px) { .db-pct { font-size:11px; min-width:30px; } }
-                          @keyframes db-grow { to { width:var(--p); } }
-
-                          .db-courses { background:linear-gradient(135deg,#1b4b48,#2a6f6b); }
-                          .db-module { background:linear-gradient(135deg,#73421e,#a45d2b); }
-                          .db-grade { background:linear-gradient(135deg,#342752,#513d80); color: #fff; align-items:center; text-align:center; }
-                          .db-board { background:linear-gradient(135deg,#1a2b63,#2b46a1); color:#fff; }
-                          
-                          .db-gauge-wrap { position:relative; width:100%; max-width: 80px; margin: 0 auto; z-index: 10; padding-top: 4px; }
-                          @media (min-width: 768px) { .db-gauge-wrap { max-width: 160px; padding-top: 10px; } }
-                          .db-gauge { width:100%; height:auto; display:block; overflow: visible; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3)); }
-                          .db-gauge path { fill:none; stroke-width:8; stroke-linecap:round; }
-                          .db-knob { transform-box:fill-box; transform-origin:center; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); transition: all 1s ease-out; }
-                          
-                          .db-score { position:absolute; left:50%; bottom:-2px; transform:translateX(-50%); font-size:16px; font-weight:800; line-height:1; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
-                          @media (min-width: 768px) { .db-score { font-size:32px; bottom:-10px; } }
-                          .db-lbl { font-size:8px; font-weight:700; margin-top:8px; color: rgba(255,255,255,0.7); z-index: 10; text-transform:uppercase; letter-spacing:0.5px; }
-                          @media (min-width: 768px) { .db-lbl { font-size:11px; margin-top:12px; letter-spacing:1px; } }
-                          .db-keep { font-size:10px; font-weight:600; color:rgba(255,255,255,0.95); display:flex; gap:4px; align-items:center; justify-content:center; margin-top:2px; z-index: 10;}
-                          @media (min-width: 768px) { .db-keep { font-size:13px; gap:6px; } }
-                          
-                          .db-trophy { animation:db-float 3s ease-in-out infinite; }
-                          @keyframes db-float { 0%, 100% { transform:translateY(0); } 50% { transform:translateY(-8px); } }
-                          .db-spark { animation:db-twinkle 2s ease-in-out infinite; } .db-spark:nth-child(2n) { animation-delay:.7s; } .db-spark:nth-child(3n) { animation-delay:1.3s; }
-                          @keyframes db-twinkle { 50% { opacity:.2; } }
-                        `}</style>
-
-                        {/* 🟢 TOP 4 METRICS CARDS (USER HTML INJECTED) */}
-                        <div className="db-cards">
-                            {/* Courses */}
-                            <div className="db-card db-courses">
-                                <div className="db-title">Courses / Videos</div>
-                                <div className="db-body">
-                                    <div className="db-stat"><div className="db-big"><span className="font-numbers">{completedVids}</span>/{totalVids}</div><div className="db-sub">Completed</div></div>
-                                    <svg className="db-illus" viewBox="0 0 110 110" fill="none">
-                                        <rect x="6" y="62" width="86" height="12" rx="6" fill="#5c7fc9" transform="rotate(8 6 62)"/>
-                                        <rect x="2" y="76" width="92" height="11" rx="5" fill="#8fa9de"/>
-                                        <rect x="10" y="88" width="84" height="12" rx="6" fill="#4b6cb8"/>
-                                        <rect x="8" y="50" width="86" height="11" rx="5" fill="#c9d3ea" transform="rotate(-4 8 50)"/>
-                                        <rect x="22" y="40" width="74" height="11" rx="5" fill="#7f8aa3"/>
-                                        <rect x="26" y="29" width="70" height="11" rx="5" fill="#5f6b86"/>
-                                        <rect x="30" y="18" width="66" height="11" rx="5" fill="#9aa6c0"/>
-                                        <polygon points="52,2 82,12 52,22 22,12" fill="#1f2a44"/>
-                                        <path d="M36 17v10c10 7 32 7 32 0V17l-16 7z" fill="#2b3858"/>
-                                        <path d="M80 13v14" stroke="#4ba3e3" strokeWidth="2"/><circle cx="80" cy="30" r="3" fill="#4ba3e3"/>
-                                    </svg>
-                                </div>
-                                <div className="db-progress"><div className="db-track"><div className="db-fill" style={{ '--p': `${vidRatio}%` }}></div></div><span className="db-pct font-numbers">{vidRatio}%</span></div>
-                            </div>
-
-                            {/* Module Complete */}
-                            <div className="db-card db-module">
-                                <div className="db-title">Module Complete</div>
-                                <div className="db-body">
-                                    <div className="db-stat"><div className="db-big"><span className="font-numbers">{completedMods}</span>/{totalCourseMods}</div><div className="db-sub">Modules done</div></div>
-                                    <svg className="db-illus" viewBox="0 0 104 100" fill="none">
-                                        <path d="M52 8 96 30 52 52 8 30z" fill="#3a3f4b"/>
-                                        <path d="M8 46 52 68 96 46" stroke="#3a3f4b" strokeWidth="7" strokeLinejoin="round" strokeLinecap="round"/>
-                                        <path d="M8 62 52 84 96 62" stroke="#8a8f9c" strokeWidth="7" strokeLinejoin="round" strokeLinecap="round"/>
-                                        <circle cx="80" cy="74" r="18" fill="#fff" stroke="#3a3f4b" strokeWidth="3"/>
-                                        <path d="M71 74l7 7 12-14" stroke="#c2570c" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                </div>
-                                <div className="db-progress"><div className="db-track"><div className="db-fill" style={{ '--p': `${moduleRatio}%` }}></div></div><span className="db-pct font-numbers">{moduleRatio}%</span></div>
-                            </div>
-
-                            {/* Grade (🟢 FIX: Perfect Smooth SVG Half Circle) */}
-                            <div className="db-card db-grade">
-                                <div className="db-title" style={{ alignSelf: 'flex-start' }}>Grade</div>
-                                <div className="db-gauge-wrap">
-                                    <svg className="db-gauge" viewBox="0 0 100 55" fill="none">
-                                        {/* Background Track */}
-                                        <path d="M 10 50 A 40 40 0 0 1 90 50" stroke="rgba(255,255,255,0.1)" strokeWidth="8" strokeLinecap="round" />
-                                        {/* Colored Segments */}
-                                        <path d="M 10 50 A 40 40 0 0 1 30 15.3" stroke="#ef4444" strokeWidth="8" strokeLinecap="round" />
-                                        <path d="M 30 15.3 A 40 40 0 0 1 70 15.3" stroke="#facc15" strokeWidth="8" strokeLinecap="round" />
-                                        <path d="M 70 15.3 A 40 40 0 0 1 90 50" stroke="#22c55e" strokeWidth="8" strokeLinecap="round" />
-                                        {/* Dynamic Knob */}
-                                        <circle className="db-knob" cx={dotX} cy={dotY} r="4.5" fill="#fff" stroke="#1f2937" strokeWidth="2.5"/>
-                                    </svg>
-                                    <div className="db-score"><span className="font-numbers">{overallScore}</span></div>
-                                </div>
-                                <div className="db-lbl">Your score is</div>
-                                <div className="db-keep">{overallScore >= 80 ? 'Excellent!' : overallScore >= 50 ? 'Keep it up!' : 'Needs Work'} <span className="db-emoji">{overallScore >= 80 ? '🌟' : overallScore >= 50 ? '🤩' : '🎯'}</span></div>
-                            </div>
-
-                            {/* Leaderboard */}
-                            <div className="db-card db-board">
-                                <div className="db-title">Leaderboard</div>
-                                <div className="db-body">
-                                    <div className="db-stat"><div className="db-big font-numbers">{displayRank}</div></div>
-                                    <svg className="db-illus" viewBox="0 0 120 110" fill="none">
-                                        <g fill="#cfd8f2"><circle className="db-spark" cx="14" cy="14" r="2"/><circle className="db-spark" cx="102" cy="10" r="1.6"/><circle className="db-spark" cx="112" cy="26" r="1.6"/><circle className="db-spark" cx="8" cy="38" r="1.6"/><rect className="db-spark" x="20" y="24" width="4" height="2"/><rect className="db-spark" x="94" y="30" width="4" height="2"/></g>
-                                        <g className="db-trophy">
-                                            <path d="M36 12h48v28c0 17-10 27-24 27S36 57 36 40z" fill="#4ba3e3"/>
-                                            <path d="M36 18H22c0 14 6 22 16 24M84 18h14c0 14-6 22-16 24" stroke="#4ba3e3" strokeWidth="5" fill="none"/>
-                                            <polygon points="60,24 64,34 75,34 66,40 70,50 60,44 50,50 54,40 45,34 56,34" fill="#fff"/>
-                                            <rect x="55" y="66" width="10" height="14" fill="#4ba3e3"/><rect x="44" y="80" width="32" height="10" rx="2" fill="#4ba3e3"/>
-                                        </g>
-                                        <ellipse cx="60" cy="98" rx="55" ry="3" fill="#fff" opacity="0.3"/>
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 🟢 BOTTOM SPLIT SECTION */}
-                        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-                            
-                            {/* LEFT COLUMN */}
-                            <div className="xl:col-span-7 flex flex-col gap-6">
-                                
-                               {/* Recorded Classes List */}
-                                <div className="bg-white dark:bg-[#1a1a1a] rounded-[1.25rem] p-5 md:p-6 shadow-sm border border-gray-100/50 dark:border-white/5">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Recorded Classes</h3>
-                                        <a href="#courses" onClick={() => playSound('click')} className="text-xs font-semibold text-[#4a6bca] hover:underline flex items-center gap-1">View all <span className="bg-red-500 text-white text-[9px] font-numbers rounded-full px-1.5 py-0.5">{recentVideos.length}</span> <Icon name="chevron-right" className="w-3 h-3"/></a>
-                                    </div>
-                                    <div className="space-y-4">
-                                        {recentVideos.length === 0 ? <p className="text-sm text-gray-500 text-center py-6">No recorded classes yet.</p> : recentVideos.map((v, i) => (
-                                            <div key={i} className="flex flex-col sm:flex-row items-center gap-4 bg-gray-50/50 dark:bg-dark-900/30 p-3 rounded-2xl border border-gray-100 dark:border-white/5 group">
-                                                <div className="w-full sm:w-40 aspect-video rounded-xl overflow-hidden shrink-0 relative">
-                                                    <img src={`https://img.youtube.com/vi/${v.urlId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                                                        <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center shadow-md">
-                                                            <Icon name="play" className="w-4 h-4 text-[#4a6bca] ml-0.5" />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="flex-1 w-full min-w-0 flex flex-col justify-center">
-                                                    <h4 className="font-bold text-gray-900 dark:text-white text-base truncate mb-1" title={v.title}>{v.title}</h4>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 truncate">Class {v.serial} • {v.course}</p>
-                                                    <div className="flex items-center gap-3">
-                                                        <a href="#courses" onClick={() => playSound('action')} className="bg-[#6b8cff] hover:bg-[#4a6bca] text-white px-5 py-2 rounded-xl text-xs font-bold shadow-md transition-colors flex items-center gap-1.5 win-button"><Icon name="monitor-play" className="w-3.5 h-3.5"/> Join Class</a>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Leadership Board Table */}
-                                <div className="bg-white dark:bg-[#1a1a1a] rounded-[1.25rem] p-5 md:p-6 shadow-sm border border-gray-100/50 dark:border-white/5 relative">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Leadership Board</h3>
-                                        <button onClick={() => { playSound('action'); downloadImage('leaderboard-print-area', `FaridpurIT_Top10_Leaderboard.png`); }} className="bg-[#4a6bca]/10 hover:bg-[#4a6bca]/20 text-[#4a6bca] px-3 py-1.5 rounded-lg transition-colors border border-[#4a6bca]/20 shadow-sm flex items-center gap-1.5 text-xs font-bold win-button" title="Download Leaderboard as Image">
-                                            <Icon name="download" className="w-3.5 h-3.5" /> Download
-                                        </button>
-                                    </div>
-                                    <div className="overflow-x-auto hide-scrollbar">
-                                        <table className="w-full text-left whitespace-nowrap">
-                                            <thead className="text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-dark-900/30">
-                                                <tr>
-                                                    <th className="px-4 py-3 rounded-l-xl">Rank</th>
-                                                    <th className="px-4 py-3">Student Name</th>
-                                                    <th className="px-4 py-3 text-right rounded-r-xl">Score</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-50 dark:divide-white/5 text-sm font-semibold">
-                                                {top10.length === 0 ? <tr><td colSpan="3" className="text-center py-6 text-gray-500">No data available</td></tr> : top10.map((st, i) => {
-                                                    const isMe = st.phone === auth?.userId || st.name === auth?.name;
-                                                    return (
-                                                        <tr key={i} className={`transition-colors ${isMe ? 'bg-[#4a6bca] text-white rounded-lg shadow-md' : 'text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-dark-800'}`}>
-                                                            <td className={`px-4 py-3.5 ${isMe ? 'rounded-l-xl' : ''}`}>
-                                                                {String(i + 1).padStart(2, '0')}
-                                                            </td>
-                                                           <td className="px-4 py-3.5">
-                                                                                <div className="flex items-center gap-2.5">
-                                                                                    <UserAvatar name={st.name} size="sm" />
-                                                                                    <span>{st.name} {isMe && <span className="text-xs opacity-80 font-normal">(you)</span>}</span>
-                                                                                    {i === 0 && <Icon name="trophy" className="w-4 h-4 text-yellow-400 fill-yellow-400 drop-shadow-sm" />}
-                                                                                    {i === 1 && <Icon name="medal" className="w-4 h-4 text-gray-300 fill-gray-300 drop-shadow-sm" />}
-                                                                                    {i === 2 && <Icon name="medal" className="w-4 h-4 text-orange-400 fill-orange-400 drop-shadow-sm" />}
-                                                                                </div>
-                                                                            </td>
-                                                                            <td className={`px-4 py-3.5 text-right ${isMe ? 'rounded-r-xl' : ''}`}>
-                                                                                <span className={`text-lg  font-numbers ${isMe ? 'text-white' : 'text-[#4a6bca] dark:text-[#60cdff]'}`}>{st.score}</span>
-                                                                                <span className={`text-sm font-bold ml-1 ${isMe ? 'text-gray-200' : 'text-gray-400'}`}>/100</span>
-                                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                               {/* If I am NOT in top 10, show my rank below */}
-                                                {!isInTop10 && (
-                                                    <>
-                                                        <tr>
-                                                            <td colSpan="3" className="px-4 py-2 text-center text-gray-400">...</td>
-                                                        </tr>
-                                                        <tr className="bg-[#4a6bca] text-white rounded-lg shadow-md">
-                                                            <td className="px-4 py-3.5 rounded-l-xl">{myRankNum === '-' ? 'N/A' : String(myRankNum).padStart(2, '0')}</td>
-                                                            <td className="px-4 py-3.5">
-                                                                <div className="flex items-center gap-2">
-                                                                    {myProfile.name || auth?.name || auth?.username} <span className="text-xs opacity-80 font-normal">(you)</span>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-4 py-3.5 text-right rounded-r-xl">
-                                                                <span className="text-lg  font-numbers text-white">{overallScore}</span>
-                                                                <span className="text-sm font-bold ml-1 text-gray-200">/100</span>
-                                                            </td>
-                                                        </tr>
-                                                    </>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
-
-                                    {/* 🟢 UNCROPPED PRINT AREA FOR DASHBOARD LEADERBOARD DOWNLOAD */}
-                                    <div style={{ position: 'fixed', left: '-10000px', top: '0px', zIndex: -1000, pointerEvents: 'none' }}>
-                                        <div id="leaderboard-print-area" className="bg-white text-gray-900 p-8 border border-gray-300 relative" style={{ fontFamily: "'Inter', sans-serif", width: '860px' }}>
-                                            <div className="absolute top-0 left-0 w-full h-4 bg-gradient-to-r from-[#4a6bca] to-blue-500"></div>
-                                            <div className="flex justify-between items-end border-b-2 border-gray-100 pb-5 mb-8 mt-4">
-                                                <div>
-                                                    <h1 className="text-4xl  text-gray-900 tracking-tight leading-none mb-2">Global Leadership Board</h1>
-                                                    <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">FaridpurIT Workspace • Top Performing Students</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=https://faridpurit.com`} alt="QR Code" className="w-14 h-14 inline-block rounded-md shadow-sm" crossOrigin="anonymous"/>
-                                                </div>
-                                            </div>
-                                            <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm mb-8">
-                                                <table className="w-full text-left">
-                                                    <thead className="bg-[#4a6bca] text-white">
-                                                        <tr>
-                                                            <th className="px-6 py-4 font-bold text-base uppercase tracking-wider">Rank</th>
-                                                            <th className="px-6 py-4 font-bold text-base uppercase tracking-wider">Student Name</th>
-                                                            <th className="px-6 py-4 font-bold text-base uppercase tracking-wider text-right">Progress Score</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-gray-100">
-                                                        {top10.map((st, i) => (
-                                                            <tr key={i} className={i % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                                                                <td className="px-6 py-4 align-middle w-24">
-                                                                    <span className=" text-gray-500 text-xl font-numbers">#{String(i + 1).padStart(2, '0')}</span>
-                                                                </td>
-                                                                <td className="px-6 py-4 align-middle">
-                                                                    <div className="font-bold text-gray-800 text-xl flex items-center gap-3">
-                                                                        {st.name}
-                                                                        {i === 0 && <span className="text-2xl drop-shadow-md">🏆</span>}
-                                                                        {i === 1 && <span className="text-2xl drop-shadow-md">🥈</span>}
-                                                                        {i === 2 && <span className="text-2xl drop-shadow-md">🥉</span>}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-6 py-4 text-right align-middle">
-                                                                    <span className=" text-[#4a6bca] text-2xl font-numbers">{st.score}</span>
-                                                                    <span className="font-bold text-gray-400 text-lg font-numbers ml-1">/100</span>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                            <div className="text-center text-xs text-gray-400 font-bold uppercase tracking-widest mt-8 border-t border-gray-100 pt-5">
-                                                System Generated automatically by FaridpurIT.com
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                </div>
-                            </div>
-
-                            {/* RIGHT COLUMN: Assignments Checklists */}
-                            <div className="xl:col-span-5 bg-white dark:bg-[#1a1a1a] rounded-[1.25rem] p-5 md:p-6 shadow-sm border border-gray-100/50 dark:border-white/5 h-full flex flex-col">
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Assignments</h3>
-                                    <a href="#assignments" onClick={() => playSound('click')} className="text-xs font-semibold text-gray-500 hover:text-[#4a6bca]">View all</a>
-                                </div>
-
-                                {/* To-do list */}
-                                <div className="mb-8">
-                                    <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-4">To-do / Pending</h4>
-                                    <div className="space-y-4">
-                                        {pendingAsn.length === 0 ? <p className="text-xs text-gray-500 italic bg-gray-50 dark:bg-dark-900/30 p-3 rounded-lg border border-gray-100 dark:border-white/5">No pending assignments. Great job! 🎉</p> : pendingAsn.slice(0, 4).map((asn, i) => (
-                                            <div key={i} className="flex items-start gap-3 group">
-                                                <div className="mt-0.5 shrink-0">
-                                                    <Icon name="circle" className="w-5 h-5 text-[#8fa7ff]" />
-                                                </div>
-                                                <div className="flex-1 min-w-0 border-b border-gray-100 dark:border-white/5 pb-3 group-last:border-0">
-                                                    <h5 className="text-sm font-bold text-gray-900 dark:text-white truncate">{asn.taskTitle}</h5>
-                                                    <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-500 font-medium">
-                                                        <Icon name="clock" className="w-3 h-3" />
-                                                        <span className="uppercase tracking-widest text-[#005fb8] dark:text-[#60cdff] font-bold">{asn.status}</span>
-                                                        <span className="text-gray-300 dark:text-gray-600">•</span>
-                                                        <span>{moment(asn.timestamp || new Date()).format('DD MMM YYYY')}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Completed list */}
-                                <div>
-                                    <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-4">Completed</h4>
-                                    <div className="space-y-4">
-                                        {gradedAsn.length === 0 ? <p className="text-xs text-gray-500 italic bg-gray-50 dark:bg-dark-900/30 p-3 rounded-lg border border-gray-100 dark:border-white/5">No graded assignments yet.</p> : gradedAsn.slice(0, 5).map((asn, i) => (
-                                            <div key={i} className="flex items-start gap-3 group">
-                                              <div className="mt-0.5 shrink-0 relative flex items-center justify-center w-6 h-6 group-hover:scale-110 transition-transform">
-                                                    {/* 🟢 Authentic Twitter/Instagram Style Verified Rosette Badge */}
-                                                    <svg className="w-5 h-5 drop-shadow-[0_2px_5px_rgba(29,155,240,0.5)]" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                        <path d="M22.5 12.5c0-.62-.25-1.21-.69-1.66l-1.39-1.39c-.19-.19-.3-.45-.3-.72V6.62c0-.55-.45-1-1-1h-2.11c-.27 0-.53-.11-.72-.3l-1.39-1.39c-.45-.44-1.04-.69-1.66-.69s-1.21.25-1.66.69L10.19 5.3c-.19.19-.45.3-.72.3H7.36c-.55 0-1 .45-1 1v2.11c0 .27-.11.53-.3.72L4.67 10.8c-.44.45-.69 1.04-.69 1.66s.25 1.21.69 1.66l1.39 1.39c.19.19.3.45.3.72v2.11c0 .55.45 1 1 1h2.11c.27 0 .53.11.72.3l1.39 1.39c.45.44 1.04.69 1.66.69s1.21-.25 1.66-.69l1.39-1.39c.19-.19.45-.3.72-.3h2.11c.55 0 1-.45 1-1v-2.11c0-.27.11-.53.3-.72l1.39-1.39c.44-.45.69-1.04.69-1.66z" fill="#1d9bf0"/>
-                                                        <path d="M10.5 16.5l-4-4 1.41-1.41L10.5 13.67l7.09-7.09L19 8l-8.5 8.5z" fill="#ffffff"/>
-                                                    </svg>
-                                                    <div className="absolute inset-0 bg-[#1d9bf0] opacity-20 rounded-full blur-[4px] animate-pulse -z-10 scale-125"></div>
-                                                </div>
-                                                <div className="flex-1 min-w-0 border-b border-gray-100 dark:border-white/5 pb-3 group-last:border-0">
-                                                    <h5 className="text-sm font-bold text-gray-900 dark:text-white line-clamp-2 leading-snug">{asn.taskTitle}</h5>
-                                                    <div className="flex items-center justify-between mt-2">
-                                                        <div className="flex items-center gap-1.5 text-[11px] text-gray-500 font-medium uppercase tracking-widest">
-                                                            <Icon name="graduation-cap" className="w-3 h-3" /> Grade
-                                                        </div>
-                                                        <span className="text-sm  text-gray-800 dark:text-gray-200">{asn.mark}/100</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
-           return (
+              return (
                 <div className="space-y-6 md:space-y-8">
-
-                    {/* 🟢 Beautiful Welcome Banner (Only for Students) */}
-                    {auth?.role === 'Student' && (
-                    <div className="glass-panel p-6 md:p-8 rounded-3xl shadow-win dark:shadow-win-dark border border-gray-200/50 dark:border-white/10 relative overflow-hidden bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-[#005fb8]/5 dark:to-purple-900/10 mb-2">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-[#005fb8]/5 dark:bg-[#60cdff]/5 rounded-full blur-[50px] pointer-events-none -translate-y-1/2 translate-x-1/4"></div>
-                        
-                        <div className="flex flex-col md:flex-row items-center md:items-start gap-6 relative z-10">
-                            <img src={`https://api.dicebear.com/9.x/micah/svg?seed=${auth?.name || auth?.username || 'User'}&backgroundColor=e2e8f0`} loading="lazy" onError={(e) => { e.target.onerror = null; e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='12' fill='%23f1f5f9'/%3E%3Cpath d='M12 11c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm0 2c-2.67 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z' fill='%23cbd5e1'/%3E%3C/svg%3E"; }} alt="Profile" className="w-20 h-20 md:w-24 md:h-24 rounded-full shadow-lg border-4 border-white dark:border-dark-800 shrink-0" />
-                            
-                            <div className="flex-1 text-center md:text-left">
-                                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-1">
-                                    স্বাগতম, <span className="text-[#005fb8] dark:text-[#60cdff]">{auth?.name || auth?.username}</span>! 🎉
-                                </h1>
-                                <p className="text-sm md:text-base text-gray-600 dark:text-gray-300 font-medium mb-3">
-                                    আপনার শেখার এই অসাধারণ যাত্রায় ফরিদপুর আইটি (Faridpur IT) এর পক্ষ থেকে আপনাকে অভিনন্দন।
-                                </p>
-                                
-                                <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
-                                    <span className="text-[10px] md:text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-3 py-1 rounded-full flex items-center gap-1.5"><Icon name="shield-check" className="w-3.5 h-3.5"/> রোল: {auth?.role}</span>
-                                    {auth?.course && <span className="text-[10px] md:text-xs font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-3 py-1 rounded-full flex items-center gap-1.5"><Icon name="book-open" className="w-3.5 h-3.5"/> কোর্স: {auth?.course}</span>}
-                                    <span className="text-[10px] md:text-xs font-bold bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 px-3 py-1 rounded-full flex items-center gap-1.5"><Icon name="user" className="w-3.5 h-3.5"/> আইডি: {auth?.userId || auth?.username}</span>
-                                </div>
-                                
-                                <div className="bg-white/60 dark:bg-dark-900/50 p-3 md:p-4 rounded-xl border border-gray-200/50 dark:border-white/5 text-left shadow-sm">
-                                    <h4 className="text-xs font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-1.5"><Icon name="info" className="w-4 h-4 text-orange-500" /> Terms & Conditions (কোর্সের নিয়মাবলী)</h4>
-                                    <ul className="text-[11px] md:text-xs text-gray-600 dark:text-gray-400 space-y-1.5 list-disc pl-4 font-medium">
-                                        <li>নিয়মিত ক্লাস ভিডিও দেখুন এবং প্রতিদিনের প্র্যাকটিস প্রতিদিন শেষ করুন।</li>
-                                        <li>ক্লাস মিস করলে অবশ্যই মেন্টরকে জানান এবং রেকর্ডেড ভিডিও দেখে কভার করুন।</li>
-                                        <li>অ্যাসাইনমেন্টগুলো সময়মতো ড্যাশবোর্ডে জমা দিন, লিডারবোর্ডে টপ থাকতে চেষ্টা করুন।</li>
-                                        <li>যেকোনো সাপোর্টের জন্য আমাদের অফিশিয়াল হোয়াটসঅ্যাপ (01642890942) নাম্বারে মেসেজ দিন।</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    )}
 
                     {/* 🟢 Hide Global Revenue from Students */}
                     {auth?.role !== 'Student' && (
@@ -7578,48 +6988,13 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                                                         <button onClick={(e) => { e.stopPropagation(); playSound('action'); onPreview({...stat, rank: i+1}); }} className="w-full bg-[#005fb8] hover:bg-[#005fb8]/90 text-white py-1.5 rounded-md transition-colors shadow-sm flex items-center justify-center gap-1.5 text-xs font-semibold win-button mt-1">
                                                             <Icon name="share-2" className="w-3 h-3" /> Share Report
                                                         </button>
-                                                        <button onClick={async (e) => {
-                                    e.stopPropagation();
-                                    if(stat.availableBalance < 200) {
-                                        addToast('ন্যূনতম ২০০ টাকা না হলে পেআউট রিকোয়েস্ট করা যাবে না।', 'error');
-                                        return;
-                                    }
-                                    
-                                    // ইউজারের কাছ থেকে নির্দিষ্ট অ্যামাউন্ট ইনপুট নেওয়ার পপআপ
-                                    const enteredAmount = prompt(`আপনার উপলব্ধ ব্যালেন্স: ${CURRENCY_SYMBOL}${stat.availableBalance}\nকত টাকা তুলতে চান তা লিখুন (সর্বনিম্ন ২০০):`, stat.availableBalance);
-                                    if (!enteredAmount) return;
-                                    
-                                    const amount = parseFloat(enteredAmount);
-                                    if (isNaN(amount) || amount < 200) {
-                                        addToast('ন্যূনতম ২০০ টাকা বা সঠিক সংখ্যা টাইপ করুন।', 'error');
-                                        return;
-                                    }
-                                    if (amount > stat.availableBalance) {
-                                        addToast('আপনার বর্তমান উপলব্ধ ব্যালেন্সের চেয়ে বেশি অ্যামাউন্ট রিকোয়েস্ট করতে পারবেন না।', 'error');
-                                        return;
-                                    }
-
-                                    if(confirm(`আপনি কি ${CURRENCY_SYMBOL}${amount} তোলার জন্য রিকোয়েস্ট পাঠাতে চান?`)) {
-                                        let authData = null;
-                                        try { authData = JSON.parse(localStorage.getItem('faridpurit_auth')); } catch(e){}
-                                        
-                                        playSound('action');
-                                        const res = await fetch(API_URL, { 
-                                            method: 'POST', 
-                                            body: JSON.stringify({ action: 'request_payout', amount: amount, auth: authData }) 
-                                        });
-                                        const dt = await res.json();
-                                        
-                                        if (dt.success) {
-                                            playSound('success');
-                                            addToast(dt.message, 'success');
-                                        } else {
-                                            addToast(dt.message || 'রিকোয়েস্ট ব্যর্থ হয়েছে।', 'error');
-                                        }
-                                    }
-                                }} className="w-full bg-gray-200/80 dark:bg-dark-700/80 hover:bg-gray-300/80 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 py-1.5 rounded-md font-semibold flex items-center justify-center gap-1.5 text-xs win-button">
-                                    <Icon name="credit-card" className="w-3 h-3" /> Request Payout
-                                </button>
+                                                        <button onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            playSound('click');
+                                                            window.location.hash = 'payouts';
+                                                        }} className="w-full bg-gray-200/80 dark:bg-dark-700/80 hover:bg-gray-300/80 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 py-1.5 rounded-md font-semibold flex items-center justify-center gap-1.5 text-xs win-button">
+                                                            <Icon name="credit-card" className="w-3 h-3" /> Request Payout
+                                                        </button>
                                                     </>
                                                 )}
                                             </div>
@@ -7642,8 +7017,35 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
             const [modal, setModal] = useState({ isOpen: false, type: '', affiliate: null });
             const [form, setForm] = useState({ trxId: '', note: '', processing: false });
             
-            // Payment Setup Form State
+            // Payment Setup & Custom Payout Request Modal States
             const [pmForm, setPmForm] = useState({ provider: 'bKash', accountNumber: '', accountType: 'Personal', processing: false });
+            const [reqPayoutModal, setReqPayoutModal] = useState({ isOpen: false, amount: '', saving: false });
+
+            const handleCustomPayoutSubmit = async (e) => {
+                e.preventDefault();
+                const amount = parseFloat(reqPayoutModal.amount);
+                if (isNaN(amount) || amount < 200) return addToast('ন্যূনতম ২০০ টাকা বা সঠিক সংখ্যা দিন।', 'error');
+                if (amount > myBalance) return addToast('আপনার উপলব্ধ ব্যালেন্সের চেয়ে বেশি অ্যামাউন্ট রিকোয়েস্ট করতে পারবেন না।', 'error');
+
+                setReqPayoutModal(prev => ({ ...prev, saving: true }));
+                playSound('action');
+                try {
+                    const res = await executeAPI({ action: 'request_payout', amount });
+                    const dt = await res.json();
+                    if (dt.success) {
+                        playSound('success');
+                        addToast(dt.message || 'Payout request sent!', 'success');
+                        setReqPayoutModal({ isOpen: false, amount: '', saving: false });
+                        fetchOrders(true);
+                    } else {
+                        addToast(dt.message || 'রিকোয়েস্ট ব্যর্থ হয়েছে।', 'error');
+                        setReqPayoutModal(prev => ({ ...prev, saving: false }));
+                    }
+                } catch (err) {
+                    addToast('নেটওয়ার্ক এরর! আবার চেষ্টা করুন।', 'error');
+                    setReqPayoutModal(prev => ({ ...prev, saving: false }));
+                }
+            };
 
             const pendingRequests = metrics.affiliateStats.filter(a => a.availableBalance >= 200 && (auth?.role !== 'Affiliator' || String(a.code).toUpperCase() === String(auth.userId).toUpperCase()));
             
@@ -7719,43 +7121,10 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                                 </h3>
                                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">ন্যূনতম ২০০ টাকা হলে আপনি যেকোনো পরিমাণ টাকা তুলতে পারবেন।</p>
                             </div>
-                            <button onClick={async () => {
-                                if(myBalance < 200) {
-                                    addToast('ন্যূনতম ২০০ টাকা না হলে পেআউট রিকোয়েস্ট করা যাবে না।', 'error');
-                                    return;
-                                }
-                                const enteredAmount = prompt(`আপনার উপলব্ধ ব্যালেন্স: ${CURRENCY_SYMBOL}${myBalance}\nকত টাকা তুলতে চান তা লিখুন (সর্বনিম্ন ২০০):`, myBalance);
-                                if (!enteredAmount) return;
-                                
-                                const amount = parseFloat(enteredAmount);
-                                if (isNaN(amount) || amount < 200) {
-                                    addToast('ন্যূনতম ২০০ টাকা বা সঠিক সংখ্যা টাইপ করুন।', 'error');
-                                    return;
-                                }
-                                if (amount > myBalance) {
-                                    addToast('আপনার উপলব্ধ ব্যালেন্সের চেয়ে বেশি অ্যামাউন্ট রিকোয়েস্ট করতে পারবেন না।', 'error');
-                                    return;
-                                }
-
-                                if(confirm(`আপনি কি ${CURRENCY_SYMBOL}${amount} তোলার জন্য রিকোয়েস্ট পাঠাতে চান?`)) {
-                                    let authData = null;
-                                    try { authData = JSON.parse(localStorage.getItem('faridpurit_auth')); } catch(e){}
-                                    
-                                    playSound('action');
-                                    const res = await fetch(API_URL, { 
-                                        method: 'POST', 
-                                        body: JSON.stringify({ action: 'request_payout', amount: amount, auth: authData }) 
-                                    });
-                                    const dt = await res.json();
-                                    
-                                    if (dt.success) {
-                                        playSound('success');
-                                        addToast(dt.message, 'success');
-                                        fetchOrders(true);
-                                    } else {
-                                        addToast(dt.message || 'রিকোয়েস্ট ব্যর্থ হয়েছে।', 'error');
-                                    }
-                                }
+                            <button onClick={() => {
+                                if (myBalance < 200) return addToast('ন্যূনতম ২০০ টাকা না হলে পেআউট রিকোয়েস্ট করা যাবে না।', 'error');
+                                playSound('click');
+                                setReqPayoutModal({ isOpen: true, amount: String(myBalance), saving: false });
                             }} className="bg-[#005fb8] hover:bg-[#005fb8]/90 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-sm transition-colors win-button flex items-center gap-2 shrink-0">
                                 <Icon name="credit-card" className="w-4 h-4" /> Request Custom Payout
                             </button>
@@ -7940,6 +7309,35 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                             )}
                         </div>
                     </div>
+
+                    <Modal isOpen={reqPayoutModal.isOpen} onClose={() => setReqPayoutModal({ isOpen: false, amount: '', saving: false })} title="Request Custom Payout" maxWidth="max-w-sm" compact={true}>
+                        <form onSubmit={handleCustomPayoutSubmit} className="space-y-3.5">
+                            <div className="p-3 rounded-xl bg-emerald-500/[0.08] border border-emerald-300/50 dark:border-emerald-500/25 text-center">
+                                <p className="text-[10px] font-bold uppercase text-gray-500">Available Balance</p>
+                                <p className="text-xl font-numbers font-bold text-emerald-600 dark:text-emerald-400">{CURRENCY_SYMBOL}{myBalance.toLocaleString()}</p>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 mb-1">Withdraw Amount (Min 200) *</label>
+                                <input
+                                    type="number"
+                                    min="200"
+                                    max={myBalance}
+                                    required
+                                    autoFocus
+                                    value={reqPayoutModal.amount}
+                                    onChange={e => setReqPayoutModal(prev => ({ ...prev, amount: e.target.value }))}
+                                    className="w-full input-style px-3 py-2 text-base font-numbers font-bold"
+                                />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                                <button type="button" onClick={() => setReqPayoutModal({ isOpen: false, amount: '', saving: false })} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold win-button">Cancel</button>
+                                <button type="submit" disabled={reqPayoutModal.saving} className="px-5 py-2 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button">
+                                    {reqPayoutModal.saving ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="send" className="w-3.5 h-3.5" />}
+                                    <span>{reqPayoutModal.saving ? 'Sending...' : 'Confirm Request'}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
 
                     <Modal isOpen={modal.isOpen} onClose={() => setModal({ isOpen: false, type: '', affiliate: null })} title={`${modal.type} Payout Request`}>
                         {modal.affiliate && (
@@ -12234,8 +11632,15 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
         const AssignmentsView = ({ auth, addToast, modules = [], assignments = [], courseAssignments = [], executeAPI, fetchOrders, enrolledCourses = [] }) => {
             const [form, setForm] = useState({ taskTitle: '', link: '' });
             const [gradeForm, setGradeForm] = useState({ id: null, mark: '', feedback: '' });
+            const [resubmitModal, setResubmitModal] = useState({ isOpen: false, id: null, link: '' });
             const [isProcessing, setIsProcessing] = useState(false);
-            const [filterStatus, setFilterStatus] = useState('All');
+            const [filterStatus, setFilterStatus] = useState('Pending');
+            const [subSearch, setSubSearch] = useState('');
+            const [selectedSubIds, setSelectedSubIds] = useState([]);
+            const [bulkMark, setBulkMark] = useState('90');
+            const [bulkFeedback, setBulkFeedback] = useState('');
+            const [visibleSubLimit, setVisibleSubLimit] = useState(15);
+            const [localGradeOverrides, setLocalGradeOverrides] = useState({});
             
             // New states for Fixed Course Assignments
             const [showAddCourseAsn, setShowAddCourseAsn] = useState(false);
@@ -12265,22 +11670,103 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
                 }
             }, [availableFilters, activeCourseFilter]);
 
-            // 🟢 Statistics Calculations
-            const myAssignments = isAdmin ? assignments : assignments.filter(a => a.studentId === auth?.userId);
-            
-            // 🟢 FIX: Strictly filter out Graded ones when Pending is selected
+            // 🟢 Bulletproof Status Normalizer (Marks present or 'Graded' NEVER leaks into Pending)
+            const getCleanAsnStatus = (a) => {
+                const ov = localGradeOverrides[a.id];
+                const st = String(ov?.status ?? a?.status ?? '').trim().toLowerCase();
+                const mk = ov?.mark !== undefined ? ov.mark : a?.mark;
+                const hasNumericMark = mk !== '' && mk !== null && mk !== undefined && !isNaN(Number(mk)) && String(mk).trim() !== '';
+                if (st === 'resubmit') return 'Resubmit';
+                if (st === 'graded' || (hasNumericMark && Number(mk) > 0)) return 'Graded';
+                return 'Pending';
+            };
+
+            // 🟢 Statistics Calculations (With Instant 0ms Local Optimistic Overrides)
+            const myAssignments = (isAdmin ? assignments : assignments.filter(a => String(a.studentId || '').trim().toLowerCase() === String(auth?.userId || '').trim().toLowerCase()))
+                .map(a => {
+                    const ov = localGradeOverrides[a.id];
+                    const cleanSt = getCleanAsnStatus(a);
+                    return {
+                        ...a,
+                        status: cleanSt,
+                        mark: ov?.mark !== undefined ? ov.mark : a.mark,
+                        feedback: ov?.feedback !== undefined ? ov.feedback : a.feedback
+                    };
+                });
+
             const filteredAssignments = myAssignments.filter(a => {
-                if (filterStatus === 'Recently Submitted') return true; 
-                if (filterStatus !== 'All') return String(a.status).trim() === filterStatus;
-                return true;
-            }).sort((a, b) => {
-                if (filterStatus === 'Recently Submitted') {
-                    const dateA = new Date(a.timestamp || a.Timestamp || 0);
-                    const dateB = new Date(b.timestamp || b.Timestamp || 0);
-                    return dateB - dateA;
+                const q = subSearch.trim().toLowerCase();
+                if (q) {
+                    const hay = `${a.taskTitle || ''} ${a.studentName || ''} ${a.studentId || ''} ${a.id || ''}`.toLowerCase();
+                    if (!hay.includes(q)) return false;
                 }
-                return 0;
+                if (filterStatus === 'Recently Submitted' || filterStatus === 'All') return true;
+                return a.status === filterStatus;
+            }).sort((a, b) => {
+                const dateA = new Date(a.timestamp || a.Timestamp || 0).getTime();
+                const dateB = new Date(b.timestamp || b.Timestamp || 0).getTime();
+                return dateB - dateA;
             });
+
+            // ⚡ 1-Click Instant Single Grade Handler
+            const handleQuickSingleGrade = async (asnId, markVal, statusVal = 'Graded', fbVal = '') => {
+                playSound(statusVal === 'Graded' ? 'success' : 'action');
+                setLocalGradeOverrides(prev => ({ ...prev, [asnId]: { status: statusVal, mark: markVal, feedback: fbVal } }));
+                setSelectedSubIds(prev => prev.filter(id => id !== asnId));
+                if (gradeForm.id === asnId) setGradeForm({ id: null, mark: '', feedback: '' });
+                try {
+                    const res = await executeAPI({ action: 'grade_assignment', id: asnId, mark: markVal, feedback: fbVal, status: statusVal });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        addToast(statusVal === 'Graded' ? `Graded ${markVal}/100!` : 'Marked for Resubmit.', 'success');
+                        fetchOrders(true);
+                    } else {
+                        addToast((data && data.message) || 'Failed to grade.', 'error');
+                    }
+                } catch (err) {
+                    addToast('Network error grading assignment.', 'error');
+                }
+            };
+
+            // ⚡ Bulk Multi-Select Grade Handler
+            const handleBulkGrade = async (statusVal = 'Graded', customMarkOverride = null) => {
+                if (selectedSubIds.length === 0 || isProcessing) return;
+                const finalMark = statusVal === 'Graded' ? (customMarkOverride !== null ? customMarkOverride : bulkMark) : '';
+                if (statusVal === 'Graded' && (finalMark === '' || isNaN(Number(finalMark)))) {
+                    return addToast('Please enter a valid mark.', 'error');
+                }
+                playSound(statusVal === 'Graded' ? 'success' : 'action');
+                setIsProcessing(true);
+
+                const idsToGrade = [...selectedSubIds];
+                setLocalGradeOverrides(prev => {
+                    const next = { ...prev };
+                    idsToGrade.forEach(id => { next[id] = { status: statusVal, mark: finalMark, feedback: bulkFeedback }; });
+                    return next;
+                });
+                setSelectedSubIds([]);
+
+                try {
+                    const res = await executeAPI({
+                        action: 'bulk_grade_assignments',
+                        ids: idsToGrade,
+                        status: statusVal,
+                        mark: finalMark,
+                        feedback: bulkFeedback
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        addToast(data.message || `${idsToGrade.length} graded!`, 'success');
+                        setBulkFeedback('');
+                        fetchOrders(true);
+                    } else {
+                        addToast((data && data.message) || 'Bulk update failed.', 'error');
+                    }
+                } catch (err) {
+                    addToast('Network error in bulk grading.', 'error');
+                }
+                setIsProcessing(false);
+            };
 
             // Filtering Fixed Assignments based on selected course tab (Multi-Course Safe)
             const filteredFixedAssignments = courseAssignments.filter(ca => {
@@ -12375,23 +11861,30 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
                 } catch(e) { addToast("Failed to delete.", "error"); }
             };
 
-            const handleResubmit = async (id) => {
+            const handleResubmit = (id) => {
                 playSound('click');
-                const link = prompt("Enter new assignment link:");
-                if(link && link.startsWith('http')) {
-                    setIsProcessing(true);
-                    try {
-                        const res = await executeAPI({ action: 'save_assignment', assignment: { id, link, isNew: false } });
-                        const data = await res.json();
-                        if(data.success) {
-                            addToast(data.message, 'success');
-                            fetchOrders(true);
-                        } else addToast(data.message, 'error');
-                    } catch(err) { addToast('Failed to resubmit', 'error'); }
-                    setIsProcessing(false);
-                } else if(link) {
-                    addToast('Invalid link.', 'error');
+                setResubmitModal({ isOpen: true, id, link: '' });
+            };
+
+            const submitResubmitModal = async (e) => {
+                e.preventDefault();
+                const link = String(resubmitModal.link || '').trim();
+                if (!link.startsWith('http')) return addToast('Please enter a valid URL starting with http/https.', 'error');
+                setIsProcessing(true);
+                playSound('action');
+                try {
+                    const res = await executeAPI({ action: 'save_assignment', assignment: { id: resubmitModal.id, link, isNew: false } });
+                    const data = await res.json();
+                    if (data.success) {
+                        playSound('success');
+                        addToast(data.message || 'Assignment resubmitted!', 'success');
+                        setResubmitModal({ isOpen: false, id: null, link: '' });
+                        fetchOrders(true);
+                    } else addToast(data.message || 'Resubmit failed.', 'error');
+                } catch (err) {
+                    addToast('Failed to resubmit.', 'error');
                 }
+                setIsProcessing(false);
             };
 
             const handleGradeSubmit = async (e, actionType) => {
@@ -12638,86 +12131,287 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
                     </div>
                     )}
 
-                    {/* 🟢 ALL SUBMISSIONS LIST (UI Updated) */}
-                    {asnSectionTab === 'submissions' && (
-                    <div>
-                        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar border-b border-gray-200/50 dark:border-white/10 pb-3 mb-4">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-1 shrink-0"><Icon className="w-3 h-3 inline mb-0.5" name="filter"/> Filters:</span>
-                            {['All', 'Recently Submitted', 'Pending', 'Graded', 'Resubmit'].map(status => (
-                                <button key={status} onClick={() => { playSound('action'); setFilterStatus(status); }} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors win-button ${filterStatus === status ? 'bg-[#005fb8] text-white shadow-sm' : 'bg-white dark:bg-dark-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-dark-600 hover:bg-gray-50 dark:hover:bg-dark-700'}`}>
-                                    {status}
-                                </button>
-                            ))}
-                        </div>
+                    {/* 🟢 COMPACT 1-CLICK & MULTI-SELECT SUBMISSIONS LIST */}
+                    {asnSectionTab === 'submissions' && (() => {
+                        const visibleSubs = filteredAssignments.slice(0, visibleSubLimit);
+                        const selectableIds = visibleSubs.map(a => a.id);
+                        const allVisibleSelected = selectableIds.length > 0 && selectableIds.every(id => selectedSubIds.includes(id));
 
-                        <div className="grid grid-cols-1 gap-4">
-                            {filteredAssignments.length === 0 ? (
-                                <div className="text-center py-10 glass-panel rounded-xl border border-dashed text-gray-500">No submissions found for this filter.</div>
-                            ) : filteredAssignments.map(asn => (
-                                <div key={asn.id} className="glass-panel p-4 md:p-5 rounded-2xl border border-gray-200/50 dark:border-white/10 shadow-sm flex flex-col gap-3 transition-all hover:border-[#005fb8]/50 relative overflow-hidden">
-                                    
-                                    {/* Top Header: Title, Info & Score */}
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex-1 min-w-0 pr-3">
-                                            <div className="flex items-center gap-2 mb-1.5">
-                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${asn.status === 'Graded' ? 'bg-green-100 text-green-700' : asn.status === 'Resubmit' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>{asn.status}</span>
-                                                <span className="text-[10px] text-gray-500 font-mono-code font-bold">{asn.id}</span>
-                                            </div>
-                                            <h4 className="font-bold text-base md:text-lg text-gray-900 dark:text-white leading-snug break-words" title={asn.taskTitle}>{asn.taskTitle}</h4>
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <UserAvatar name={asn.studentName} size="sm" showOnline={true} />
-                                                <div className="min-w-0">
-                                                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{asn.studentName}</p>
-                                                    <p className="text-[10px] text-gray-500 font-mono-code truncate">{asn.studentId}</p>
-                                                </div>
-                                            </div>
+                        return (
+                            <div className="space-y-3">
+                                {/* Top Filter + Search + Select All Bar */}
+                                <div className="glass-panel p-3 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-2.5">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                                            {['Pending', 'All', 'Graded', 'Resubmit'].map(status => {
+                                                const cnt = status === 'All' ? myAssignments.length : myAssignments.filter(x => x.status === status).length;
+                                                return (
+                                                    <button
+                                                        key={status}
+                                                        type="button"
+                                                        onClick={() => { playSound('click'); setFilterStatus(status); setSelectedSubIds([]); setVisibleSubLimit(15); }}
+                                                        className={`px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
+                                                            filterStatus === status
+                                                                ? 'bg-[#005fb8] text-white'
+                                                                : 'bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300'
+                                                        }`}
+                                                    >
+                                                        {status} ({cnt})
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
-                                        
-                                        {/* Score Right Badge */}
-                                        {asn.status === 'Graded' && (
-                                            <div className="flex flex-col items-center shrink-0 ml-2">
-                                                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Score</p>
-                                                <div className="w-10 h-10 md:w-12 md:h-12 rounded-full border-[3px] border-green-500 flex items-center justify-center font-bold text-green-600 dark:text-green-400 text-sm md:text-lg bg-green-50 dark:bg-green-900/20">{asn.mark || '0'}</div>
-                                            </div>
-                                        )}
-                                    </div>
 
-                                    {/* Action & Feedback Row */}
-                                    <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-3 mt-1">
-                                        <div className="flex flex-col gap-2 w-full md:w-auto">
-                                            <a href={asn.link} target="_blank" rel="noreferrer" className="text-xs text-[#005fb8] dark:text-[#60cdff] hover:underline flex items-center justify-center md:justify-start gap-1.5 inline-flex bg-blue-50 dark:bg-blue-900/30 px-3 py-2 rounded-lg w-full md:w-max font-semibold transition-colors win-button"><Icon className="w-4 h-4" name="external-link"/> View Submission</a>
-                                            
-                                            {(!isAdmin || String(asn.studentId) === String(auth?.userId)) && (asn.status === 'Resubmit' || asn.status === 'Graded') && (
-                                                <button onClick={() => handleResubmit(asn.id)} disabled={isProcessing} className="text-xs bg-gray-100 hover:bg-gray-200 dark:bg-dark-700 dark:hover:bg-dark-600 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg font-semibold transition-colors win-button flex items-center gap-1.5 w-full md:w-max justify-center disabled:opacity-50"><Icon className="w-4 h-4" name="refresh-cw"/> Re-submit Link</button>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <div className="flex items-center bg-white dark:bg-dark-800 px-2.5 py-1.5 rounded-lg border border-gray-200/80 dark:border-white/10 flex-1 sm:w-52">
+                                                <Icon name="search" className="w-3.5 h-3.5 text-gray-400 mr-1.5 shrink-0" />
+                                                <input
+                                                    type="text"
+                                                    value={subSearch}
+                                                    onChange={e => setSubSearch(e.target.value)}
+                                                    placeholder="Search student or task..."
+                                                    className="bg-transparent border-none outline-none w-full text-xs font-medium text-gray-800 dark:text-white"
+                                                />
+                                            </div>
+                                            {isAdmin && visibleSubs.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        playSound('click');
+                                                        setSelectedSubIds(allVisibleSelected ? [] : selectableIds);
+                                                    }}
+                                                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap border shrink-0 ${
+                                                        allVisibleSelected
+                                                            ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 border-transparent'
+                                                            : 'bg-white dark:bg-dark-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-white/10'
+                                                    }`}
+                                                >
+                                                    {allVisibleSelected ? 'Unselect All' : 'Select All'}
+                                                </button>
                                             )}
                                         </div>
-                                        
-                                        {/* Feedback Area */}
-                                        {asn.feedback && (
-                                            <div className="w-full md:w-auto flex-1 md:ml-4 bg-purple-50 dark:bg-purple-900/10 p-3 rounded-xl border border-purple-100 dark:border-purple-800/30">
-                                                <p className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest mb-1">Mentor Feedback:</p>
-                                                <p className="text-xs text-gray-700 dark:text-gray-300 font-medium leading-relaxed">{asn.feedback}</p>
-                                            </div>
-                                        )}
                                     </div>
 
-                                    {/* Admin Grading Block */}
-                                    {isAdmin && asn.status === 'Pending' && (
-                                        <div className="mt-2 pt-3 border-t border-gray-100 dark:border-white/5 flex flex-col md:flex-row gap-3">
-                                            <input type="number" placeholder="Marks (e.g. 85)" className="input-style px-3 py-2 text-sm font-bold w-full md:w-32 shrink-0" value={gradeForm.id === asn.id ? gradeForm.mark : ''} onChange={e=>setGradeForm({...gradeForm, id: asn.id, mark: e.target.value})} />
-                                            <textarea placeholder="Feedback notes..." className="input-style px-3 py-2 text-sm w-full flex-1 resize-none h-10" value={gradeForm.id === asn.id ? gradeForm.feedback : ''} onChange={e=>setGradeForm({...gradeForm, id: asn.id, feedback: e.target.value})}></textarea>
-                                            <div className="flex gap-2 shrink-0 w-full md:w-auto">
-                                                <button onClick={(e) => handleGradeSubmit(e, 'resubmit')} disabled={isProcessing} className="flex-1 md:flex-none bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg text-xs font-bold transition-colors win-button disabled:opacity-50">Resubmit</button>
-                                                <button onClick={(e) => handleGradeSubmit(e, 'approve')} disabled={isProcessing} className="flex-1 md:flex-none bg-green-500 hover:bg-green-600 text-white px-5 py-2 rounded-lg text-xs font-bold transition-colors win-button disabled:opacity-50">Grade</button>
+                                    {/* ⚡ Bulk Grading Action Bar (Appears when 1+ items selected) */}
+                                    {isAdmin && selectedSubIds.length > 0 && (
+                                        <div className="p-2.5 rounded-xl bg-blue-500/[0.09] dark:bg-blue-500/[0.16] border border-blue-300/60 dark:border-blue-500/30 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+                                            <div className="flex items-center justify-between lg:justify-start gap-2">
+                                                <span className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] whitespace-nowrap">
+                                                    {selectedSubIds.length} Selected
+                                                </span>
+                                                <div className="flex items-center gap-1">
+                                                    {[100, 90, 85, 80].map(m => (
+                                                        <button
+                                                            key={m}
+                                                            type="button"
+                                                            disabled={isProcessing}
+                                                            onClick={() => handleBulkGrade('Graded', m)}
+                                                            className="px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-numbers font-bold win-button"
+                                                            title={`Grade all selected with ${m}`}
+                                                        >
+                                                            {m}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max="100"
+                                                    value={bulkMark}
+                                                    onChange={e => setBulkMark(e.target.value)}
+                                                    placeholder="Mark"
+                                                    className="w-16 input-style px-2 py-1.5 text-xs font-numbers font-bold text-center"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={bulkFeedback}
+                                                    onChange={e => setBulkFeedback(e.target.value)}
+                                                    placeholder="Optional feedback..."
+                                                    className="flex-1 min-w-[120px] input-style px-2.5 py-1.5 text-xs"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    disabled={isProcessing}
+                                                    onClick={() => handleBulkGrade('Graded')}
+                                                    className="px-3 py-1.5 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold whitespace-nowrap win-button disabled:opacity-50"
+                                                >
+                                                    Grade ({selectedSubIds.length})
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={isProcessing}
+                                                    onClick={() => handleBulkGrade('Resubmit', '')}
+                                                    className="px-2.5 py-1.5 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-300 text-xs font-bold whitespace-nowrap win-button"
+                                                >
+                                                    Resubmit
+                                                </button>
                                             </div>
                                         </div>
                                     )}
                                 </div>
-                            ))}
-                        </div>
-                    </div>
 
-                    )}
+                                {/* Compact Submission Rows */}
+                                <div className="glass-panel rounded-2xl border border-gray-200/70 dark:border-white/10 overflow-hidden divide-y divide-gray-100 dark:divide-white/5">
+                                    {visibleSubs.length === 0 ? (
+                                        <div className="py-12 px-4 text-center text-xs font-semibold text-gray-500">
+                                            No {filterStatus !== 'All' ? filterStatus.toLowerCase() : ''} submissions found.
+                                        </div>
+                                    ) : visibleSubs.map(asn => {
+                                        const isSelected = selectedSubIds.includes(asn.id);
+                                        const isCustomOpen = gradeForm.id === asn.id;
+
+                                        return (
+                                            <div key={asn.id} className={`p-3 sm:p-3.5 transition-colors ${isSelected ? 'bg-blue-500/[0.07] dark:bg-blue-500/[0.12]' : 'hover:bg-black/[0.015] dark:hover:bg-white/[0.02]'}`}>
+                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+                                                    {/* Left: Checkbox + Student + Task */}
+                                                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                                        {isAdmin && (
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isSelected}
+                                                                onChange={() => {
+                                                                    playSound('click');
+                                                                    setSelectedSubIds(prev => prev.includes(asn.id) ? prev.filter(x => x !== asn.id) : [...prev, asn.id]);
+                                                                }}
+                                                                className="mt-1 w-4 h-4 accent-[#005fb8] shrink-0 cursor-pointer"
+                                                            />
+                                                        )}
+                                                        <UserAvatar name={asn.studentName} size="sm" />
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                <span className="text-xs font-bold text-gray-900 dark:text-white truncate max-w-[160px]">{asn.studentName}</span>
+                                                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                                                    asn.status === 'Graded'
+                                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                                                        : asn.status === 'Resubmit'
+                                                                            ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300'
+                                                                            : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                                                }`}>
+                                                                    {asn.status}
+                                                                </span>
+                                                                {asn.timestamp && (
+                                                                    <span className="text-[10px] text-gray-400 font-numbers">{moment(asn.timestamp).format('DD MMM')}</span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200 mt-0.5 break-words line-clamp-1" title={asn.taskTitle}>
+                                                                {asn.taskTitle}
+                                                            </p>
+                                                            {asn.feedback && (
+                                                                <p className="text-[10px] text-purple-600 dark:text-purple-300 mt-0.5 italic truncate">"{asn.feedback}"</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Right: Link + 1-Click Quick Marks OR Score Badge */}
+                                                    <div className="flex items-center justify-between md:justify-end gap-1.5 flex-wrap shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-gray-100 dark:border-white/5">
+                                                        <a
+                                                            href={asn.link}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="h-7 px-2.5 rounded-lg bg-blue-500/10 hover:bg-[#005fb8] text-[#005fb8] hover:text-white dark:text-[#60cdff] text-[11px] font-bold inline-flex items-center gap-1 whitespace-nowrap transition-colors"
+                                                        >
+                                                            <Icon name="external-link" className="w-3 h-3" /> Link
+                                                        </a>
+
+                                                        {asn.status === 'Graded' && (
+                                                            <span className="h-7 px-2.5 rounded-lg bg-emerald-600 text-white text-xs font-numbers font-bold inline-flex items-center whitespace-nowrap">
+                                                                {asn.mark || 0}/100
+                                                            </span>
+                                                        )}
+
+                                                        {isAdmin && asn.status !== 'Graded' && (
+                                                            <div className="flex items-center gap-1 flex-nowrap">
+                                                                {[100, 90, 80, 70].map(m => (
+                                                                    <button
+                                                                        key={m}
+                                                                        type="button"
+                                                                        onClick={() => handleQuickSingleGrade(asn.id, m, 'Graded')}
+                                                                        className="h-7 px-2 rounded-lg bg-emerald-500/15 hover:bg-emerald-600 text-emerald-700 hover:text-white dark:text-emerald-300 text-[11px] font-numbers font-bold transition-colors win-button"
+                                                                        title={`1-Click Grade ${m}`}
+                                                                    >
+                                                                        {m}
+                                                                    </button>
+                                                                ))}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setGradeForm(isCustomOpen ? { id: null, mark: '', feedback: '' } : { id: asn.id, mark: asn.mark || '', feedback: asn.feedback || '' })}
+                                                                    className="h-7 px-2 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 text-[10px] font-bold hover:text-[#005fb8] border border-gray-200 dark:border-white/10"
+                                                                    title="Custom Mark / Feedback / Resubmit"
+                                                                >
+                                                                    <Icon name="sliders" className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
+                                                        )}
+
+                                                        {(!isAdmin || String(asn.studentId) === String(auth?.userId)) && (asn.status === 'Resubmit' || asn.status === 'Graded') && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleResubmit(asn.id)}
+                                                                className="h-7 px-2.5 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-700 dark:text-gray-200 text-[11px] font-bold inline-flex items-center gap-1 whitespace-nowrap"
+                                                            >
+                                                                <Icon name="refresh-cw" className="w-3 h-3" /> Resubmit
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Optional Inline Custom Mark + Feedback Drawer */}
+                                                {isAdmin && isCustomOpen && (
+                                                    <div className="mt-2.5 pt-2.5 border-t border-gray-100 dark:border-white/10 flex flex-wrap sm:flex-nowrap items-center gap-2">
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="100"
+                                                            placeholder="Mark"
+                                                            value={gradeForm.mark}
+                                                            onChange={e => setGradeForm({ ...gradeForm, mark: e.target.value })}
+                                                            className="w-20 input-style px-2.5 py-1.5 text-xs font-numbers font-bold"
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Feedback note..."
+                                                            value={gradeForm.feedback}
+                                                            onChange={e => setGradeForm({ ...gradeForm, feedback: e.target.value })}
+                                                            className="flex-1 min-w-[140px] input-style px-2.5 py-1.5 text-xs"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleQuickSingleGrade(asn.id, gradeForm.mark || 0, 'Graded', gradeForm.feedback)}
+                                                            className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold win-button"
+                                                        >
+                                                            Save
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleQuickSingleGrade(asn.id, '', 'Resubmit', gradeForm.feedback)}
+                                                            className="px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-300 text-xs font-bold win-button"
+                                                        >
+                                                            Resubmit
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {visibleSubLimit < filteredAssignments.length && (
+                                    <div className="text-center pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setVisibleSubLimit(prev => prev + 15)}
+                                            className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-dark-800 text-xs font-bold text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-white/10 win-button"
+                                        >
+                                            Load More ({filteredAssignments.length - visibleSubLimit} remaining)
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     {/* Admin Add Fixed Assignment Modal */}
                     <Modal isOpen={showAddCourseAsn} onClose={() => setShowAddCourseAsn(false)} title={fixedAsnForm.id ? "Edit Course Assignment" : "Add Course Assignment"}>
@@ -12751,6 +12445,31 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
                                 <button type="submit" disabled={isProcessing} className="bg-[#005fb8] hover:bg-[#004a94] text-white px-8 py-2.5 rounded-lg font-bold shadow-sm flex items-center justify-center gap-2 transition-colors win-button w-full sm:w-auto disabled:opacity-50">
                                     {isProcessing ? <Icon className="w-4 h-4 animate-spin" name="loader"/> : <Icon className="w-4 h-4" name="save"/>} 
                                     {isProcessing ? 'Saving...' : 'Save Assignment'}
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
+
+                    {/* Native Resubmit Assignment Link Modal */}
+                    <Modal isOpen={resubmitModal.isOpen} onClose={() => setResubmitModal({ isOpen: false, id: null, link: '' })} title="Resubmit Assignment" maxWidth="max-w-md" compact={true}>
+                        <form onSubmit={submitResubmitModal} className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 mb-1">New Submission Link *</label>
+                                <input
+                                    type="url"
+                                    required
+                                    autoFocus
+                                    value={resubmitModal.link}
+                                    onChange={e => setResubmitModal(prev => ({ ...prev, link: e.target.value }))}
+                                    className="w-full input-style px-3 py-2 text-sm font-mono-code"
+                                    placeholder="https://drive.google.com/..."
+                                />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                                <button type="button" onClick={() => setResubmitModal({ isOpen: false, id: null, link: '' })} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold win-button">Cancel</button>
+                                <button type="submit" disabled={isProcessing} className="px-5 py-2 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button">
+                                    {isProcessing ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="send" className="w-3.5 h-3.5" />}
+                                    <span>{isProcessing ? 'Updating...' : 'Update Link'}</span>
                                 </button>
                             </div>
                         </form>
@@ -15232,6 +14951,7 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
     const [selectedCourse, setSelectedCourse] = useState('All');
     const [selectedBatch, setSelectedBatch] = useState('All');
     const [sortOrder, setSortOrder] = useState('Score Desc');
+    const [reportTab, setReportTab] = useState('modules'); // 'modules' | 'assignments' | 'exams' | 'profile'
 
     const normStr = (v) => String(v || '').replace(/^'/, '').replace(/^\+88/, '').replace(/\s+/g, '').toLowerCase();
 
@@ -15265,6 +14985,7 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
                         course: (stObj.course && stObj.course.length > (ex.course || '').length) ? stObj.course : (ex.course || stObj.Course || stObj.interestedIn || 'Academy Course'),
                         attendance: (Array.isArray(stObj.attendance) && stObj.attendance.length > 0) ? stObj.attendance : (ex.attendance || []),
                         skillProgress: Math.max(Number(ex.skillProgress || 0), Number(stObj.skillProgress || 0)),
+                        examData: (stObj.examData && String(stObj.examData).length > 2) ? stObj.examData : (ex.examData || '{}'),
                         status: ex.status || stObj.status || 'Active',
                         startDate: ex.startDate || stObj.startDate || stObj.Timestamp || new Date().toISOString()
                     });
@@ -15277,6 +14998,7 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
                         course: stObj.course || stObj.Course || stObj.interestedIn || 'Academy Course',
                         attendance: Array.isArray(stObj.attendance) ? stObj.attendance : [],
                         skillProgress: Number(stObj.skillProgress || 0),
+                        examData: stObj.examData || stObj.examdata || '{}',
                         status: stObj.status || 'Active',
                         startDate: stObj.startDate || stObj.admissionDate || stObj.Timestamp || new Date().toISOString()
                     });
@@ -15361,6 +15083,22 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
         const batchObj = batches.find(b => String(b.id) === String(batchId));
         const batchName = batchObj ? batchObj.name : (batchId === 'Unassigned' ? 'No Batch' : batchId);
 
+        // 🟢 SKILL EXAMS PARSER (From StudentsMaster.ExamData)
+        let examMapObj = {};
+        try {
+            const rawEx = student.examData || student.examdata;
+            if (rawEx && typeof rawEx === 'object') examMapObj = rawEx;
+            else if (typeof rawEx === 'string' && rawEx.trim().startsWith('{')) examMapObj = JSON.parse(rawEx);
+        } catch (e) { examMapObj = {}; }
+
+        const examRecords = Object.values(examMapObj || {})
+            .filter(ex => ex && (Number(ex.attempts) > 0 || ex.bestScore !== undefined))
+            .sort((a, b) => (Number(a.moduleSerial) || 0) - (Number(b.moduleSerial) || 0));
+        const examsPassedCount = examRecords.filter(ex => ex.passed).length;
+        const avgExamScore = examRecords.length > 0
+            ? Math.round(examRecords.reduce((s, ex) => s + Number(ex.bestScore ?? ex.lastScore ?? 0), 0) / examRecords.length)
+            : 0;
+
         // 🟢 SOCIAL PROFILE MAPPING (From Users List)
         const userProfile = usersList.find(u => String(u.Username).toLowerCase() === String(student.name).toLowerCase()) || {};
 
@@ -15371,16 +15109,23 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
                 fbProfile: userProfile.FbProfile || '',
                 fbPage: userProfile.FbPage || '',
                 website: userProfile.Website || '',
-                stModules, 
-                completedMods: completedModsCount, 
-                totalCourseMods, 
-                moduleRatio, 
+                stModules,
+                completedMods: completedModsCount,
+                totalCourseMods,
+                moduleRatio,
                 courseModules,
-                stAsn, 
-                totalAsn: stAsn.length, 
-                avgAsnMark, 
+                stAsn,
+                totalAsn: stAsn.length,
+                avgAsnMark,
+                examRecords,
+                examsPassedCount,
+                avgExamScore,
+                presentCount,
+                totalAtt,
+                attRatio,
+                skillRatio,
                 overallScore,
-                batchId, 
+                batchId,
                 batchName
             };
    }).filter(s => {
@@ -15567,166 +15312,262 @@ const StudentProgressView = ({ studentsPanel, moduleProgress, assignments, cours
                 })}
             </div>
 
-            {/* Detailed Student Report Modal with Expandable Topics */}
-            <Modal isOpen={!!selectedStudent} onClose={() => setSelectedStudent(null)} title="Student Evaluation Report" fullWidthContent={true}>
+            {/* Responsive Tabbed Student Evaluation Report Modal (Modules + Assignments + Skill Exams + Profile) */}
+            <Modal isOpen={!!selectedStudent} onClose={() => setSelectedStudent(null)} title="Student Evaluation Report" maxWidth="max-w-3xl" compact={true}>
                 {selectedStudent && (
-                    <div className="p-4 md:p-6 space-y-6">
-                        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 border-b border-gray-200/50 dark:border-white/10 pb-4 text-center sm:text-left">
-                            <img src={`https://api.dicebear.com/9.x/micah/svg?seed=${selectedStudent.name}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`} loading="lazy" onError={(e) => { e.target.onerror = null; e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='12' fill='%23f1f5f9'/%3E%3Cpath d='M12 11c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm0 2c-2.67 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z' fill='%23cbd5e1'/%3E%3C/svg%3E"; }} alt="" className="w-16 h-16 rounded-full shadow-md shrink-0" />
-                            <div className="flex-1 min-w-0">
-                                <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white truncate">{selectedStudent.name}</h2>
-                                <p className="text-xs md:text-sm text-gray-500 font-mono-code truncate mt-0.5">{selectedStudent.phone}</p>
-                                <div className="flex flex-wrap justify-center sm:justify-start gap-1.5 mt-1.5">
-                                    <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-0.5 rounded-full font-bold">{selectedStudent.course}</span>
-                                    <span className="text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-2 py-0.5 rounded-full font-bold">{selectedStudent.batchName}</span>
+                    <div className="space-y-4">
+                        {/* Compact Responsive Student Hero */}
+                        <div className="p-3.5 rounded-2xl bg-gray-50/90 dark:bg-dark-900/60 border border-gray-200/70 dark:border-white/10 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div className="relative shrink-0">
+                                    <img
+                                        src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(selectedStudent.name)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
+                                        loading="lazy"
+                                        alt=""
+                                        className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white dark:border-[#1a1a1a] shadow-sm"
+                                    />
+                                    <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white dark:border-[#1a1a1a] ${selectedStudent.status === 'Active' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white truncate">{selectedStudent.name}</h2>
+                                    <p className="text-[11px] text-gray-500 font-mono-code truncate">{selectedStudent.phone}</p>
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                        <span className="text-[10px] bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] px-2 py-0.5 rounded-md font-bold truncate max-w-[160px]">{selectedStudent.course}</span>
+                                        <span className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-md font-bold">{selectedStudent.batchName}</span>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="w-14 h-14 rounded-full border-4 flex items-center justify-center  text-sm shrink-0" style={{ borderColor: selectedStudent.overallScore >= 80 ? '#22c55e' : selectedStudent.overallScore >= 50 ? '#facc15' : '#ef4444', color: selectedStudent.overallScore >= 80 ? '#22c55e' : selectedStudent.overallScore >= 50 ? '#eab308' : '#ef4444' }}>
-                                {selectedStudent.overallScore}%
+
+                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full border-[3.5px] flex flex-col items-center justify-center shrink-0 font-numbers"
+                                style={{
+                                    borderColor: selectedStudent.overallScore >= 80 ? '#10b981' : selectedStudent.overallScore >= 50 ? '#f59e0b' : '#ef4444',
+                                    color: selectedStudent.overallScore >= 80 ? '#10b981' : selectedStudent.overallScore >= 50 ? '#d97706' : '#ef4444'
+                                }}>
+                                <span className="text-sm sm:text-base font-bold leading-none">{selectedStudent.overallScore}%</span>
+                                <span className="text-[8px] uppercase font-bold opacity-75">Score</span>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {/* Expandable Module Details */}
-                            <div className="bg-blue-50/30 dark:bg-blue-900/10 rounded-2xl p-4 border border-blue-100 dark:border-blue-900/30 flex flex-col h-[400px]">
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2"><Icon name="book-open" className="w-4 h-4 text-blue-500"/> Module Progress</h3>
-                                    <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-0.5 rounded-full font-bold">{selectedStudent.completedMods}/{selectedStudent.totalCourseMods} Done</span>
-                                </div>
-                                <div className="space-y-3 overflow-y-auto hide-scrollbar pr-1 flex-1">
-                                    {selectedStudent.courseModules.length === 0 && <p className="text-xs text-gray-500 text-center mt-4">No modules found for enrolled courses.</p>}
-                                    {selectedStudent.courseModules.map(mod => {
-                                        const pData = selectedStudent.stModules.find(pm => pm.moduleId === mod.id);
-                                        const conf = pData ? Number(pData.confidence) : 0;
-                                        const isExpanded = expandedModId === mod.id;
-                                        
-                                        // 🟢 BULLETPROOF TOPIC MATCHING FOR ADMIN
-                                        let checkedTopicsArr = [];
-                                        if (pData && pData.checkedTopics) {
-                                            let rawStr = String(pData.checkedTopics).replace(/&amp;/g, '&').replace(/[\[\]"'\\]/g, '').replace(/&quot;/g, '');
-                                            if (rawStr && rawStr.trim() !== '' && rawStr !== 'undefined' && rawStr !== 'null') {
-                                                checkedTopicsArr = rawStr.split(',').map(s => String(s).replace(/[^a-zA-Z0-9\u0980-\u09FF\s&]/g, '').trim().toLowerCase()).filter(Boolean);
-                                            }
-                                        }
-                                        const allTopicsArr = mod.topics ? mod.topics.split(',').map(t => t.trim()).filter(Boolean) : [];
+                        {/* 4 Compact Summary KPIs */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <div className="p-2.5 rounded-xl bg-blue-500/[0.07] dark:bg-blue-500/[0.11] border border-blue-200/60 dark:border-blue-500/20">
+                                <p className="text-[9px] font-bold uppercase text-[#005fb8] dark:text-[#60cdff]">Modules</p>
+                                <p className="text-sm sm:text-base font-numbers font-bold text-gray-900 dark:text-white mt-0.5">
+                                    {selectedStudent.completedMods}/{selectedStudent.totalCourseMods} <span className="text-[10px] font-normal text-gray-500">({selectedStudent.moduleRatio}%)</span>
+                                </p>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-purple-500/[0.07] dark:bg-purple-500/[0.11] border border-purple-200/60 dark:border-purple-500/20">
+                                <p className="text-[9px] font-bold uppercase text-purple-600 dark:text-purple-400">Assignments</p>
+                                <p className="text-sm sm:text-base font-numbers font-bold text-gray-900 dark:text-white mt-0.5">
+                                    {selectedStudent.totalAsn} <span className="text-[10px] font-normal text-gray-500">(Avg {selectedStudent.avgAsnMark})</span>
+                                </p>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] border border-emerald-200/60 dark:border-emerald-500/20">
+                                <p className="text-[9px] font-bold uppercase text-emerald-700 dark:text-emerald-400">Skill Exams</p>
+                                <p className="text-sm sm:text-base font-numbers font-bold text-gray-900 dark:text-white mt-0.5">
+                                    {selectedStudent.examsPassedCount || 0}/{(selectedStudent.examRecords || []).length} <span className="text-[10px] font-normal text-gray-500">(Avg {selectedStudent.avgExamScore || 0}%)</span>
+                                </p>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-amber-500/[0.07] dark:bg-amber-500/[0.11] border border-amber-200/60 dark:border-amber-500/20">
+                                <p className="text-[9px] font-bold uppercase text-amber-700 dark:text-amber-400">Attend &amp; Skill</p>
+                                <p className="text-sm sm:text-base font-numbers font-bold text-gray-900 dark:text-white mt-0.5">
+                                    {selectedStudent.attRatio || 0}% <span className="text-[10px] font-normal text-gray-500">• {selectedStudent.skillRatio || 0}%</span>
+                                </p>
+                            </div>
+                        </div>
 
-                                        return (
-                                            <div key={mod.id} className="bg-white dark:bg-dark-800 rounded-xl shadow-sm border border-gray-100 dark:border-white/5 overflow-hidden transition-all shrink-0">
-                                                <div onClick={() => setExpandedModId(isExpanded ? null : mod.id)} className="p-3 flex justify-between items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/50">
-                                                    <div className="flex-1 min-w-0 pr-3">
-                                                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate" title={mod.title}>{mod.serial}. {mod.title}</p>
-                                                        <div className="w-full bg-gray-200 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden mt-1.5">
-                                                            <div className={`h-full transition-all ${conf === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${conf}%` }}></div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 shrink-0">
-                                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${conf === 100 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-400'}`}>{conf}%</span>
-                                                        <Icon name={isExpanded ? "chevron-up" : "chevron-down"} className="w-4 h-4 text-gray-400" />
+                        {/* Responsive 4-Tab Switcher (Zero Vertical Bloat) */}
+                        <div className="grid grid-cols-4 gap-1 p-1 bg-gray-100 dark:bg-dark-900 rounded-xl border border-gray-200/70 dark:border-white/10">
+                            {[
+                                { id: 'modules', label: 'Modules', count: selectedStudent.courseModules.length },
+                                { id: 'assignments', label: 'Tasks', count: selectedStudent.stAsn.length },
+                                { id: 'exams', label: 'Exams', count: (selectedStudent.examRecords || []).length },
+                                { id: 'profile', label: 'Profile', count: null }
+                            ].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => { if (typeof playSound === 'function') playSound('click'); setReportTab(tab.id); }}
+                                    className={`py-2 px-1.5 rounded-lg text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1 transition-colors whitespace-nowrap ${
+                                        reportTab === tab.id
+                                            ? 'bg-[#005fb8] text-white shadow-sm'
+                                            : 'text-gray-600 dark:text-gray-300 hover:bg-white/70 dark:hover:bg-dark-800'
+                                    }`}
+                                >
+                                    <span>{tab.label}</span>
+                                    {tab.count !== null && (
+                                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-numbers ${reportTab === tab.id ? 'bg-white/20 text-white' : 'bg-gray-200 dark:bg-dark-700 text-gray-600 dark:text-gray-300'}`}>
+                                            {tab.count}
+                                        </span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* TAB 1: MODULES */}
+                        {reportTab === 'modules' && (
+                            <div className="space-y-2 max-h-[44vh] overflow-y-auto hide-scrollbar pr-0.5">
+                                {selectedStudent.courseModules.length === 0 ? (
+                                    <p className="text-xs text-gray-500 text-center py-8 border border-dashed border-gray-200 dark:border-white/10 rounded-xl">No modules found for enrolled courses.</p>
+                                ) : selectedStudent.courseModules.map(mod => {
+                                    const pData = selectedStudent.stModules.find(pm => pm.moduleId === mod.id);
+                                    const conf = pData ? Number(pData.confidence) : 0;
+                                    const isExpanded = expandedModId === mod.id;
+
+                                    let checkedTopicsArr = [];
+                                    if (pData && pData.checkedTopics) {
+                                        let rawStr = String(pData.checkedTopics).replace(/&amp;/g, '&').replace(/[\[\]"'\\]/g, '').replace(/&quot;/g, '');
+                                        if (rawStr && rawStr.trim() !== '' && rawStr !== 'undefined' && rawStr !== 'null') {
+                                            checkedTopicsArr = rawStr.split(',').map(s => String(s).replace(/[^a-zA-Z0-9\u0980-\u09FF\s&]/g, '').trim().toLowerCase()).filter(Boolean);
+                                        }
+                                    }
+                                    const allTopicsArr = mod.topics ? mod.topics.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+                                    return (
+                                        <div key={mod.id} className="bg-white dark:bg-dark-800 rounded-xl border border-gray-200/70 dark:border-white/10 overflow-hidden">
+                                            <div onClick={() => setExpandedModId(isExpanded ? null : mod.id)} className="p-3 flex items-center justify-between gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/40">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white truncate">{mod.serial}. {mod.title}</p>
+                                                    <div className="w-full bg-gray-200 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden mt-1.5">
+                                                        <div className={`h-full ${conf === 100 ? 'bg-emerald-500' : 'bg-[#005fb8]'}`} style={{ width: `${conf}%` }} />
                                                     </div>
                                                 </div>
-                                                
-                                                {/* Topics Checklist Dropdown (Read-Only for Admin) */}
-                                                {isExpanded && (
-                                                    <div className="p-3 border-t border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-dark-900/50 space-y-2">
-                                                        {allTopicsArr.length === 0 ? <p className="text-xs text-gray-500 text-center">No topics listed.</p> : allTopicsArr.map((topic, i) => {
-                                                            const safeTopicLower = String(topic).replace(/&amp;/g, '&').replace(/[^a-zA-Z0-9\u0980-\u09FF\s&]/g, '').trim().toLowerCase();
-                                                            const isChecked = checkedTopicsArr.includes(safeTopicLower);
-                                                            return (
-                                                                <div key={i} className={`flex items-center gap-2 p-2 rounded-lg border ${isChecked ? 'bg-green-50/50 border-green-200/50 dark:bg-green-900/10 dark:border-green-800/30' : 'bg-white dark:bg-dark-800 border-gray-100 dark:border-white/5'}`}>
-                                                                    <Icon name={isChecked ? "check-circle" : "circle"} className={`w-4 h-4 shrink-0 ${isChecked ? 'text-green-500' : 'text-gray-300 dark:text-gray-600'}`} />
-                                                                    <span className={`text-xs ${isChecked ? 'text-gray-900 dark:text-white font-semibold' : 'text-gray-500 dark:text-gray-400'}`}>{topic}</span>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <span className={`text-[10px] font-numbers font-bold px-2 py-0.5 rounded-md ${conf === 100 ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-gray-100 dark:bg-dark-700 text-gray-600 dark:text-gray-300'}`}>{conf}%</span>
+                                                    <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} className="w-4 h-4 text-gray-400" />
+                                                </div>
                                             </div>
-                                        )
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Assignment Details */}
-                            <div className="bg-purple-50/30 dark:bg-purple-900/10 rounded-2xl p-4 border border-purple-100 dark:border-purple-900/30 flex flex-col h-[400px]">
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2"><Icon name="file-code" className="w-4 h-4 text-purple-500"/> Assignments Submitted</h3>
-                                    <span className="text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-2 py-0.5 rounded-full font-bold">Avg: {selectedStudent.avgAsnMark}</span>
-                                </div>
-                                <div className="space-y-3 overflow-y-auto hide-scrollbar pr-1 flex-1">
-                                    {selectedStudent.stAsn.length === 0 && <p className="text-xs text-gray-500 text-center mt-4">No assignments submitted yet.</p>}
-                                    {selectedStudent.stAsn.map(asn => (
-                                        <div key={asn.id} className="bg-white dark:bg-dark-800 p-3 rounded-xl shadow-sm border border-gray-100 dark:border-white/5 shrink-0">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate pr-2" title={asn.taskTitle}>{asn.taskTitle}</p>
-                                                {asn.status === 'Graded' ? (
-                                                    <div className="w-7 h-7 shrink-0 rounded-full border-2 border-green-500 flex items-center justify-center font-bold text-[10px] text-green-600">{asn.mark}</div>
-                                                ) : (
-                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${asn.status === 'Resubmit' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>{asn.status}</span>
-                                                )}
-                                            </div>
-                                            <a href={asn.link} target="_blank" rel="noreferrer" className="text-[10px] text-[#005fb8] dark:text-[#60cdff] hover:underline flex items-center gap-1 mt-1"><Icon name="external-link" className="w-3 h-3"/> View Project Link</a>
-                                            {asn.feedback && <p className="text-[10px] text-gray-600 dark:text-gray-400 mt-2 bg-gray-50 dark:bg-dark-900/50 p-2 rounded italic">"{asn.feedback}"</p>}
+                                            {isExpanded && (
+                                                <div className="p-2.5 border-t border-gray-100 dark:border-white/5 bg-gray-50/70 dark:bg-dark-900/40 space-y-1.5">
+                                                    {allTopicsArr.length === 0 ? <p className="text-xs text-gray-400 text-center">No topics listed.</p> : allTopicsArr.map((topic, i) => {
+                                                        const safeLower = String(topic).replace(/&amp;/g, '&').replace(/[^a-zA-Z0-9\u0980-\u09FF\s&]/g, '').trim().toLowerCase();
+                                                        const isChecked = checkedTopicsArr.includes(safeLower);
+                                                        return (
+                                                            <div key={i} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs ${isChecked ? 'bg-emerald-500/10 text-gray-900 dark:text-white font-semibold' : 'bg-white dark:bg-dark-800 text-gray-500'}`}>
+                                                                <Icon name={isChecked ? 'check-circle' : 'circle'} className={`w-3.5 h-3.5 shrink-0 ${isChecked ? 'text-emerald-500' : 'text-gray-300 dark:text-gray-600'}`} />
+                                                                <span className="break-words">{topic}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
-                                </div>
+                                    );
+                                })}
                             </div>
-                        </div>
+                        )}
 
-                        {/* 🟢 NEW: Student Profile & Social Information */}
-                        <div className="bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl p-4 md:p-5 border border-slate-200/50 dark:border-white/5">
-                            <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 border-b border-gray-200/50 dark:border-white/10 pb-3">
-                                <Icon name="user-check" className="w-4 h-4 text-emerald-500"/> Student Profile Information
-                            </h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                                <div className="flex items-start gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center text-red-500 shrink-0"><Icon name="mail" className="w-4 h-4"/></div>
-                                    <div className="min-w-0">
-                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Official Gmail</p>
-                                        <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate" title={selectedStudent.email}>{selectedStudent.email}</p>
+                        {/* TAB 2: ASSIGNMENTS */}
+                        {reportTab === 'assignments' && (
+                            <div className="space-y-2 max-h-[44vh] overflow-y-auto hide-scrollbar pr-0.5">
+                                {selectedStudent.stAsn.length === 0 ? (
+                                    <p className="text-xs text-gray-500 text-center py-8 border border-dashed border-gray-200 dark:border-white/10 rounded-xl">No assignments submitted yet.</p>
+                                ) : selectedStudent.stAsn.map(asn => (
+                                    <div key={asn.id} className="p-3 rounded-xl bg-white dark:bg-dark-800 border border-gray-200/70 dark:border-white/10 flex items-start justify-between gap-2.5">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white break-words">{asn.taskTitle}</p>
+                                            <div className="flex items-center gap-2.5 mt-1 flex-wrap">
+                                                <a href={asn.link} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline inline-flex items-center gap-1">
+                                                    <Icon name="external-link" className="w-3 h-3" /> Open Link
+                                                </a>
+                                                {asn.timestamp && <span className="text-[10px] text-gray-400 font-numbers">{moment(asn.timestamp).format('DD MMM YYYY')}</span>}
+                                            </div>
+                                            {asn.feedback && <p className="text-[11px] text-gray-600 dark:text-gray-400 mt-1.5 bg-gray-50 dark:bg-dark-900/50 px-2.5 py-1.5 rounded-lg italic">"{asn.feedback}"</p>}
+                                        </div>
+                                        <div className="shrink-0">
+                                            {String(asn.status || '').trim().toLowerCase() === 'graded' ? (
+                                                <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-numbers font-bold text-xs">
+                                                    {asn.mark || 0}/100
+                                                </span>
+                                            ) : (
+                                                <span className={`inline-flex px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${asn.status === 'Resubmit' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`}>
+                                                    {asn.status || 'Pending'}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                                
-                                {/* LinkedIn Realistic Icon */}
-                                <div className="flex items-start gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-[#0A66C2]/10 dark:bg-[#0A66C2]/20 flex items-center justify-center text-[#0A66C2] shrink-0">
-                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
-                                        </svg>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">LinkedIn</p>
-                                        {selectedStudent.linkedIn ? <a href={selectedStudent.linkedIn} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#0A66C2] hover:underline truncate block">View Profile</a> : <p className="text-xs text-gray-400">Not Added</p>}
-                                    </div>
-                                </div>
-                                
-                                {/* Facebook Realistic Icon */}
-                                <div className="flex items-start gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-[#1877F2]/10 dark:bg-[#1877F2]/20 flex items-center justify-center text-[#1877F2] shrink-0">
-                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.596 0-5.192 1.583-5.192 4.615v3.385z"/>
-                                        </svg>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Facebook</p>
-                                        {selectedStudent.fbProfile ? <a href={selectedStudent.fbProfile} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#1877F2] hover:underline truncate block">View Profile</a> : <p className="text-xs text-gray-400">Not Added</p>}
-                                    </div>
-                                </div>
-                                <div className="flex items-start gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center text-orange-500 shrink-0"><Icon name="flag" className="w-4 h-4"/></div>
-                                    <div className="min-w-0">
-                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">FB Page</p>
-                                        {selectedStudent.fbPage ? <a href={selectedStudent.fbPage} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#005fb8] hover:underline truncate block">View Page</a> : <p className="text-xs text-gray-400">Not Added</p>}
-                                    </div>
-                                </div>
-                                <div className="flex items-start gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/20 flex items-center justify-center text-emerald-500 shrink-0"><Icon name="globe" className="w-4 h-4"/></div>
-                                    <div className="min-w-0">
-                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Website</p>
-                                        {selectedStudent.website ? <a href={selectedStudent.website} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#005fb8] hover:underline truncate block">Visit Website</a> : <p className="text-xs text-gray-400">Not Added</p>}
-                                    </div>
-                                </div>
+                                ))}
                             </div>
-                        </div>
+                        )}
+
+                        {/* TAB 3: SKILL EXAMS & MARKS */}
+                        {reportTab === 'exams' && (
+                            <div className="space-y-2 max-h-[44vh] overflow-y-auto hide-scrollbar pr-0.5">
+                                {(!selectedStudent.examRecords || selectedStudent.examRecords.length === 0) ? (
+                                    <div className="py-8 text-center border border-dashed border-gray-200 dark:border-white/10 rounded-xl">
+                                        <Icon name="award" className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-1.5" />
+                                        <p className="text-xs font-semibold text-gray-500">No skill exams taken yet.</p>
+                                    </div>
+                                ) : selectedStudent.examRecords.map((ex, idx) => (
+                                    <div key={ex.examId || ex.moduleId || idx} className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                                        ex.passed
+                                            ? 'bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] border-emerald-300/60 dark:border-emerald-500/30'
+                                            : 'bg-rose-500/[0.06] dark:bg-rose-500/[0.10] border-rose-200/70 dark:border-rose-500/25'
+                                    }`}>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="text-[10px] font-bold uppercase text-[#005fb8] dark:text-[#60cdff]">
+                                                    {ex.course || selectedStudent.course} • Mod {String(ex.moduleSerial || 1).padStart(2, '0')}
+                                                </span>
+                                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${ex.passed ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
+                                                    {ex.passed ? `Passed • ${ex.bestGrade || ex.grade || 'B'}` : 'Retry'}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white mt-0.5 break-words">{ex.moduleTitle || 'Module Exam'}</p>
+                                            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-1 text-[10px] text-gray-500 dark:text-gray-400 font-numbers">
+                                                <span>{ex.attempts || 1} {Number(ex.attempts || 1) === 1 ? 'attempt' : 'attempts'}</span>
+                                                {ex.lastAttemptAt && <span>• {moment(ex.lastAttemptAt).format('DD MMM YYYY, hh:mm A')}</span>}
+                                            </div>
+                                            {Array.isArray(ex.weakTopics) && ex.weakTopics.length > 0 && (
+                                                <p className="text-[10px] text-amber-700 dark:text-amber-300 mt-1 break-words">
+                                                    Weak: {ex.weakTopics.join(', ')}
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-1 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-black/5 dark:border-white/10">
+                                            <span className={`text-base sm:text-lg font-numbers font-bold leading-none ${ex.passed ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-400'}`}>
+                                                {ex.bestScore ?? ex.lastScore ?? 0}%
+                                            </span>
+                                            <span className="text-[10px] font-numbers font-semibold text-gray-500">
+                                                Correct: {ex.correct ?? 0}/{ex.total ?? 10}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* TAB 4: PROFILE & SOCIALS */}
+                        {reportTab === 'profile' && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                {[
+                                    { label: 'Official Gmail', val: selectedStudent.email, isLink: false, icon: 'mail', tone: 'text-rose-500 bg-rose-500/10' },
+                                    { label: 'LinkedIn', val: selectedStudent.linkedIn, isLink: true, icon: 'linkedin', tone: 'text-[#0A66C2] bg-[#0A66C2]/10' },
+                                    { label: 'Facebook Profile', val: selectedStudent.fbProfile, isLink: true, icon: 'facebook', tone: 'text-[#1877F2] bg-[#1877F2]/10' },
+                                    { label: 'Facebook Page', val: selectedStudent.fbPage, isLink: true, icon: 'flag', tone: 'text-orange-500 bg-orange-500/10' },
+                                    { label: 'Website / Portfolio', val: selectedStudent.website, isLink: true, icon: 'globe', tone: 'text-emerald-600 bg-emerald-500/10' }
+                                ].map(item => (
+                                    <div key={item.label} className="p-3 rounded-xl bg-white dark:bg-dark-800 border border-gray-200/70 dark:border-white/10 flex items-center gap-3 min-w-0">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${item.tone}`}>
+                                            <Icon name={item.icon} className="w-4 h-4" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{item.label}</p>
+                                            {item.val && item.val !== 'N/A' ? (
+                                                item.isLink ? (
+                                                    <a href={item.val} target="_blank" rel="noreferrer" className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline truncate block">{item.val}</a>
+                                                ) : (
+                                                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{item.val}</p>
+                                                )
+                                            ) : (
+                                                <p className="text-xs text-gray-400">Not added</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </Modal>
@@ -22515,6 +22356,7 @@ const SmartPhoneAction = ({ phone }) => {
             // 🟢 কমিউনিটি চ্যাট ফিল্টার ও দৈনিক মেসেজ লিমিট (ডিফল্ট ১২ — এখান থেকে অথবা ড্যাশবোর্ড থেকেই যেকোনো সময় বদলানো যাবে)
             const [communityFilterOnlyMine, setCommunityFilterOnlyMine] = useState(false);
             const [communityDailyLimit, setCommunityDailyLimit] = useState(12);
+            const [limitModal, setLimitModal] = useState({ isOpen: false, value: '12', saving: false });
             const [communityTodayCount, setCommunityTodayCount] = useState(0);
             const [communityAllTodayCount, setCommunityAllTodayCount] = useState(0);
             const [liveBadgeData, setLiveBadgeData] = useState(null);
@@ -22872,26 +22714,32 @@ const handleAISubmit = async (e) => {
                 return res;
             };
 
-            const handleUpdateCommunityLimit = async () => {
+            const handleUpdateCommunityLimit = () => {
                 if (!['Admin', 'Manager'].includes(auth?.role)) return;
                 playSound('click');
-                const input = window.prompt(`প্রতিদিন প্রতি প্রোফাইলের সর্বোচ্চ মেসেজ লিমিট কত হবে? (বর্তমান: ${communityDailyLimit})`, String(communityDailyLimit));
-                if (input === null) return;
-                const parsed = parseInt(input, 10);
-                if (isNaN(parsed) || parsed < 1) return addToast('অনুগ্রহ করে ১ বা তার বেশি একটি সঠিক সংখ্যা দিন।', 'error');
+                setLimitModal({ isOpen: true, value: String(communityDailyLimit), saving: false });
+            };
+
+            const submitCommunityLimitModal = async (e) => {
+                e.preventDefault();
+                const parsed = parseInt(limitModal.value, 10);
+                if (isNaN(parsed) || parsed < 1) return addToast('১ বা তার বেশি একটি সঠিক সংখ্যা দিন।', 'error');
+                setLimitModal(prev => ({ ...prev, saving: true }));
                 setCommunityDailyLimit(parsed);
-                addToast(`ডেইলি মেসেজ লিমিট ${parsed} টি আপডেট হচ্ছে...`, 'info');
                 try {
                     const res = await executeAPI({ action: 'set_community_msg_limit', limit: parsed, auth });
                     const data = await res.json();
                     if (data.success) {
                         playSound('success');
                         addToast(`ডেইলি মেসেজ লিমিট সফলভাবে ${parsed} টি সেট করা হয়েছে!`, 'success');
+                        setLimitModal({ isOpen: false, value: String(parsed), saving: false });
                     } else {
                         addToast(data.message || 'লিমিট আপডেট ব্যর্থ হয়েছে।', 'error');
+                        setLimitModal(prev => ({ ...prev, saving: false }));
                     }
                 } catch (err) {
                     addToast('নেটওয়ার্ক এরর! আবার চেষ্টা করুন।', 'error');
+                    setLimitModal(prev => ({ ...prev, saving: false }));
                 }
             };
 
@@ -24257,7 +24105,7 @@ const [courseModules, setCourseModules] = useState([]);
          if (!auth) return <><ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} /><LandingView auth={auth} currentRoute={currentRoute} setAuth={setAuth} addToast={addToast} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></>;
 
             return (
-                <div className="flex h-[100dvh] overflow-hidden text-gray-800 dark:text-gray-200 transition-colors bg-cover bg-center">
+                <div className="flex h-[100dvh] w-full max-w-[100vw] overflow-hidden text-gray-800 dark:text-gray-200 transition-colors bg-cover bg-center">
                     {/* 🧠 Global Smart Suggestions (Auto-Suggests Saved Usernames, Emails & Phones App-Wide) */}
                     <datalist id="fit-dl-usernames">
                         {Array.from(new Set([
@@ -24666,7 +24514,7 @@ const [courseModules, setCourseModules] = useState([]);
     </>
 )}
 
-                      <div className={`flex-1 min-h-0 relative ${currentRoute === 'community' ? 'overflow-hidden p-0 flex flex-col' : 'overflow-y-auto p-3 md:p-5 lg:p-6'}`}>
+                      <div className={`flex-1 min-h-0 w-full max-w-full relative ${currentRoute === 'community' ? 'overflow-hidden p-0 flex flex-col' : 'overflow-y-auto overflow-x-hidden p-3 md:p-5 lg:p-6'}`}>
                             {loading || isRouteLoading ? (
                                 <div className="w-full h-full p-2 md:p-4 space-y-6 animate-pulse">
                                     {/* Common Header Skeleton */}
@@ -25064,6 +24912,31 @@ const [courseModules, setCourseModules] = useState([]);
                     )}
 
                     {/* MODALS */}
+                    <Modal isOpen={limitModal.isOpen} onClose={() => setLimitModal(prev => ({ ...prev, isOpen: false }))} title="Community Daily Message Limit" maxWidth="max-w-sm" compact={true}>
+                        <form onSubmit={submitCommunityLimitModal} className="space-y-3.5">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 mb-1">Max Messages Per Student / Day *</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="500"
+                                    required
+                                    autoFocus
+                                    value={limitModal.value}
+                                    onChange={e => setLimitModal(prev => ({ ...prev, value: e.target.value }))}
+                                    className="w-full input-style px-3 py-2 text-base font-numbers font-bold"
+                                />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                                <button type="button" onClick={() => setLimitModal(prev => ({ ...prev, isOpen: false }))} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold win-button">Cancel</button>
+                                <button type="submit" disabled={limitModal.saving} className="px-5 py-2 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button">
+                                    {limitModal.saving ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="save" className="w-3.5 h-3.5" />}
+                                    <span>{limitModal.saving ? 'Saving...' : 'Save Limit'}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
+
                     <Modal isOpen={expenseModal.isOpen} onClose={() => setExpenseModal({isOpen: false})} title="Record Daily Expense">
                         <form onSubmit={handleExpenseSubmit} className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
