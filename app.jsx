@@ -276,6 +276,130 @@
             );
         };
 
+        // 💳 REUSABLE INLINE INSTALLMENT PAYMENT BOX (Total + Paid with '+' Button + Date per Installment)
+        const InstallmentPaymentBox = ({ total, onTotalChange, installments = [], onInstallmentsChange, totalLabel = 'Total Amount (৳)', defaultDate }) => {
+            const safeList = (Array.isArray(installments) && installments.length > 0)
+                ? installments
+                : [{ amount: '', date: defaultDate || moment().format('YYYY-MM-DD'), method: 'Cash' }];
+
+            const totalNum = Math.max(0, Number(total) || 0);
+            const paidSum = safeList.reduce((s, it) => s + Math.max(0, Number(it.amount) || 0), 0);
+            const dueNum = Math.max(0, totalNum - paidSum);
+
+            const updateRow = (idx, field, val) => {
+                const next = safeList.map((row, i) => i === idx ? { ...row, [field]: val } : row);
+                onInstallmentsChange(next);
+            };
+            const addRow = () => {
+                if (typeof window.playSound === 'function') window.playSound('click');
+                onInstallmentsChange([...safeList, { amount: '', date: moment().format('YYYY-MM-DD'), method: 'Cash' }]);
+            };
+            const removeRow = (idx) => {
+                if (typeof window.playSound === 'function') window.playSound('click');
+                const next = safeList.filter((_, i) => i !== idx);
+                onInstallmentsChange(next.length > 0 ? next : [{ amount: '', date: moment().format('YYYY-MM-DD'), method: 'Cash' }]);
+            };
+
+            return (
+                <div className="bg-gray-50/90 dark:bg-dark-900/40 p-3.5 sm:p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-3">
+                    {/* Top Row: Total Amount | Paid Summary + '+' Button | Auto Due */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div>
+                            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">{totalLabel}</label>
+                            <input
+                                type="number"
+                                min="0"
+                                value={total}
+                                onChange={e => onTotalChange(e.target.value)}
+                                className="w-full input-style px-3 py-2 text-sm font-bold font-numbers text-gray-900 dark:text-white"
+                                placeholder="0"
+                            />
+                        </div>
+
+                        <div>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Total Paid (৳)</label>
+                                <button
+                                    type="button"
+                                    onClick={addRow}
+                                    className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold flex items-center gap-0.5 shadow-sm win-button"
+                                    title="নতুন কিস্তি যুক্ত করুন"
+                                >
+                                    <Icon name="plus" className="w-3 h-3" /> কিস্তি
+                                </button>
+                            </div>
+                            <input
+                                type="text"
+                                readOnly
+                                value={paidSum}
+                                className="w-full input-style px-3 py-2 text-sm font-bold font-numbers text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/20 cursor-default"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-1">Due (৳)</label>
+                            <input
+                                type="text"
+                                readOnly
+                                value={dueNum}
+                                className="w-full input-style px-3 py-2 text-sm font-bold font-numbers text-rose-600 dark:text-rose-400 bg-rose-50/60 dark:bg-rose-950/20 cursor-default"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Installment Rows (Each with Amount + Date + Method + Remove) */}
+                    <div className="space-y-2 pt-2 border-t border-gray-200/70 dark:border-white/10">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                পেমেন্ট / কিস্তি সমূহ ({safeList.length})
+                            </span>
+                            <span className="text-[10px] text-gray-400">প্রতিটি কিস্তি তার নিজস্ব তারিখের মাসে হিসাব হবে</span>
+                        </div>
+
+                        {safeList.map((row, idx) => (
+                            <div key={idx} className="grid grid-cols-12 gap-1.5 sm:gap-2 items-center bg-white dark:bg-dark-800 p-2 rounded-xl border border-gray-200/70 dark:border-white/10">
+                                <span className="col-span-2 sm:col-span-1 text-[10px] font-bold font-numbers text-center px-1 py-1 rounded bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff]">
+                                    #{idx + 1}
+                                </span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={row.amount}
+                                    onChange={e => updateRow(idx, 'amount', e.target.value)}
+                                    placeholder="Paid ৳"
+                                    className="col-span-4 sm:col-span-4 input-style px-2 py-1.5 text-xs sm:text-sm font-bold font-numbers text-emerald-600"
+                                />
+                                <input
+                                    type="date"
+                                    value={row.date || ''}
+                                    onChange={e => updateRow(idx, 'date', e.target.value)}
+                                    className="col-span-5 sm:col-span-4 input-style px-1.5 py-1.5 text-[11px] font-semibold dark:[color-scheme:dark]"
+                                />
+                                <select
+                                    value={row.method || 'Cash'}
+                                    onChange={e => updateRow(idx, 'method', e.target.value)}
+                                    className="col-span-10 sm:col-span-2 input-style px-1.5 py-1.5 text-[11px] font-semibold"
+                                >
+                                    <option value="Cash">Cash</option>
+                                    <option value="bKash">bKash</option>
+                                    <option value="Nagad">Nagad</option>
+                                    <option value="Bank">Bank</option>
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => removeRow(idx)}
+                                    className="col-span-2 sm:col-span-1 p-1.5 rounded-lg bg-rose-50 dark:bg-rose-900/25 text-rose-500 hover:bg-rose-500 hover:text-white flex items-center justify-center transition-colors"
+                                    title="Remove"
+                                >
+                                    <Icon name="x" className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
         const Modal = ({ isOpen, onClose, title, children, actions, fullWidthContent = false, maxWidth = 'max-w-4xl', compact = false }) => {
             if (!isOpen) return null;
             // ReactDOM Portal ensures the modal overlays EVERYTHING (Sidebar, Header, App background)
@@ -286,7 +410,7 @@
                             <h3 className="font-semibold text-base text-gray-900 dark:text-gray-100 truncate pr-2">{title}</h3>
                             <button onClick={onClose} className="p-1.5 hover:bg-gray-200 dark:hover:bg-red-500 hover:text-white rounded-md transition-colors shrink-0"><Icon name="x" className="w-4 h-4 text-gray-600 dark:text-gray-400" /></button>
                         </div>
-                        <div className={`overflow-y-auto flex-1 w-full ${compact ? 'p-3 sm:p-4' : (fullWidthContent ? 'p-2 md:p-6' : 'p-4 md:p-6')}`}>
+                        <div className={`overflow-y-auto overscroll-y-contain flex-1 w-full ${compact ? 'p-3 sm:p-4' : (fullWidthContent ? 'p-2 md:p-6' : 'p-4 md:p-6')}`} style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
                             <div className={compact ? 'w-full' : 'w-full max-w-3xl mx-auto pb-4'}>
                                 {children}
                             </div>
@@ -1217,25 +1341,6 @@
                                           </div>
 
                                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                              {/* Step 1 */}
-                                              <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-gray-200/80 dark:border-white/10 space-y-1.5">
-                                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#005fb8] text-white text-xs font-bold font-numbers">1</span>
-                                                  <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">ডাউনলোড কনফার্ম করুন</h4>
-                                                  <p className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
-                                                      বাটনে ক্লিক করলে ব্রাউজারে <strong>"File might be harmful"</strong> দেখাতে পারে। প্লে-স্টোরের বাইরের যেকোনো APK-তে এটি স্বাভাবিক—নিশ্চিন্তে <strong>"Download anyway"</strong>-তে ক্লিক করুন।
-                                                  </p>
-                                              </div>
-
-                                              {/* Step 2 */}
-                                              <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-gray-200/80 dark:border-white/10 space-y-1.5">
-                                                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-amber-500 text-white text-xs font-bold font-numbers">2</span>
-                                                  <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">Unknown Apps চালু করুন</h4>
-                                                  <p className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
-                                                      ডাউনলোড শেষে ফাইলটি ওপেন করুন। প্রাইভেসি পপআপ এলে <strong>Settings</strong>-এ গিয়ে <strong>"Allow from this source"</strong> অপশনটি অন (ON) করে ব্যাক আসুন।
-                                                  </p>
-                                              </div>
-
-                                              {/* Step 3 */}
                                               <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-gray-200/80 dark:border-white/10 space-y-1.5">
                                                   <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#005fb8] text-white text-xs font-bold font-numbers">1</span>
                                                   <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">ডাউনলোড কনফার্ম</h4>
@@ -5658,8 +5763,13 @@
                 saving: false
             });
 
-            // Add/Edit Transaction State
-            const defaultFormState = { id: null, name: '', phone: '', email: '', service: '', total: '', paid: '', due: '', status: 'Completed', method: 'Cash/Bank' };
+            // Add/Edit Transaction State (With Date & Installments)
+            const defaultFormState = {
+                id: null, name: '', phone: '', email: '', service: '',
+                total: '', paid: '', due: '', status: 'Completed', method: 'Cash',
+                date: moment().format('YYYY-MM-DD'), sourceSheet: '',
+                installments: [{ amount: '', date: moment().format('YYYY-MM-DD'), method: 'Cash' }]
+            };
             const [formData, setFormData] = useState(defaultFormState);
 
             useEffect(() => { setFilter(getInitialFilter()); }, [route]);
@@ -5679,9 +5789,10 @@
 
                     // 🟢 SMART DATA SYNC: গ্লোবাল ডাটা থেকে ফোন নাম্বার দিয়ে লেটেস্ট নাম ও ইমেইল মিলিয়ে নেওয়া
                     // এর ফলে স্টুডেন্ট বা ক্লায়েন্টের নাম এক জায়গায় আপডেট করলে পেমেন্ট হিস্ট্রি সহ সবখানে আপডেট হয়ে যাবে।
-                    const oPhone = String(o.Phone || '').replace(/[^0-9+]/g, '');
-                    const matchedStudent = studentsPanel?.find(s => String(s.phone).replace(/[^0-9+]/g, '') === oPhone);
-                    const matchedClient = clientLeads?.find(c => String(c.phone).replace(/[^0-9+]/g, '') === oPhone);
+                    const oPhone = String(o.Phone || '').replace(/[^0-9]/g, '');
+                    const hasValidPhone = !o.isFinanceIncome && oPhone.length >= 7;
+                    const matchedStudent = hasValidPhone ? studentsPanel?.find(s => String(s.phone || '').replace(/[^0-9]/g, '') === oPhone) : null;
+                    const matchedClient = hasValidPhone ? clientLeads?.find(c => String(c.phone || '').replace(/[^0-9]/g, '') === oPhone) : null;
                     
                     const latestName = matchedStudent?.name || matchedClient?.name || o.Name || 'Unknown';
                     const latestEmail = matchedStudent?.email || matchedClient?.email || o.Email || '';
@@ -5883,18 +5994,24 @@
 
             const handleEdit = (record) => {
                 if (typeof window.playSound === 'function') window.playSound('click');
-                setFormData({ 
-                    id: record.id, 
-                    name: record.name, 
-                    phone: record.phone, 
-                    email: record.email, 
-                    service: record.service, 
-                    total: record.total, 
-                    paid: record.paid, 
-                    due: record.due, 
-                    status: record.status, 
-                    method: record.method,
-                    type: record.type 
+                const recDate = moment(parseCustomDate(record.Timestamp || new Date())).format('YYYY-MM-DD');
+                const isSingleInstRow = Number(record.installmentNo) > 0 || record.sourceSheet === 'Incomes';
+                setFormData({
+                    id: record.id,
+                    name: record.name,
+                    phone: record.phone === 'N/A' || record.phone === 'Finance Entry' ? '' : record.phone,
+                    email: record.email || '',
+                    service: record.service,
+                    total: record.total,
+                    paid: record.paid,
+                    due: record.due,
+                    status: record.status,
+                    method: record.method || 'Cash',
+                    type: record.type,
+                    date: recDate,
+                    sourceSheet: record.sourceSheet || '',
+                    isSingleInstRow: isSingleInstRow,
+                    installments: [{ amount: record.paid || '', date: recDate, method: record.method || 'Cash' }]
                 });
                 setShowAddModal(true);
             };
@@ -5902,7 +6019,7 @@
             const handleDelete = async (rec) => {
                 const targetId = typeof rec === 'object' ? rec.id : rec;
                 const srcSheet = typeof rec === 'object' ? (rec.sourceSheet || '') : '';
-                if (!window.confirm(`আপনি কি নিশ্চিত যে এই ট্রানজেকশন (${targetId}) ডিলিট করতে চান?`)) return;
+                if (!window.confirm(`Are you sure you want to delete Transaction ID: ${targetId}?`)) return;
                 if (typeof window.playSound === 'function') window.playSound('cancel');
                 try {
                     const res = await executeAPI({ action: 'delete_transaction', id: targetId, sourceSheet: srcSheet });
@@ -5911,11 +6028,9 @@
                         addToast(data.message || 'Transaction deleted.', 'success');
                         if (fetchOrders) fetchOrders(true);
                     } else {
-                        addToast((data && data.message) || 'Could not delete.', 'error');
+                        addToast((data && data.message) || 'Delete failed.', 'error');
                     }
-                } catch (e) {
-                    addToast("Network error while deleting.", "error");
-                }
+                } catch (e) { addToast("Failed to delete.", "error"); }
             };
 
             const openInstallmentModal = (r) => {
@@ -6207,18 +6322,60 @@
                                 <div><label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Phone *</label><input type="text" required value={formData.phone} onChange={e=>setFormData({...formData, phone: e.target.value})} className="w-full input-style px-3 py-2 text-sm font-numbers" placeholder="017XXXXX" /></div>
                                 <div className="md:col-span-2"><label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Service / Course Name *</label><input type="text" required value={formData.service} onChange={e=>setFormData({...formData, service: e.target.value})} className="w-full input-style px-3 py-2 text-sm" placeholder="e.g. Web Design" /></div>
                                 
-                                <div><label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Total Amount (৳) *</label><input type="number" required value={formData.total} onChange={e=>setFormData({...formData, total: e.target.value})} className="w-full input-style px-3 py-2 text-sm font-numbers font-bold text-gray-900 dark:text-white" /></div>
-                                <div><label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Paid Amount (৳) *</label><input type="number" required value={formData.paid} onChange={e=>setFormData({...formData, paid: e.target.value})} className="w-full input-style px-3 py-2 text-sm font-numbers font-bold text-teal-600" /></div>
-                                <div><label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Due Amount (৳)</label><input type="number" value={formData.due} onChange={e=>setFormData({...formData, due: e.target.value})} className="w-full input-style px-3 py-2 text-sm font-numbers font-bold text-red-500" /></div>
-                                
-                                <div>
-                                    <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Status</label>
-                                    <select value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})} className="w-full input-style px-3 py-2 text-sm font-semibold">
-                                        <option value="Completed">Completed</option>
-                                        <option value="Pending">Pending</option>
-                                        <option value="Cancelled">Cancelled</option>
-                                    </select>
+                                <div className="md:col-span-2">
+                                    {formData.isSingleInstRow ? (
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-gray-50 dark:bg-dark-900/40 p-3 rounded-xl border border-gray-200/70 dark:border-white/10">
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Total (৳)</label>
+                                                <input type="number" value={formData.total} onChange={e => setFormData({ ...formData, total: e.target.value })} className="w-full input-style px-2.5 py-2 text-sm font-numbers font-bold" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-emerald-600 uppercase mb-1">Paid (৳)</label>
+                                                <input type="number" required value={formData.paid} onChange={e => setFormData({ ...formData, paid: e.target.value })} className="w-full input-style px-2.5 py-2 text-sm font-numbers font-bold text-emerald-600" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Date</label>
+                                                <input type="date" value={formData.date || ''} onChange={e => setFormData({ ...formData, date: e.target.value })} className="w-full input-style px-2 py-2 text-xs font-bold dark:[color-scheme:dark]" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Status</label>
+                                                <select value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} className="w-full input-style px-2 py-2 text-xs font-semibold">
+                                                    <option value="Completed">Completed</option>
+                                                    <option value="Partial">Partial</option>
+                                                    <option value="Pending">Pending</option>
+                                                    <option value="Cancelled">Cancelled</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <InstallmentPaymentBox
+                                            total={formData.total}
+                                            onTotalChange={v => {
+                                                const paidSum = (formData.installments || []).reduce((s, it) => s + (Number(it.amount) || 0), 0);
+                                                setFormData({ ...formData, total: v, paid: paidSum, due: Math.max(0, (Number(v) || 0) - paidSum) });
+                                            }}
+                                            installments={formData.installments}
+                                            onInstallmentsChange={list => {
+                                                const paidSum = list.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+                                                const firstDate = (list[0] && list[0].date) || formData.date;
+                                                setFormData({ ...formData, installments: list, paid: paidSum, due: Math.max(0, (Number(formData.total) || 0) - paidSum), date: firstDate });
+                                            }}
+                                            totalLabel="Total Amount (৳) *"
+                                            defaultDate={formData.date}
+                                        />
+                                    )}
                                 </div>
+                                {!formData.isSingleInstRow && (
+                                    <div className="md:col-span-2">
+                                        <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Status</label>
+                                        <select value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} className="w-full input-style px-3 py-2 text-sm font-semibold">
+                                            <option value="Completed">Completed</option>
+                                            <option value="Partial">Partial</option>
+                                            <option value="Pending">Pending</option>
+                                            <option value="Cancelled">Cancelled</option>
+                                        </select>
+                                    </div>
+                                )}
                             </div>
                             <div className="flex justify-end pt-4 border-t border-gray-200/50 dark:border-white/10 mt-5 gap-2">
                                 <button type="button" onClick={() => setShowAddModal(false)} className="px-5 py-2.5 text-gray-600 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-dark-800 rounded-lg transition-colors win-button">Cancel</button>
@@ -6237,7 +6394,7 @@
         // ==========================================
 // ADVANCED CLIENT LEADS (AGENCY) VIEW
 // ==========================================
-const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalContacts, auth, projects = [], usersList = [] }) => {
+const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrders, globalContacts, auth, projects = [], usersList = [] }) => {
     const [search, setSearch] = useState('');
     const [filterService, setFilterService] = useState('All');
     const [filterStatus, setFilterStatus] = useState('All'); 
@@ -6265,7 +6422,8 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
         startDate: moment().format('YYYY-MM-DD'),
         nextContact: '', 
         amount: '', 
-        paid: ''
+        paid: '',
+        installments: [{ amount: '', date: moment().format('YYYY-MM-DD'), method: 'Cash' }]
     };
     const [formData, setFormData] = useState(defaultFormState);
 
@@ -6341,15 +6499,26 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
     const editLead = (lead) => {
         if(typeof window.playSound === 'function') window.playSound('click');
         const totalAmount = Number(lead.amount || 0) || (Number(lead.paid || 0) + Number(lead.due || 0));
-        
         const cleanDescForEdit = String(lead.desc || '').replace(/\(Added by:\s*.*?\)/ig, '').trim();
+        const existingInsts = (orders || [])
+            .filter(o => String(o.parentId || '').trim() === String(lead.id || '').trim() && Number(o.installmentNo) > 0)
+            .sort((a, b) => (Number(a.installmentNo) || 0) - (Number(b.installmentNo) || 0))
+            .map(o => ({
+                amount: o.Paid || '',
+                date: moment(parseCustomDate(o.Timestamp)).format('YYYY-MM-DD'),
+                method: o.PaymentMethod || 'Cash'
+            }));
+        const fallbackInsts = existingInsts.length > 0
+            ? existingInsts
+            : [{ amount: Number(lead.paid) > 0 ? lead.paid : '', date: lead.startDate ? moment(parseCustomDate(lead.startDate)).format('YYYY-MM-DD') : moment().format('YYYY-MM-DD'), method: 'Cash' }];
 
         setFormData({
             ...lead,
             desc: cleanDescForEdit,
             amount: totalAmount || '',
             paid: lead.paid || '',
-            startDate: lead.startDate || moment().format('YYYY-MM-DD')
+            startDate: lead.startDate ? moment(parseCustomDate(lead.startDate)).format('YYYY-MM-DD') : moment().format('YYYY-MM-DD'),
+            installments: fallbackInsts
         });
         setShowAddModal(true);
     };
@@ -6392,20 +6561,54 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
         }
     };
 
+    // 🟢 FULL-DATASET DUPLICATE MAP (Works reliably for Duplicates Filter & DUP Badges)
+    const { nameCounts, phoneCounts, emailCounts, duplicateTotalCount } = useMemo(() => {
+        const nC = {}, pC = {}, eC = {};
+        leads.forEach(l => {
+            const n = String(l.name || '').trim().toLowerCase();
+            const p = String(l.phone || '').replace(/[^0-9]/g, '').trim();
+            const e = String(l.email || '').trim().toLowerCase();
+            if (n && n !== 'unknown' && n !== 'n/a' && n !== '-') nC[n] = (nC[n] || 0) + 1;
+            if (p && p.length >= 6) pC[p] = (pC[p] || 0) + 1;
+            if (e && e.includes('@')) eC[e] = (eC[e] || 0) + 1;
+        });
+        const dupCnt = leads.filter(l => {
+            const n = String(l.name || '').trim().toLowerCase();
+            const p = String(l.phone || '').replace(/[^0-9]/g, '').trim();
+            const e = String(l.email || '').trim().toLowerCase();
+            return (n && nC[n] > 1) || (p && pC[p] > 1) || (e && eC[e] > 1);
+        }).length;
+        return { nameCounts: nC, phoneCounts: pC, emailCounts: eC, duplicateTotalCount: dupCnt };
+    }, [leads]);
+
+    const checkDup = (val, type) => {
+        if (!val) return false;
+        if (type === 'name') {
+            const v = String(val).trim().toLowerCase();
+            return (v !== 'unknown' && v !== 'n/a' && v !== '-') ? (nameCounts[v] > 1) : false;
+        }
+        if (type === 'phone') {
+            const v = String(val).replace(/[^0-9]/g, '').trim();
+            return v.length >= 6 ? (phoneCounts[v] > 1) : false;
+        }
+        if (type === 'email') {
+            const v = String(val).trim().toLowerCase();
+            return v.includes('@') ? (emailCounts[v] > 1) : false;
+        }
+        return false;
+    };
+
     const filteredLeads = useMemo(() => {
         return leads.filter(l => {
             let isStudentData = false;
-            let isManagerData = false; 
+            let isManagerData = false;
 
             const match = String(l.desc || '').match(/\(Added by:\s*(.*?)\)/i);
             if (match) {
                 const creatorName = match[1].trim();
                 const creatorUser = (usersList || window.globalUsersList || []).find(u => String(u.Username).toLowerCase() === creatorName.toLowerCase());
-                if (creatorUser && ['Manager', 'Admin', 'Trainer', 'Affiliator'].includes(creatorUser.Role)) {
-                    isManagerData = true;
-                } else {
-                    isStudentData = true;
-                }
+                if (creatorUser && ['Manager', 'Admin', 'Trainer', 'Affiliator'].includes(creatorUser.Role)) isManagerData = true;
+                else isStudentData = true;
             } else {
                 isManagerData = true;
             }
@@ -6413,36 +6616,39 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
             if (auth?.role !== 'Student') {
                 if (filterStatus === 'Student Data' && !isStudentData) return false;
                 if (filterStatus === 'Manager Data' && !isManagerData) return false;
-                if (isStudentData && filterStatus !== 'All' && filterStatus !== 'Student Data' && filterStatus !== 'Recently Added') return false;
+                if (isStudentData && !['All', 'Student Data', 'Recently Added', 'Duplicates'].includes(filterStatus)) return false;
             }
 
             const q = (search || '').toLowerCase().trim();
-            const matchSearch = q === '' || 
-                                (l.name || '').toLowerCase().includes(q) || 
-                                (l.phone || '').includes(q) || 
-                                (l.email || '').toLowerCase().includes(q);
-            
-            const matchService = filterService === 'All' || (l.interestedIn || l.course || l.Course) === filterService;
-            
+            const matchSearch = q === '' ||
+                (l.name || '').toLowerCase().includes(q) ||
+                String(l.phone || '').includes(q) ||
+                (l.email || '').toLowerCase().includes(q);
+
+            const matchService = filterService === 'All' || String(l.interestedIn || l.course || l.Course || '').toLowerCase().includes(filterService.toLowerCase());
             if (!matchSearch || !matchService) return false;
 
+            if (filterStatus === 'Duplicates') return checkDup(l.name, 'name') || checkDup(l.phone, 'phone') || checkDup(l.email, 'email');
             if (filterStatus === 'Paid') return Number(l.paid) > 0;
             if (filterStatus === 'Due') return Number(l.due) > 0;
-            if (filterStatus === 'Recently Added') return true; 
+            if (filterStatus === 'Recently Added') return true;
 
-            const sStatus = String(l.status || l.Status || '');
-
-            if (filterStatus !== 'All' && filterStatus !== 'Student Data' && filterStatus !== 'Manager Data') {
-                if (sStatus !== filterStatus) return false;
+            const sStatus = String(l.status || l.Status || '').trim().toLowerCase();
+            if (!['All', 'Student Data', 'Manager Data'].includes(filterStatus)) {
+                if (sStatus !== filterStatus.toLowerCase()) return false;
             }
-
             return true;
         }).sort((a, b) => {
-            const dateA = new Date(a.Timestamp || a.timestamp || a.date || a.startDate || 0).getTime();
-            const dateB = new Date(b.Timestamp || b.timestamp || b.date || b.startDate || 0).getTime();
-            return dateB - dateA; 
+            if (filterStatus === 'Duplicates') {
+                const keyA = String(a.phone || '').replace(/[^0-9]/g, '') || String(a.name || '').toLowerCase();
+                const keyB = String(b.phone || '').replace(/[^0-9]/g, '') || String(b.name || '').toLowerCase();
+                return keyA.localeCompare(keyB);
+            }
+            const tA = (a.timestamp || a.Timestamp || a.startDate) ? parseCustomDate(a.timestamp || a.Timestamp || a.startDate).getTime() : 0;
+            const tB = (b.timestamp || b.Timestamp || b.startDate) ? parseCustomDate(b.timestamp || b.Timestamp || b.startDate).getTime() : 0;
+            return tB - tA;
         });
-    }, [leads, search, filterService, filterStatus, auth, usersList]);
+    }, [leads, search, filterService, filterStatus, auth, usersList, nameCounts, phoneCounts, emailCounts]);
 
     const totalLeadsCount = filteredLeads.length;
     const convertedCount = filteredLeads.filter(l => ['Active', 'Completed'].includes(l.status)).length;
@@ -6455,7 +6661,7 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
         { name: 'Paid Clients', count: filteredLeads.filter(l => Number(l.paid) > 0).length, color: 'bg-green-500' }
     ];
 
-    const quickFilters = ['All', 'Recently Added', 'Active', 'Due', 'Following', 'Interested', 'Pending', 'Completed', 'Dropped', 'Not Interested', ...(auth?.role !== 'Student' ? ['Student Data', 'Manager Data'] : [])];
+   const quickFilters = ['All', 'Recently Added', 'Active', 'Due', 'Duplicates', 'Following', 'Interested', 'Pending', 'Completed', 'Dropped', 'Not Interested', ...(auth?.role !== 'Student' ? ['Student Data', 'Manager Data'] : [])];
 
     const formatCompactAmount = (num) => {
         if (!num || num === 0) return '0';
@@ -6472,37 +6678,6 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
 
     const getCleanDesc = (desc) => {
         return String(desc || '').replace(/\(Added by:\s*.*?\)/ig, '').trim();
-    };
-
-    // 🟢 DYNAMIC DUPLICATE DETECTOR FOR CLIENT LEADS
-    const nameCounts = {};
-    const phoneCounts = {};
-    const emailCounts = {};
-    
-    filteredLeads.forEach(l => {
-        const n = String(l.name || '').trim().toLowerCase();
-        const p = String(l.phone || '').replace(/[^0-9+]/g, '').trim();
-        const e = String(l.email || '').trim().toLowerCase();
-        if(n && n !== 'unknown' && n !== 'n/a' && n !== '-') nameCounts[n] = (nameCounts[n] || 0) + 1;
-        if(p && p !== 'unknown' && p !== 'n/a' && p !== '') phoneCounts[p] = (phoneCounts[p] || 0) + 1;
-        if(e && e !== 'unknown' && e !== 'n/a' && e !== '-') emailCounts[e] = (emailCounts[e] || 0) + 1;
-    });
-
-    const checkDup = (val, type) => {
-        if (!val) return false;
-        if(type === 'name') {
-            const v = String(val).trim().toLowerCase();
-            return (v !== 'unknown' && v !== 'n/a' && v !== '-') ? nameCounts[v] > 1 : false;
-        }
-        if(type === 'phone') {
-            const v = String(val).replace(/[^0-9+]/g, '').trim();
-            return (v !== '') ? phoneCounts[v] > 1 : false;
-        }
-        if(type === 'email') {
-            const v = String(val).trim().toLowerCase();
-            return (v !== 'unknown' && v !== 'n/a' && v !== '-') ? emailCounts[v] > 1 : false;
-        }
-        return false;
     };
 
     return (
@@ -6857,21 +7032,18 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                             </div>
                         </div>
 
-                        <div className="bg-gray-50 dark:bg-dark-900/30 p-4 rounded-2xl border border-gray-200/50 dark:border-white/5 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Total Budget / Deal Amount ৳</label>
-                                <input type="number" value={formData.amount} onChange={e=>setFormData({...formData, amount: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-white focus:ring-[#005fb8] font-numbers" placeholder="0" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-[11px] font-bold text-green-600 uppercase tracking-widest mb-1.5">Paid (৳)</label>
-                                    <input type="number" value={formData.paid} onChange={e=>setFormData({...formData, paid: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-numbers font-bold text-green-600 focus:ring-green-500" placeholder="0" />
-                                </div>
-                                <div>
-                                    <label className="block text-[11px] font-bold text-red-500 uppercase tracking-widest mb-1.5">Due (৳)</label>
-                                    <input type="number" readOnly value={Number(formData.amount || 0) - Number(formData.paid || 0)} className="w-full input-style px-3 py-2.5 text-sm font-numbers font-bold text-red-500 bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30 cursor-not-allowed" placeholder="0" />
-                                </div>
-                            </div>
+                        <div className="md:col-span-2">
+                            <InstallmentPaymentBox
+                                total={formData.amount}
+                                onTotalChange={v => setFormData({ ...formData, amount: v })}
+                                installments={formData.installments}
+                                onInstallmentsChange={list => {
+                                    const paidSum = list.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+                                    setFormData({ ...formData, installments: list, paid: paidSum });
+                                }}
+                                totalLabel="Total Deal / Budget (৳)"
+                                defaultDate={formData.startDate}
+                            />
                         </div>
                         
                         <div>
@@ -9250,7 +9422,7 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
             </div>
         );
 
-        const ProjectsView = ({ addToast, executeAPI, projects, dailyTasks = [], fetchOrders, globalContacts, auth }) => {
+        const ProjectsView = ({ addToast, executeAPI, projects, orders = [], dailyTasks = [], fetchOrders, globalContacts, auth }) => {
             const showToast = (msg, type) => {
                 if (typeof addToast === 'function') addToast(msg, type);
                 else console.warn("Toast Message:", msg);
@@ -9269,7 +9441,8 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
             const defaultFormState = { 
                 id: null, name: '', client: '', clientPhone: '', clientEmail: '', 
                 description: '', status: 'Ongoing', priority: 'Medium', progress: 0, 
-                deadline: '', revenue: '', paid: '', team: [], deliveryStatus: 'Not Delivered' 
+                deadline: '', revenue: '', paid: '', team: [], deliveryStatus: 'Not Delivered',
+                installments: [{ amount: '', date: moment().format('YYYY-MM-DD'), method: 'Cash' }]
             };
 
             const [formData, setFormData] = useState(defaultFormState);
@@ -9739,7 +9912,19 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                                                     <div className="flex flex-col items-end gap-2">
                                                         <div className="flex items-center gap-1.5 shrink-0">
                                                             <button onClick={(e) => { e.stopPropagation(); handleCopyProject(p); }} className="px-2 py-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 rounded hover:text-green-600 dark:hover:text-green-400 transition-colors border border-gray-200 dark:border-dark-600 win-button flex items-center gap-1 text-[10px] font-bold"><Icon name="copy" className="w-3.5 h-3.5" /> Copy</button>
-                                                            <button onClick={(e) => { e.stopPropagation(); playSound('click'); setFormData({ ...p, deadline: moment(parseCustomDate(p.deadline)).format('YYYY-MM-DD') }); setShowModal(true); }} className="px-2 py-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 rounded hover:text-[#005fb8] dark:hover:text-[#60cdff] transition-colors border border-gray-200 dark:border-dark-600 win-button flex items-center gap-1 text-[10px] font-bold"><Icon name="edit-2" className="w-3.5 h-3.5" /> Edit</button>
+                                                            <button onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                playSound('click');
+                                                                const exInsts = (orders || [])
+                                                                    .filter(o => String(o.parentId || '').trim() === String(p.id || '').trim() && Number(o.installmentNo) > 0)
+                                                                    .sort((a, b) => (Number(a.installmentNo) || 0) - (Number(b.installmentNo) || 0))
+                                                                    .map(o => ({ amount: o.Paid || '', date: moment(parseCustomDate(o.Timestamp)).format('YYYY-MM-DD'), method: o.PaymentMethod || 'Cash' }));
+                                                                const fbInsts = exInsts.length > 0
+                                                                    ? exInsts
+                                                                    : [{ amount: Number(p.paid) > 0 ? p.paid : '', date: moment(parseCustomDate(p.timestamp || new Date())).format('YYYY-MM-DD'), method: 'Cash' }];
+                                                                setFormData({ ...p, deadline: moment(parseCustomDate(p.deadline)).format('YYYY-MM-DD'), installments: fbInsts });
+                                                                setShowModal(true);
+                                                            }} className="px-2 py-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 rounded hover:text-[#005fb8] dark:hover:text-[#60cdff] transition-colors border border-gray-200 dark:border-dark-600 win-button flex items-center gap-1 text-[10px] font-bold"><Icon name="edit-2" className="w-3.5 h-3.5" /> Edit</button>
                                                             {['Admin', 'Manager'].includes(auth?.role) && (
                                                                 <button onClick={(e) => { e.stopPropagation(); handleDeleteProject(p.id); }} className="px-2 py-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 rounded hover:text-red-500 dark:hover:text-red-400 transition-colors border border-gray-200 dark:border-dark-600 win-button flex items-center gap-1 text-[10px] font-bold"><Icon name="trash-2" className="w-3.5 h-3.5" /> Delete</button>
                                                             )}
@@ -9778,9 +9963,18 @@ const ClientsView = ({ addToast, executeAPI, leads = [], fetchOrders, globalCont
                                 
                                 <div className="md:col-span-2"><label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Project Description / Tasks</label><textarea rows="2" value={formData.description} onChange={e=>setFormData({...formData, description: e.target.value})} className="w-full input-style px-3 py-2 text-sm resize-none" placeholder="Briefly describe the tasks..."></textarea></div>
 
-                                <div className="bg-gray-50 dark:bg-dark-900/30 p-3 rounded-lg border border-gray-200/50 dark:border-white/5 md:col-span-2 grid grid-cols-2 gap-3">
-                                    <div><label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Total Budget (৳) *</label><input type="number" required value={formData.revenue} onChange={e=>setFormData({...formData, revenue: e.target.value})} className="w-full input-style px-3 py-2 text-sm font-bold text-gray-900 dark:text-white" /></div>
-                                    <div><label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Amount Paid (৳)</label><input type="number" value={formData.paid} onChange={e=>setFormData({...formData, paid: e.target.value})} className="w-full input-style px-3 py-2 text-sm font-bold text-teal-600 dark:text-teal-400" placeholder="0" /></div>
+                                <div className="md:col-span-2">
+                                    <InstallmentPaymentBox
+                                        total={formData.revenue}
+                                        onTotalChange={v => setFormData({ ...formData, revenue: v })}
+                                        installments={formData.installments}
+                                        onInstallmentsChange={list => {
+                                            const paidSum = list.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+                                            setFormData({ ...formData, installments: list, paid: paidSum });
+                                        }}
+                                        totalLabel="Total Budget (৳) *"
+                                        defaultDate={moment().format('YYYY-MM-DD')}
+                                    />
                                 </div>
 
                                 {/* 🟢 Select Dropdown for Team Assignment */}
@@ -9948,7 +10142,7 @@ const MinimalPhoneAction = ({ phone, addToast }) => {
     );
 };
 
-const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalContacts, auth, studentsPanel = [], usersList = [] }) => {
+const EnrollmentsView = ({ addToast, executeAPI, leads, orders = [], fetchOrders, globalContacts, auth, studentsPanel = [], usersList = [] }) => {
     const [search, setSearch] = useState('');
     const [filterCategory, setFilterCategory] = useState('All');
     const [filterCourse, setFilterCourse] = useState('All');
@@ -9973,7 +10167,8 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
         amount: '', 
         paid: '',   
         admissionDate: moment().format('YYYY-MM-DD'), 
-        duration: 3 
+        duration: 3,
+        installments: [{ amount: '', date: moment().format('YYYY-MM-DD'), method: 'Cash' }]
     };
     const [formData, setFormData] = useState(defaultFormState);
 
@@ -10047,13 +10242,25 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
     const editLead = (lead) => {
         if(typeof window.playSound === 'function') window.playSound('click');
         const totalAmount = Number(lead.amount || 0) || (Number(lead.paid || 0) + Number(lead.due || 0));
-        
+        const existingInsts = (orders || [])
+            .filter(o => String(o.parentId || '').trim() === String(lead.id || '').trim() && Number(o.installmentNo) > 0)
+            .sort((a, b) => (Number(a.installmentNo) || 0) - (Number(b.installmentNo) || 0))
+            .map(o => ({
+                amount: o.Paid || '',
+                date: moment(parseCustomDate(o.Timestamp)).format('YYYY-MM-DD'),
+                method: o.PaymentMethod || 'Cash'
+            }));
+        const fallbackInsts = existingInsts.length > 0
+            ? existingInsts
+            : [{ amount: Number(lead.paid) > 0 ? lead.paid : '', date: lead.admissionDate ? moment(parseCustomDate(lead.admissionDate)).format('YYYY-MM-DD') : moment().format('YYYY-MM-DD'), method: 'Cash' }];
+
         setFormData({
             ...lead,
             amount: totalAmount || '',
             paid: lead.paid || '',
-            admissionDate: lead.admissionDate || moment().format('YYYY-MM-DD'),
-            duration: lead.duration || 3
+            admissionDate: lead.admissionDate ? moment(parseCustomDate(lead.admissionDate)).format('YYYY-MM-DD') : moment().format('YYYY-MM-DD'),
+            duration: lead.duration || 3,
+            installments: fallbackInsts
         });
         setShowAddModal(true);
     };
@@ -10089,21 +10296,49 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
         }
     };
 
-    // 🟢 SUPER BULLETPROOF FILTERING LOGIC
+    // 🟢 FULL-DATASET DUPLICATE MAP FOR STUDENT LEADS
+    const { nameCounts, phoneCounts, emailCounts } = useMemo(() => {
+        const nC = {}, pC = {}, eC = {};
+        leads.forEach(l => {
+            const n = String(l.name || '').trim().toLowerCase();
+            const p = String(l.phone || '').replace(/[^0-9]/g, '').trim();
+            const e = String(l.email || '').trim().toLowerCase();
+            if (n && n !== 'unknown' && n !== 'n/a' && n !== '-') nC[n] = (nC[n] || 0) + 1;
+            if (p && p.length >= 6) pC[p] = (pC[p] || 0) + 1;
+            if (e && e.includes('@')) eC[e] = (eC[e] || 0) + 1;
+        });
+        return { nameCounts: nC, phoneCounts: pC, emailCounts: eC };
+    }, [leads]);
+
+    const checkDup = (val, type) => {
+        if (!val) return false;
+        if (type === 'name') {
+            const v = String(val).trim().toLowerCase();
+            return (v !== 'unknown' && v !== 'n/a' && v !== '-') ? (nameCounts[v] > 1) : false;
+        }
+        if (type === 'phone') {
+            const v = String(val).replace(/[^0-9]/g, '').trim();
+            return v.length >= 6 ? (phoneCounts[v] > 1) : false;
+        }
+        if (type === 'email') {
+            const v = String(val).trim().toLowerCase();
+            return v.includes('@') ? (emailCounts[v] > 1) : false;
+        }
+        return false;
+    };
+
+    // 🟢 SUPER BULLETPROOF FILTERING LOGIC (Duplicates + Recently Added + Multi-Course Fixed)
     const filteredLeads = useMemo(() => {
         return leads.filter(l => {
             let isStudentData = false;
-            let isManagerData = false; 
+            let isManagerData = false;
 
-            const match = String(l.desc || '').match(/\(Added by: (.*?)\)/);
+            const match = String(l.desc || '').match(/\(Added by:\s*(.*?)\)/i);
             if (match) {
                 const creatorName = match[1].trim();
                 const creatorUser = (usersList || window.globalUsersList || []).find(u => String(u.Username).toLowerCase() === creatorName.toLowerCase());
-                if (creatorUser && ['Manager', 'Admin', 'Trainer', 'Affiliator'].includes(creatorUser.Role)) {
-                    isManagerData = true;
-                } else {
-                    isStudentData = true;
-                }
+                if (creatorUser && ['Manager', 'Admin', 'Trainer', 'Affiliator'].includes(creatorUser.Role)) isManagerData = true;
+                else isStudentData = true;
             } else {
                 isManagerData = true;
             }
@@ -10111,49 +10346,52 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
             if (auth?.role !== 'Student') {
                 if (filterStatus === 'Student Data' && !isStudentData) return false;
                 if (filterStatus === 'Manager Data' && !isManagerData) return false;
-                if (isStudentData && filterStatus !== 'All' && filterStatus !== 'Student Data') return false;
+                if (isStudentData && !['All', 'Student Data', 'Recently Added', 'Duplicates'].includes(filterStatus)) return false;
             }
 
             const q = (search || '').toLowerCase().trim();
-            const matchSearch = q === '' || 
-                                (l.name || '').toLowerCase().includes(q) || 
-                                (l.phone || '').includes(q) || 
-                                (l.email || '').toLowerCase().includes(q);
-            
-            const matchCourse = filterCourse === 'All' || (l.interestedIn || l.course || l.Course) === filterCourse;
-            
+            const matchSearch = q === '' ||
+                (l.name || '').toLowerCase().includes(q) ||
+                String(l.phone || '').includes(q) ||
+                (l.email || '').toLowerCase().includes(q);
+
+            const matchCourse = filterCourse === 'All' || String(l.interestedIn || l.course || l.Course || '').toLowerCase().includes(filterCourse.toLowerCase());
             if (!matchSearch || !matchCourse) return false;
 
-            // 🟢 Financial Filters
+            if (filterStatus === 'Duplicates') return checkDup(l.name, 'name') || checkDup(l.phone, 'phone') || checkDup(l.email, 'email');
             if (filterStatus === 'Paid') return Number(l.paid) > 0;
             if (filterStatus === 'Due') return Number(l.due) > 0;
-            
-            // 🟢 Recently Added will NOT drop any leads, it just ensures we return TRUE for all here.
-            // The sorting algorithm below will handle putting them in chronological order.
-            if (filterStatus === 'Recently Added') return true; 
+            if (filterStatus === 'Recently Added') return true;
 
-            const sStatus = String(l.status || l.Status || '');
-
+            const sStatus = String(l.status || l.Status || '').trim().toLowerCase();
             if (filterStatus === 'Expired') {
-                if (sStatus !== 'Admitted') return false;
-                const expireDate = moment(l.admissionDate).add(l.duration || 3, 'months');
-                return expireDate.diff(moment(), 'days') < 0;
+                if (!['admitted', 'active'].includes(sStatus) || !l.admissionDate) return false;
+                const expireDate = moment(parseCustomDate(l.admissionDate)).add(Number(l.duration) || 3, 'months');
+                return expireDate.isValid() && expireDate.diff(moment(), 'days') < 0;
             }
 
-            if (filterStatus !== 'All' && filterStatus !== 'Student Data' && filterStatus !== 'Manager Data') {
-                if (sStatus !== filterStatus) return false;
+            if (!['All', 'Student Data', 'Manager Data'].includes(filterStatus)) {
+                if (filterStatus === 'Admitted') {
+                    if (!['admitted', 'active'].includes(sStatus)) return false;
+                } else if (sStatus !== filterStatus.toLowerCase()) {
+                    return false;
+                }
             }
-
             return true;
         }).sort((a, b) => {
-            const dateA = new Date(a.Timestamp || a.timestamp || a.admissionDate || 0).getTime();
-            const dateB = new Date(b.Timestamp || b.timestamp || b.admissionDate || 0).getTime();
-            return dateB - dateA;
+            if (filterStatus === 'Duplicates') {
+                const keyA = String(a.phone || '').replace(/[^0-9]/g, '') || String(a.name || '').toLowerCase();
+                const keyB = String(b.phone || '').replace(/[^0-9]/g, '') || String(b.name || '').toLowerCase();
+                return keyA.localeCompare(keyB);
+            }
+            const tA = (a.timestamp || a.Timestamp || a.admissionDate) ? parseCustomDate(a.timestamp || a.Timestamp || a.admissionDate).getTime() : 0;
+            const tB = (b.timestamp || b.Timestamp || b.admissionDate) ? parseCustomDate(b.timestamp || b.Timestamp || b.admissionDate).getTime() : 0;
+            return tB - tA;
         });
-    }, [leads, search, filterCourse, filterStatus, auth, usersList]);
+    }, [leads, search, filterCourse, filterStatus, auth, usersList, nameCounts, phoneCounts, emailCounts]);
 
     const totalLeadsCount = filteredLeads.length;
-    const admittedCount = filteredLeads.filter(l => l.status === 'Admitted').length;
+    const admittedCount = filteredLeads.filter(l => ['Admitted', 'Active'].includes(l.status)).length;
     const totalRevenue = filteredLeads.reduce((sum, l) => sum + (Number(l.paid) || 0), 0);
     const totalDue = filteredLeads.reduce((sum, l) => sum + (Number(l.due) || 0), 0);
 
@@ -10164,38 +10402,7 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
         { name: 'Not Interested', count: filteredLeads.filter(l => l.status === 'Not Interested').length, color: 'bg-red-500' }
     ];
 
-    const quickFilters = ['All', 'Recently Added', 'Admitted', 'Due', 'Following', 'Interested', 'Pending', 'Completed', 'Dropped', 'Expired', 'Not Interested', ...(auth?.role !== 'Student' ? ['Student Data', 'Manager Data'] : [])];
-
-    // 🟢 DYNAMIC DUPLICATE DETECTOR FOR STUDENT LEADS
-    const nameCounts = {};
-    const phoneCounts = {};
-    const emailCounts = {};
-    
-    filteredLeads.forEach(l => {
-        const n = String(l.name || '').trim().toLowerCase();
-        const p = String(l.phone || '').replace(/[^0-9+]/g, '').trim();
-        const e = String(l.email || '').trim().toLowerCase();
-        if(n && n !== 'unknown' && n !== 'n/a' && n !== '-') nameCounts[n] = (nameCounts[n] || 0) + 1;
-        if(p && p !== 'unknown' && p !== 'n/a' && p !== '') phoneCounts[p] = (phoneCounts[p] || 0) + 1;
-        if(e && e !== 'unknown' && e !== 'n/a' && e !== '-') emailCounts[e] = (emailCounts[e] || 0) + 1;
-    });
-
-    const checkDup = (val, type) => {
-        if (!val) return false;
-        if(type === 'name') {
-            const v = String(val).trim().toLowerCase();
-            return (v !== 'unknown' && v !== 'n/a' && v !== '-') ? nameCounts[v] > 1 : false;
-        }
-        if(type === 'phone') {
-            const v = String(val).replace(/[^0-9+]/g, '').trim();
-            return (v !== '') ? phoneCounts[v] > 1 : false;
-        }
-        if(type === 'email') {
-            const v = String(val).trim().toLowerCase();
-            return (v !== 'unknown' && v !== 'n/a' && v !== '-') ? emailCounts[v] > 1 : false;
-        }
-        return false;
-    };
+    const quickFilters = ['All', 'Recently Added', 'Admitted', 'Due', 'Duplicates', 'Following', 'Interested', 'Pending', 'Completed', 'Dropped', 'Expired', 'Not Interested', ...(auth?.role !== 'Student' ? ['Student Data', 'Manager Data'] : [])];
 
     return (
         <div className="space-y-6 w-full pb-10">
@@ -10545,21 +10752,18 @@ const EnrollmentsView = ({ addToast, executeAPI, leads, fetchOrders, globalConta
                             </div>
                         </div>
 
-                        <div className="bg-gray-50 dark:bg-dark-900/30 p-4 rounded-2xl border border-gray-200/50 dark:border-white/5 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Total Amount (Course Fee) ৳</label>
-                                <input type="number" value={formData.amount} onChange={e=>setFormData({...formData, amount: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-bold text-gray-900 dark:text-white focus:ring-[#005fb8] font-numbers" placeholder="0" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-[11px] font-bold text-green-600 uppercase tracking-widest mb-1.5">Paid (৳)</label>
-                                    <input type="number" value={formData.paid} onChange={e=>setFormData({...formData, paid: e.target.value})} className="w-full input-style px-3 py-2.5 text-sm font-numbers font-bold text-green-600 focus:ring-green-500" placeholder="0" />
-                                </div>
-                                <div>
-                                    <label className="block text-[11px] font-bold text-red-500 uppercase tracking-widest mb-1.5">Due (৳)</label>
-                                    <input type="number" readOnly value={Number(formData.amount || 0) - Number(formData.paid || 0)} className="w-full input-style px-3 py-2.5 text-sm font-numbers font-bold text-red-500 bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30 cursor-not-allowed" placeholder="0" />
-                                </div>
-                            </div>
+                       <div className="md:col-span-2">
+                            <InstallmentPaymentBox
+                                total={formData.amount}
+                                onTotalChange={v => setFormData({ ...formData, amount: v })}
+                                installments={formData.installments}
+                                onInstallmentsChange={list => {
+                                    const paidSum = list.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+                                    setFormData({ ...formData, installments: list, paid: paidSum });
+                                }}
+                                totalLabel="Total Course Fee (৳)"
+                                defaultDate={formData.admissionDate}
+                            />
                         </div>
                         
                         <div>
@@ -18920,7 +19124,7 @@ const SmartPhoneAction = ({ phone }) => {
                     />
 
                     {/* Scrollable Chat Feed - 100% Wide */}
-                    <div className="flex-1 min-h-0 overflow-y-auto w-full px-3 sm:px-5 md:px-6 py-4 space-y-4 hide-scrollbar flex flex-col relative z-10">
+                    <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain w-full px-3 sm:px-5 md:px-6 py-4 space-y-4 hide-scrollbar flex flex-col relative z-10" style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
                         
                         {/* Clean In-Flow Date Indicator */}
                         <div className="flex justify-center mb-1 shrink-0">
@@ -23001,7 +23205,7 @@ const handleAISubmit = async (e) => {
                     document.title = 'Faridpur IT Institute | Best IT Institute in Faridpur & Dhaka Division — AI & Agent-Based Training';
                 } else {
                     const pageLabel = routeTitles[currentRoute] || 'Portal';
-                    document.title = `${pageLabel} | Faridpur IT Institute (faridpurit.com)`;
+                    document.title = `${pageLabel} | Faridpur IT Institute`;
                 }
             }, [auth, currentRoute]);
 
@@ -24770,7 +24974,7 @@ const [courseModules, setCourseModules] = useState([]);
     </>
 )}
 
-                      <div className={`flex-1 min-h-0 w-full max-w-full relative ${currentRoute === 'community' ? 'overflow-hidden p-0 flex flex-col' : 'overflow-y-auto overflow-x-hidden p-3 md:p-5 lg:p-6'}`}>
+                      <div id="fit-main-scroll" className={`flex-1 min-h-0 w-full max-w-full relative overscroll-y-contain ${currentRoute === 'community' ? 'overflow-hidden p-0 flex flex-col' : 'overflow-y-auto overflow-x-hidden p-3 md:p-5 lg:p-6'}`} style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
                             {loading || isRouteLoading ? (
                                 <div className="w-full h-full p-2 md:p-4 space-y-6 animate-pulse">
                                     {/* Common Header Skeleton */}
@@ -24957,7 +25161,7 @@ const [courseModules, setCourseModules] = useState([]);
                                                 )}
                                                 {currentRoute === 'ranking' && <RankingView products={metrics.rankedProducts} />}
                                                 {currentRoute === 'analytics' && <AnalyticsView orders={myFilteredOrders} expenses={filteredExpensesData} metrics={metrics} startDate={startDate} endDate={endDate} auth={auth} projects={myProjects} clientLeads={trueAdminClientLeads} studentLeads={trueAdminStudentLeads} studentsPanel={myStudentsPanel} batches={batches} bookings={bookings} videos={videos} seatConfig={seatConfig} activityLogs={activityLogs} onAddExpense={() => { setExpenseForm({ date: moment().format('YYYY-MM-DD'), category: 'Ad Cost', amount: '', note: '', saving: false }); setExpenseModal({ isOpen: true }); }} />}
-                                                {currentRoute === 'clients' && <ClientsView addToast={addToast} executeAPI={executeAPI} leads={myClientLeads} clientLeads={trueAdminClientLeads} studentLeads={trueAdminStudentLeads} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} projects={myProjects} usersList={usersList} />}
+                                                {currentRoute === 'clients' && <ClientsView addToast={addToast} executeAPI={executeAPI} leads={myClientLeads} orders={orders} clientLeads={trueAdminClientLeads} studentLeads={trueAdminStudentLeads} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} projects={myProjects} usersList={usersList} />}
                                                 {currentRoute === 'affiliates' && <AffiliatesView stats={metrics.affiliateStats} metrics={metrics} onPreview={setPreviewAffiliate} auth={auth} />}
                                                 {currentRoute === 'omni-search' && <GlobalFindView orders={orders} projects={projects} clientLeads={clientLeads} studentLeads={studentLeads} studentsPanel={studentsPanel} assignments={assignments} moduleProgress={moduleProgress} auth={auth} addToast={addToast} notes={notes} dailyTasks={dailyTasks} executeAPI={executeAPI} />}
                                                 {currentRoute === 'settings' && (
@@ -24996,8 +25200,8 @@ const [courseModules, setCourseModules] = useState([]);
 {false && <NotesView notes={myNotes} executeAPI={executeAPI} addToast={addToast} fetchOrders={fetchOrders} auth={auth} />}
                                                 {currentRoute === 'products' && <ProductsView addToast={addToast} auth={auth} metrics={metrics} />}
                                                 {currentRoute === 'daily-tasks' && <DailyTasksView dailyTasks={dailyTasks} setDailyTasks={setDailyTasks} projects={projects} orders={orders} expenses={filteredExpensesData} clientLeads={clientLeads} studentLeads={studentLeads} executeAPI={executeAPI} fetchOrders={fetchOrders} addToast={addToast} auth={auth} globalContacts={globalContacts} batches={batches} bookings={bookings} workspaceLinks={workspaceLinks} />}
-                                                {currentRoute === 'projects' && <ProjectsView addToast={addToast} executeAPI={executeAPI} projects={myProjects} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} />}
-                                                {currentRoute === 'enrollments' && <EnrollmentsView addToast={addToast} executeAPI={executeAPI} leads={myStudentLeads} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} studentsPanel={myStudentsPanel} usersList={usersList} />}
+                                                {currentRoute === 'projects' && <ProjectsView addToast={addToast} executeAPI={executeAPI} projects={myProjects} orders={orders} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} />}
+                                                {currentRoute === 'enrollments' && <EnrollmentsView addToast={addToast} executeAPI={executeAPI} leads={myStudentLeads} orders={orders} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} studentsPanel={myStudentsPanel} usersList={usersList} />}
                                                 {currentRoute === 'courses' && <CoursesView addToast={addToast} auth={auth} videos={videos} executeAPI={executeAPI} fetchOrders={fetchOrders} studentsPanel={studentsPanel} enrolledCourses={myEnrolledCourses} />}
                                                 {currentRoute === 'modules' && <ModulesView addToast={addToast} auth={auth} modules={courseModules} moduleProgress={moduleProgress} executeAPI={executeAPI} fetchOrders={fetchOrders} enrolledCourses={myEnrolledCourses} />}
                                                 {currentRoute === 'assignments' && <AssignmentsView addToast={addToast} assignments={myFilteredAssignments} auth={auth} courseAssignments={courseAssignments} executeAPI={executeAPI} fetchOrders={fetchOrders} modules={courseModules} enrolledCourses={myEnrolledCourses} />}
@@ -25149,7 +25353,7 @@ const [courseModules, setCourseModules] = useState([]);
                                             </div>
                                         ) : (
                                             <p>
-                                                <strong className="font-bold text-gray-900 dark:text-white">Faridpur IT Institute (faridpurit.com)</strong>-এর সাথে যুক্ত থাকার জন্য ধন্যবাদ। নিয়মিত ক্লাস, AI ও এজেন্ট-বেসড প্র্যাকটিস এবং প্রজেক্টে যুক্ত থাকুন।
+                                                <strong className="font-bold text-gray-900 dark:text-white">Faridpur IT Institute</strong>-এর সাথে যুক্ত থাকার জন্য ধন্যবাদ। নিয়মিত ক্লাস, AI ও এজেন্ট-বেসড প্র্যাকটিস এবং প্রজেক্টে যুক্ত থাকুন।
                                             </p>
                                         )}
                                     </div>
