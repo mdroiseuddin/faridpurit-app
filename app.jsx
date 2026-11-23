@@ -5635,10 +5635,28 @@
             };
 
             const [filter, setFilter] = useState(getInitialFilter());
+            const [txSearch, setTxSearch] = useState('');
             const [activeRecord, setActiveRecord] = useState(null);
             const [showReceipt, setShowReceipt] = useState(false);
             const [showAddModal, setShowAddModal] = useState(false);
             const [isSaving, setIsSaving] = useState(false);
+            const [instModal, setInstModal] = useState({
+                isOpen: false,
+                parentId: '',
+                parentSource: '',
+                dept: 'Academy',
+                name: '',
+                phone: '',
+                email: '',
+                service: '',
+                total: 0,
+                alreadyPaid: 0,
+                remainingDue: 0,
+                amount: '',
+                date: moment().format('YYYY-MM-DD'),
+                method: 'Cash',
+                saving: false
+            });
 
             // Add/Edit Transaction State
             const defaultFormState = { id: null, name: '', phone: '', email: '', service: '', total: '', paid: '', due: '', status: 'Completed', method: 'Cash/Bank' };
@@ -5689,9 +5707,15 @@
             }, [orders, studentsPanel, clientLeads]);
 
            const filteredRecords = records.filter(r => {
+                const q = txSearch.trim().toLowerCase();
+                if (q) {
+                    const hay = `${r.id} ${r.name} ${r.phone} ${r.email} ${r.service} ${r.method} ${r.date} ${r.type}`.toLowerCase();
+                    if (!hay.includes(q)) return false;
+                }
+                if (filter === 'Installments') return Number(r.installmentNo) > 0;
                 if (filter === 'Paid') return r.due === 0;
                 if (filter === 'Due') return r.due > 0;
-                if (filter === 'Active') return r.status === 'Active' || r.status === 'Completed' || r.status === 'Admitted';
+                if (filter === 'Active') return r.status === 'Active' || r.status === 'Completed' || r.status === 'Admitted' || r.status === 'Partial';
                 if (filter === 'Pending') return r.status === 'Pending' || r.status === 'Ongoing' || r.status === 'Interested';
                 if (filter === 'Expired') return r.status === 'Expired' || r.status === 'Cancelled' || r.status === 'Dropped';
                 if (filter !== 'All') return r.status === filter;
@@ -5875,17 +5899,83 @@
                 setShowAddModal(true);
             };
 
-            const handleDelete = async (id) => {
-                if(window.confirm(`Are you sure you want to delete Transaction ID: ${id}?`)) {
-                    if (typeof window.playSound === 'function') window.playSound('cancel');
-                    try {
-                        const res = await executeAPI({ action: 'delete_transaction', id: id });
-                        const data = await res.json();
-                        if(data.success) {
-                            addToast('Transaction deleted.', 'info');
-                            if(fetchOrders) fetchOrders(true);
-                        } else throw new Error(data.message);
-                    } catch(e) { addToast("Failed to delete.", "error"); }
+            const handleDelete = async (rec) => {
+                const targetId = typeof rec === 'object' ? rec.id : rec;
+                const srcSheet = typeof rec === 'object' ? (rec.sourceSheet || '') : '';
+                if (!window.confirm(`আপনি কি নিশ্চিত যে এই ট্রানজেকশন (${targetId}) ডিলিট করতে চান?`)) return;
+                if (typeof window.playSound === 'function') window.playSound('cancel');
+                try {
+                    const res = await executeAPI({ action: 'delete_transaction', id: targetId, sourceSheet: srcSheet });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        addToast(data.message || 'Transaction deleted.', 'success');
+                        if (fetchOrders) fetchOrders(true);
+                    } else {
+                        addToast((data && data.message) || 'Could not delete.', 'error');
+                    }
+                } catch (e) {
+                    addToast("Network error while deleting.", "error");
+                }
+            };
+
+            const openInstallmentModal = (r) => {
+                if (typeof window.playSound === 'function') window.playSound('click');
+                const alreadyPaid = Number(r.GroupTotalPaid || r.paid || 0);
+                setInstModal({
+                    isOpen: true,
+                    parentId: r.parentId || r.id || '',
+                    parentSource: r.sourceSheet || '',
+                    dept: r.type === 'Academy' ? 'Academy' : 'Agency',
+                    name: r.name || '',
+                    phone: String(r.phone || '').replace(/^'/, ''),
+                    email: r.email || '',
+                    service: String(r.service || '').replace(/\s*\((Academy|Project|Service)\)\s*$/i, ''),
+                    total: Number(r.total || 0),
+                    alreadyPaid: alreadyPaid,
+                    remainingDue: Math.max(0, Number(r.due || 0)),
+                    amount: r.due > 0 ? String(r.due) : '',
+                    date: moment().format('YYYY-MM-DD'),
+                    method: 'Cash',
+                    saving: false
+                });
+            };
+
+            const handleSaveInstallment = async (e) => {
+                e.preventDefault();
+                const amt = parseFloat(instModal.amount);
+                if (isNaN(amt) || amt <= 0) return addToast('সঠিক টাকার পরিমাণ লিখুন।', 'error');
+                setInstModal(prev => ({ ...prev, saving: true }));
+                if (typeof window.playSound === 'function') window.playSound('action');
+                try {
+                    const res = await executeAPI({
+                        action: 'record_installment',
+                        installment: {
+                            parentId: instModal.parentId,
+                            parentSource: instModal.parentSource,
+                            dept: instModal.dept,
+                            name: instModal.name,
+                            phone: instModal.phone,
+                            email: instModal.email,
+                            service: instModal.service,
+                            total: instModal.total,
+                            amount: amt,
+                            date: instModal.date,
+                            method: instModal.method
+                        }
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        if (typeof window.playSound === 'function') window.playSound('success');
+                        addToast(data.message || 'কিস্তি সফলভাবে যুক্ত হয়েছে!', 'success');
+                        setInstModal(prev => ({ ...prev, isOpen: false, saving: false }));
+                        if (fetchOrders) fetchOrders(true);
+                    } else {
+                        addToast((data && data.message) || 'কিস্তি সেভ করা যায়নি।', 'error');
+                        setInstModal(prev => ({ ...prev, saving: false }));
+                    }
+                } catch (err) {
+                    addToast('Network error saving installment.', 'error');
+                    setInstModal(prev => ({ ...prev, saving: false }));
                 }
             };
 
@@ -5929,19 +6019,40 @@
                         )}
                     </div>
 
-                    <div className="print:hidden flex items-center gap-2 overflow-x-auto hide-scrollbar pb-2 border-b border-gray-200/50 dark:border-white/10">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-1 shrink-0 flex items-center gap-1">
-                            <Icon name="filter" className="w-3 h-3"/> Filter:
-                        </span>
-                       {['All', 'Pending', 'Active', 'Expired', 'Paid', 'Due'].map(f => (
-                            <button key={f} onClick={() => setFilter(f)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors win-button border ${
-                                filter === f 
-                                ? 'bg-[#005fb8] text-white border-[#004a94] shadow-sm' 
-                                : 'bg-white dark:bg-dark-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-600 hover:bg-gray-50 dark:hover:bg-dark-700'
-                            }`}>
-                                {f}
-                            </button>
-                        ))}
+                    {/* 🟢 Responsive Search Bar + Status & Installment Filters */}
+                    <div className="print:hidden glass-panel p-3 rounded-2xl border border-gray-200/70 dark:border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+                        <div className="flex items-center bg-white dark:bg-dark-800 px-3 py-2 rounded-xl border border-gray-200/80 dark:border-white/10 w-full md:w-72 shrink-0">
+                            <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
+                            <input
+                                type="text"
+                                value={txSearch}
+                                onChange={e => setTxSearch(e.target.value)}
+                                placeholder="নাম, ফোন, আইডি বা কোর্স খুঁজুন..."
+                                className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium text-gray-800 dark:text-white"
+                            />
+                            {txSearch && (
+                                <button type="button" onClick={() => setTxSearch('')} className="text-gray-400 hover:text-rose-500 ml-1 shrink-0">
+                                    <Icon name="x" className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                            {['All', 'Due', 'Paid', 'Installments', 'Active', 'Pending'].map(f => (
+                                <button
+                                    key={f}
+                                    type="button"
+                                    onClick={() => setFilter(f)}
+                                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-colors win-button border ${
+                                        filter === f
+                                            ? 'bg-[#005fb8] text-white border-[#004a94] shadow-sm'
+                                            : 'bg-white dark:bg-dark-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-600 hover:bg-gray-50 dark:hover:bg-dark-700'
+                                    }`}
+                                >
+                                    {f === 'Installments' ? 'কিস্তি (Split)' : f}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     <div className="print:hidden glass-panel rounded-2xl shadow-sm border border-gray-100/50 dark:border-white/5 overflow-hidden">
@@ -5966,7 +6077,14 @@
                                                 <div className="flex flex-col">
                                                     <span className="font-numbers font-semibold text-gray-900 dark:text-white text-sm md:text-base leading-none">{r.id}</span>
                                                     <span className="text-[10px] text-gray-500 mt-1">{r.date}</span>
-                                                    <span className={`text-[9px] font-bold uppercase tracking-widest mt-1.5 w-max px-2 py-0.5 rounded shadow-sm ${r.type === 'Agency' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400' : r.type === 'Academy' ? 'bg-blue-100 text-[#005fb8] dark:bg-blue-900/40 dark:text-[#60cdff]' : 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300'}`}>{r.type}</span>
+                                                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                                        <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded shadow-sm ${r.type === 'Agency' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400' : r.type === 'Academy' ? 'bg-blue-100 text-[#005fb8] dark:bg-blue-900/40 dark:text-[#60cdff]' : 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300'}`}>{r.type}</span>
+                                                        {Number(r.installmentNo) > 0 && (
+                                                            <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-400/30">
+                                                                কিস্তি #{r.installmentNo}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </td>
                                            <td className="px-5 py-3.5">
@@ -5998,8 +6116,13 @@
                                                     <button onClick={() => handleCopy(r)} className="p-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:text-green-500 rounded transition-colors border border-gray-200/50 dark:border-white/5" title="Copy"><Icon name="copy" className="w-4 h-4" /></button>
                                                     {canManageFinance && (
                                                         <>
+                                                            {r.due > 0 && !r.isFinanceIncome && (
+                                                                <button onClick={() => openInstallmentModal(r)} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded transition-colors flex items-center gap-1 whitespace-nowrap win-button" title="নতুন কিস্তি যুক্ত করুন">
+                                                                    <Icon name="plus" className="w-3 h-3" /> কিস্তি
+                                                                </button>
+                                                            )}
                                                             <button onClick={() => handleEdit(r)} className="p-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:text-[#005fb8] dark:hover:text-[#60cdff] rounded transition-colors border border-gray-200/50 dark:border-white/5" title="Edit"><Icon name="edit-2" className="w-4 h-4" /></button>
-                                                            <button onClick={() => handleDelete(r.id)} className="p-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:text-red-500 rounded transition-colors border border-gray-200/50 dark:border-white/5" title="Delete"><Icon name="trash-2" className="w-4 h-4" /></button>
+                                                            <button onClick={() => handleDelete(r)} className="p-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:text-red-500 rounded transition-colors border border-gray-200/50 dark:border-white/5" title="Delete"><Icon name="trash-2" className="w-4 h-4" /></button>
                                                         </>
                                                     )}
                                                     <button onClick={() => openReceipt(r)} className="p-1.5 bg-[#005fb8]/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8]/20 rounded transition-colors border border-[#005fb8]/20" title="View Receipt"><Icon name="file-text" className="w-4 h-4" /></button>
@@ -6011,6 +6134,70 @@
                             </table>
                         </div>
                     </div>
+
+                    {/* 🟢 Installment / Split Payment Modal (ভাগে ভাগে পেমেন্ট রেকর্ড) */}
+                    <Modal isOpen={instModal.isOpen} onClose={() => setInstModal(prev => ({ ...prev, isOpen: false }))} title="কিস্তি / ভাগে পেমেন্ট যুক্ত করুন" maxWidth="max-w-md" compact={true}>
+                        <form onSubmit={handleSaveInstallment} className="space-y-3.5">
+                            <div className="p-3 rounded-xl bg-blue-500/[0.08] border border-blue-200/70 dark:border-blue-500/25 space-y-1 text-xs">
+                                <p className="font-bold text-gray-900 dark:text-white text-sm">{instModal.name} <span className="font-mono-code text-[11px] text-gray-500">({instModal.phone})</span></p>
+                                <p className="text-gray-600 dark:text-gray-300">{instModal.service}</p>
+                                <div className="flex items-center justify-between pt-1.5 border-t border-blue-200/50 dark:border-white/10 font-numbers font-bold">
+                                    <span>Total: {CURRENCY_SYMBOL}{instModal.total.toLocaleString()}</span>
+                                    <span className="text-emerald-600 dark:text-emerald-400">Paid: {CURRENCY_SYMBOL}{instModal.alreadyPaid.toLocaleString()}</span>
+                                    <span className="text-rose-600 dark:text-rose-400">Due: {CURRENCY_SYMBOL}{instModal.remainingDue.toLocaleString()}</span>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">আজকের কিস্তি ({CURRENCY_SYMBOL}) *</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        required
+                                        autoFocus
+                                        value={instModal.amount}
+                                        onChange={e => setInstModal(prev => ({ ...prev, amount: e.target.value }))}
+                                        className="w-full input-style px-3 py-2 text-base font-numbers font-bold text-emerald-600"
+                                        placeholder="e.g. 2000"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">পেমেন্টের তারিখ *</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        value={instModal.date}
+                                        onChange={e => setInstModal(prev => ({ ...prev, date: e.target.value }))}
+                                        className="w-full input-style px-3 py-2 text-xs font-bold dark:[color-scheme:dark]"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">Payment Method</label>
+                                <select value={instModal.method} onChange={e => setInstModal(prev => ({ ...prev, method: e.target.value }))} className="w-full input-style px-3 py-2 text-xs font-bold">
+                                    <option value="Cash">Cash</option>
+                                    <option value="bKash">bKash</option>
+                                    <option value="Nagad">Nagad</option>
+                                    <option value="Rocket">Rocket</option>
+                                    <option value="Bank">Bank Transfer</option>
+                                </select>
+                            </div>
+
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                                * এই টাকাটি শুধুমাত্র নির্বাচিত তারিখের (মাসের) ফিন্যান্স হিসাবে যোগ হবে—আগের মাসের হিসাব অপরিবর্তিত থাকবে।
+                            </p>
+
+                            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                                <button type="button" onClick={() => setInstModal(prev => ({ ...prev, isOpen: false }))} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold win-button">Cancel</button>
+                                <button type="submit" disabled={instModal.saving} className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button">
+                                    {instModal.saving ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="check-circle" className="w-3.5 h-3.5" />}
+                                    <span>{instModal.saving ? 'Saving...' : 'কিস্তি সেভ করুন'}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
 
                     {/* Add/Edit Transaction Modal */}
                     <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title={formData.id ? "Edit Transaction" : "Add Manual Transaction"} fullWidthContent={true}>
@@ -22929,10 +23116,13 @@ const [courseModules, setCourseModules] = useState([]);
             const [syncing, setSyncing] = useState(false);
             const [lastSync, setLastSync] = useState(new Date());
 
-           // 🟢 SINGLE SOURCE OF TRUTH: UNIFIED MASTER TRANSACTIONS ENGINE
+           // 🟢 SINGLE SOURCE OF TRUTH: INSTALLMENT-AWARE & ZERO-DUPLICATE TRANSACTIONS ENGINE
             const buildUnifiedOrders = (d) => {
                 const parseMoney = (v) => parseFloat(String(v ?? 0).replace(/[^0-9.-]+/g, "")) || 0;
-                const normalizeFinancials = (rawTotal, rawPaid, status) => {
+                const cleanPh = (p) => String(p || '').replace(/^'/, '').replace(/^\+88/, '').replace(/[^0-9]/g, '');
+                const normTxt = (s) => String(s || '').trim().toLowerCase();
+
+                const normalizeFinancials = (rawTotal, rawPaid, status, explicitDue = null) => {
                     const total = Math.max(0, parseMoney(rawTotal));
                     const stLow = String(status || '').trim().toLowerCase();
                     const isInvalid = stLow === 'cancelled' || stLow === 'fake' || stLow === 'incomplete';
@@ -22941,39 +23131,96 @@ const [courseModules, setCourseModules] = useState([]);
                         : (rawPaid !== undefined && rawPaid !== null && rawPaid !== ''
                             ? Math.max(0, parseMoney(rawPaid))
                             : (stLow === 'completed' ? total : 0));
-                    const due = isInvalid ? 0 : Math.max(0, total - paid);
+                    const due = isInvalid
+                        ? 0
+                        : (explicitDue !== null && explicitDue !== undefined && explicitDue !== ''
+                            ? Math.max(0, parseMoney(explicitDue))
+                            : Math.max(0, total - paid));
                     return { Amount: total, Paid: paid, Due: due };
                 };
 
                 let autoOrders = (d.orders || []).map(o => ({
                     ...o,
+                    sourceSheet: 'Orders',
                     ...normalizeFinancials(o.Amount, o.Paid, o.Status)
                 }));
 
-                // ১. ম্যানুয়াল ট্রানজেকশন (Transactions Sheet)
+                // ১. ম্যানুয়াল ও কিস্তি (Installment) ট্রানজেকশন — এগুলোই সবচেয়ে অগ্রাধিকার পাবে
+                const coveredParentIds = new Set();
+                const coveredStudentKeys = new Set();
+                const installmentGroups = {};
+
                 (d.transactions || []).forEach(t => {
                     if (!autoOrders.find(o => o.TrxID === t.TrxID)) {
-                        const fin = normalizeFinancials(t.Total, t.Paid, t.Status);
-                        autoOrders.push({
+                        const rawType = String(t.Type || 'Manual');
+                        const refMatch = rawType.match(/REF:([^\s|]+)/);
+                        const instMatch = rawType.match(/Inst\s*#(\d+)/i);
+                        const parentId = refMatch ? refMatch[1].trim() : '';
+                        const instNo = instMatch ? Number(instMatch[1]) : 0;
+                        const cleanDept = rawType.split('|')[0].trim() || 'Manual Entry';
+
+                        if (parentId) coveredParentIds.add(parentId);
+                        const ph = cleanPh(t.Phone);
+                        if (ph && !instNo) coveredStudentKeys.add(`${ph}|${normTxt(t.Service)}`);
+
+                        const fin = normalizeFinancials(t.Total, t.Paid, t.Status, t.Due);
+                        const entry = {
                             Timestamp: t.Timestamp || new Date().toISOString(),
                             TrxID: t.TrxID,
                             Name: t.Name || 'Unknown',
                             Phone: t.Phone || 'N/A',
                             Email: t.Email || '',
-                            Address: t.Type === 'Manual' ? 'Manual Entry' : (t.Type || 'Manual Entry'),
+                            Address: cleanDept,
                             CourseName: t.Service,
                             ...fin,
+                            SnapshotDue: fin.Due,
                             PaymentMethod: t.Method || 'Cash/Bank',
                             ReferralCode: 'N/A',
-                            Status: t.Status || (fin.Due === 0 && fin.Paid > 0 ? 'Completed' : 'Pending')
-                        });
+                            Status: t.Status || (fin.Due === 0 && fin.Paid > 0 ? 'Completed' : 'Partial'),
+                            sourceSheet: 'Transactions',
+                            parentId: parentId,
+                            installmentNo: instNo
+                        };
+                        autoOrders.push(entry);
+
+                        if (parentId) {
+                            if (!installmentGroups[parentId]) installmentGroups[parentId] = [];
+                            installmentGroups[parentId].push(entry);
+                        }
                     }
                 });
 
-                // ২. এজেন্সি প্রজেক্ট (Projects Sheet)
+                // কিস্তি গ্রুপের ক্ষেত্রে শুধুমাত্র সর্বশেষ কিস্তিতেই active Due থাকবে (যাতে মোট Due ডাবল না হয়)
+                Object.values(installmentGroups).forEach(group => {
+                    group.sort((a, b) => (a.installmentNo - b.installmentNo) || (parseCustomDate(a.Timestamp) - parseCustomDate(b.Timestamp)));
+                    const totalPaidInGroup = group.reduce((s, item) => s + item.Paid, 0);
+                    const maxTotalFee = Math.max(...group.map(item => item.Amount), totalPaidInGroup);
+                    const trueRemainingDue = Math.max(0, maxTotalFee - totalPaidInGroup);
+
+                    group.forEach((item, idx) => {
+                        item.GroupTotalPaid = totalPaidInGroup;
+                        item.GroupTotalCount = group.length;
+                        if (idx < group.length - 1) {
+                            item.Due = 0; // পুরোনো কিস্তির Due 0 রাখা হলো যাতে সামারি Due না বাড়ে
+                        } else {
+                            item.Due = trueRemainingDue;
+                        }
+                    });
+                });
+
+                // ২. এজেন্সি প্রজেক্ট (যদি ইতিমধ্যেই কিস্তিতে না থাকে)
+                const projectPhoneKeys = new Set();
                 (d.projects || []).forEach(p => {
+                    const paid = Math.max(0, parseMoney(p.paid));
+                    const rev = Math.max(0, parseMoney(p.revenue));
+                    if (paid <= 0 && rev <= 0) return;
+                    if (coveredParentIds.has(String(p.id).trim())) return;
+
+                    const ph = cleanPh(p.clientPhone);
+                    if (ph) projectPhoneKeys.add(`${ph}|${paid}`);
+
                     if (!autoOrders.find(o => o.TrxID === p.id)) {
-                        const fin = normalizeFinancials(p.revenue, p.paid, p.status);
+                        const fin = normalizeFinancials(rev, paid, p.status);
                         autoOrders.push({
                             Timestamp: p.timestamp || p.Timestamp || new Date().toISOString(),
                             TrxID: p.id,
@@ -22985,16 +23232,24 @@ const [courseModules, setCourseModules] = useState([]);
                             ...fin,
                             PaymentMethod: 'Cash/Bank',
                             ReferralCode: 'N/A',
-                            Status: (p.status === 'Completed' || (fin.Due === 0 && fin.Paid > 0)) ? 'Completed' : 'Ongoing'
+                            Status: (p.status === 'Completed' || (fin.Due === 0 && fin.Paid > 0)) ? 'Completed' : 'Ongoing',
+                            sourceSheet: 'Projects',
+                            parentId: p.id
                         });
                     }
                 });
 
-                // ৩. ক্লায়েন্ট লিডস (ClientLeads Sheet)
+                // ৩. ক্লায়েন্ট লিডস (যদি কিস্তি বা প্রজেক্টে ইতিমধ্যেই না থাকে)
                 (d.clientLeads || []).forEach(c => {
                     const paid = Math.max(0, parseMoney(c.paid));
                     const due = Math.max(0, parseMoney(c.due));
-                    if ((paid > 0 || due > 0 || c.status === 'Active') && !autoOrders.find(o => o.TrxID === c.id)) {
+                    if (paid <= 0 && due <= 0) return;
+                    if (coveredParentIds.has(String(c.id).trim())) return;
+
+                    const ph = cleanPh(c.phone);
+                    if (ph && paid > 0 && projectPhoneKeys.has(`${ph}|${paid}`)) return; // Project-এ থাকলে ডুপ্লিকেট বাদ
+
+                    if (!autoOrders.find(o => o.TrxID === c.id)) {
                         const fin = normalizeFinancials(paid + due, paid, c.status === 'Active' ? 'Completed' : c.status);
                         autoOrders.push({
                             Timestamp: c.timestamp || c.Timestamp || new Date().toISOString(),
@@ -23003,27 +23258,39 @@ const [courseModules, setCourseModules] = useState([]);
                             Phone: c.phone || 'N/A',
                             Email: c.email || '',
                             Address: 'Agency Client Lead',
-                            CourseName: c.interestedIn + ' (Service)',
+                            CourseName: (c.interestedIn || 'Service') + ' (Service)',
                             ...fin,
                             PaymentMethod: 'Cash/Bank',
                             ReferralCode: 'N/A',
-                            Status: (c.status === 'Active' || (fin.Due === 0 && fin.Paid > 0)) ? 'Completed' : c.status
+                            Status: (c.status === 'Active' || (fin.Due === 0 && fin.Paid > 0)) ? 'Completed' : c.status,
+                            sourceSheet: 'ClientLeads',
+                            parentId: c.id
                         });
                     }
                 });
 
-                // ৪. একাডেমি স্টুডেন্টস (StudentsMaster)
+                // ৪. একাডেমি স্টুডেন্টস (Completed হলেও একই স্টুডেন্ট যেন কখনো ডুপ্লিকেট না হয়)
+                const seenStudentLeadKeys = new Set();
                 (d.studentLeads || []).forEach(s => {
                     const paid = Math.max(0, parseMoney(s.paid));
                     const due = Math.max(0, parseMoney(s.due));
-                    const sp = (d.academy?.students || []).find(st => st.phone === s.phone || st.name === s.name);
-                    const userAcc = (d.users || []).find(u => u.Email === s.email || u.Username === s.name);
+                    if (paid <= 0 && due <= 0) return;
+                    if (coveredParentIds.has(String(s.id).trim())) return; // কিস্তিতে থাকলে ল্যাম্প-সাম বাদ
+
+                    const sp = (d.academy?.students || []).find(st => cleanPh(st.phone) === cleanPh(s.phone) || normTxt(st.name) === normTxt(s.name));
+                    const userAcc = (d.users || []).find(u => normTxt(u.Email) === normTxt(s.email) || normTxt(u.Username) === normTxt(s.name));
                     const actualCourse = sp?.course || userAcc?.Course || s.course || s.interestedIn || 'Course';
 
-                    if ((paid > 0 || due > 0 || s.status === 'Admitted') && !autoOrders.find(o => o.TrxID === s.id)) {
-                        const fin = normalizeFinancials(paid + due, paid, (s.status === 'Admitted' || s.status === 'Active') ? 'Completed' : s.status);
+                    // একই ফোন + কোর্স (অথবা নাম + কোর্স) আগে যোগ হয়ে থাকলে Completed হওয়ার পর ডুপ্লিকেট আটকাবে
+                    const dedupKey = `${cleanPh(s.phone) || normTxt(s.name)}|${normTxt(actualCourse)}`;
+                    if (seenStudentLeadKeys.has(dedupKey) || coveredStudentKeys.has(dedupKey)) return;
+                    seenStudentLeadKeys.add(dedupKey);
+
+                    if (!autoOrders.find(o => o.TrxID === s.id)) {
+                        const isEnrolledSt = ['admitted', 'active', 'completed'].includes(normTxt(s.status));
+                        const fin = normalizeFinancials(paid + due, paid, isEnrolledSt ? 'Completed' : s.status);
                         autoOrders.push({
-                            Timestamp: s.timestamp || s.Timestamp || s.admissionDate || new Date().toISOString(),
+                            Timestamp: s.admissionDate || s.timestamp || s.Timestamp || new Date().toISOString(),
                             TrxID: s.id,
                             Name: s.name || 'Unknown',
                             Phone: s.phone || 'N/A',
@@ -23033,12 +23300,14 @@ const [courseModules, setCourseModules] = useState([]);
                             ...fin,
                             PaymentMethod: 'Cash/Bank',
                             ReferralCode: 'N/A',
-                            Status: (s.status === 'Admitted' || s.status === 'Active') ? (fin.Due > 0 ? 'Partial' : 'Completed') : s.status
+                            Status: isEnrolledSt ? (fin.Due > 0 ? 'Partial' : 'Completed') : s.status,
+                            sourceSheet: 'StudentLeads',
+                            parentId: s.id
                         });
                     }
                 });
 
-                // ৫. Finance & Savings-এর সরাসরি আয় (Incomes Sheet — শুধুমাত্র Admin)
+                // ৫. Finance & Savings-এর সরাসরি আয় (Incomes Sheet)
                 (d.incomes || []).forEach((inc, idx) => {
                     const amt = Math.max(0, parseMoney(inc.Amount));
                     if (amt <= 0) return;
@@ -23058,26 +23327,13 @@ const [courseModules, setCourseModules] = useState([]);
                             PaymentMethod: 'Direct Income',
                             ReferralCode: 'N/A',
                             Status: 'Completed',
+                            sourceSheet: 'Incomes',
                             isFinanceIncome: true
                         });
                     }
                 });
 
-                // ৬. মাল্টি-কোর্স রিজলভার ও ডুপ্লিকেট রিমুভ
-                const resolvedOrders = autoOrders.map(o => {
-                    const isAcademy = !o.isFinanceIncome && (String(o.Address || o.CourseName || '').toLowerCase().includes('academy') || String(o.Address || '').toLowerCase().includes('student'));
-                    const fin = normalizeFinancials(o.Amount, o.Paid, o.Status);
-                    if (isAcademy) {
-                        const sp = (d.academy?.students || []).find(st => st.phone === o.Phone || st.name === o.Name);
-                        const userAcc = (d.users || []).find(u => u.Email === o.Email || u.Username === o.Name);
-                        const lead = (d.studentLeads || []).find(sl => sl.phone === o.Phone || sl.name === o.Name);
-                        const actualCourse = sp?.course || userAcc?.Course || lead?.interestedIn || lead?.course || String(o.CourseName || '').replace(' (Academy)', '').trim();
-                        return { ...o, ...fin, CourseName: actualCourse + ' (Academy)' };
-                    }
-                    return { ...o, ...fin };
-                });
-
-                const uniqueOrders = Array.from(new Map(resolvedOrders.map(item => [item.TrxID, item])).values());
+                const uniqueOrders = Array.from(new Map(autoOrders.map(item => [item.TrxID, item])).values());
                 return uniqueOrders.sort((a, b) => new Date(parseCustomDate(b.Timestamp)) - new Date(parseCustomDate(a.Timestamp)));
             };
 
@@ -24514,7 +24770,7 @@ const [courseModules, setCourseModules] = useState([]);
     </>
 )}
 
-                      <div id="fit-main-scroll" className={`flex-1 min-h-0 w-full max-w-full relative overscroll-y-contain ${currentRoute === 'community' ? 'overflow-hidden p-0 flex flex-col' : 'overflow-y-auto overflow-x-hidden p-3 md:p-5 lg:p-6'}`} style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
+                      <div className={`flex-1 min-h-0 w-full max-w-full relative ${currentRoute === 'community' ? 'overflow-hidden p-0 flex flex-col' : 'overflow-y-auto overflow-x-hidden p-3 md:p-5 lg:p-6'}`}>
                             {loading || isRouteLoading ? (
                                 <div className="w-full h-full p-2 md:p-4 space-y-6 animate-pulse">
                                     {/* Common Header Skeleton */}
