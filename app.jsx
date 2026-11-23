@@ -20,6 +20,79 @@
         // ⚙️ GLOBAL CURRENCY SETTINGS
         const CURRENCY_SYMBOL = "৳";
 
+        // 🔗 Extract 4-Digit Short Portfolio Slug from Student ID
+        function getShortPortfolioId(stId, phone, fallbackName) {
+            const idDigits = String(stId || '').replace(/[^0-9]/g, '');
+            if (idDigits.length >= 4) return idDigits.slice(-4);
+            if (idDigits.length > 0) return idDigits;
+            const phDigits = String(phone || '').replace(/[^0-9]/g, '');
+            if (phDigits.length >= 4) return phDigits.slice(-4);
+            return String(fallbackName || 'talent').trim().toLowerCase().replace(/[^a-z0-9]/g, '') || 'talent';
+        }
+
+        // 🔍 Dynamic SEO Meta & JSON-LD Schema Updater (Googlebot & Crawler Friendly)
+        function updateDynamicSEO({ title, description, url, image, schemaObj }) {
+            if (title) document.title = title;
+            const setMeta = (attr, key, content) => {
+                if (!content) return;
+                let el = document.querySelector(`meta[${attr}="${key}"]`);
+                if (!el) {
+                    el = document.createElement('meta');
+                    el.setAttribute(attr, key);
+                    document.head.appendChild(el);
+                }
+                el.setAttribute('content', content);
+            };
+            setMeta('name', 'description', description);
+            setMeta('property', 'og:title', title);
+            setMeta('property', 'og:description', description);
+            setMeta('property', 'og:url', url || window.location.href);
+            if (image) setMeta('property', 'og:image', image);
+            setMeta('name', 'twitter:title', title);
+            setMeta('name', 'twitter:description', description);
+
+            let canonical = document.querySelector('link[rel="canonical"]');
+            if (canonical && url) canonical.setAttribute('href', url);
+
+            let ld = document.getElementById('dynamic-seo-jsonld');
+            if (schemaObj) {
+                if (!ld) {
+                    ld = document.createElement('script');
+                    ld.id = 'dynamic-seo-jsonld';
+                    ld.type = 'application/ld+json';
+                    document.head.appendChild(ld);
+                }
+                ld.textContent = JSON.stringify(schemaObj);
+            } else if (ld) {
+                ld.remove();
+            }
+        }
+
+        // 🤖 Live Frontend App Scanner for Samira AI (Auto-Detects Current UI, Menus & Features)
+        function scanLiveAppContext(extra = {}) {
+            try {
+                const navItems = Array.from(document.querySelectorAll('nav a, aside a'))
+                    .map(a => String(a.textContent || '').replace(/\s+/g, ' ').trim())
+                    .filter(t => t && t.length < 36);
+                const headings = Array.from(document.querySelectorAll('h1, h2'))
+                    .map(h => String(h.textContent || '').replace(/\s+/g, ' ').trim())
+                    .filter(t => t && t.length < 80)
+                    .slice(0, 8);
+                const apkLink = document.querySelector('a[href*="drive.google.com/uc?export=download"]')?.getAttribute('href')
+                    || 'https://drive.google.com/uc?export=download&id=1wZILB_So6QRJM7_IiZ50VwIDaO6Qvr5_';
+                return [
+                    `Active Route: ${extra.route || window.location.hash || 'home'}`,
+                    `Available Menus: ${Array.from(new Set(navItems)).slice(0, 22).join(', ')}`,
+                    headings.length ? `Visible Sections: ${headings.join(' | ')}` : '',
+                    `Android App APK Link: ${apkLink}`,
+                    extra.portfolioUrl ? `User Short Portfolio Link: ${extra.portfolioUrl}` : '',
+                    extra.totalGigs !== undefined ? `Published Marketplace Gigs: ${extra.totalGigs}` : ''
+                ].filter(Boolean).join('\n');
+            } catch (e) {
+                return '';
+            }
+        }
+
         // 💸 PERSONAL & OFFICE EXPENSE / INCOME CATEGORIES (ENGLISH)
         const EXPENSE_CATEGORIES = [
             'Food',
@@ -834,8 +907,35 @@
             );
         };
 
-          const LandingView = ({ auth = null, currentRoute = 'dashboard', setAuth, addToast, isDarkMode, setIsDarkMode }) => {
+          const LandingView = ({ auth = null, currentRoute = 'dashboard', setAuth, addToast, isDarkMode, setIsDarkMode, publicGigs = [], onOpenPublicMarketplace, onOpenPublicPortfolio }) => {
             const [showLoginModal, setShowLoginModal] = useState(false);
+            const [selectedHomeGig, setSelectedHomeGig] = useState(null);
+            const [homeGigRowLimit, setHomeGigRowLimit] = useState(() => {
+                if (typeof window === 'undefined') return 12;
+                if (window.innerWidth < 640) return 3;   // Mobile: 1 per row × 3 rows
+                if (window.innerWidth < 1024) return 6;  // Tablet: 2 per row × 3 rows
+                if (window.innerWidth >= 1280) return 15; // Wide PC: 5 per row × 3 rows
+                return 12;                                // Desktop: 4 per row × 3 rows
+            });
+
+            useEffect(() => {
+                const onResize = () => {
+                    const w = window.innerWidth;
+                    setHomeGigRowLimit(w < 640 ? 3 : w < 1024 ? 6 : w >= 1280 ? 15 : 12);
+                };
+                window.addEventListener('resize', onResize);
+                return () => window.removeEventListener('resize', onResize);
+            }, []);
+
+            // Stable Random Shuffle (Doesn't jump during typewriter re-renders)
+            const randomHomeGigs = useMemo(() => {
+                const copy = [...(publicGigs || [])];
+                for (let i = copy.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [copy[i], copy[j]] = [copy[j], copy[i]];
+                }
+                return copy;
+            }, [publicGigs]);
             const [showRegisterModal, setShowRegisterModal] = useState(false);
             const [showDemoModal, setShowDemoModal] = useState(false);
             const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -960,9 +1060,10 @@
                           body: JSON.stringify({
                               action: 'public_ai_chat',
                               message: userMsg,
-                              history: chatMessages.slice(1), 
+                              history: chatMessages.slice(1),
                               sessionId: sessionId,
-                              userContext: userContext
+                              userContext: userContext,
+                              appContext: scanLiveAppContext({ route: 'home', totalGigs: publicGigs.length })
                           })
                       });
                       const data = await res.json();
@@ -1119,7 +1220,15 @@
                               <button onClick={() => { playSound('click'); setIsDarkMode(!isDarkMode); }} onDoubleClick={() => { document.body.classList.toggle('privacy-mode'); addToast('Privacy Mode Toggled', 'info'); }} className="w-9 h-9 flex items-center justify-center bg-white/80 dark:bg-[#282828]/80 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-200/50 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-dark-600 transition-colors shrink-0 shadow-sm win-button" title="Toggle Theme">
                                   <Icon name={isDarkMode ? 'sun' : 'moon'} className="w-4 h-4" />
                               </button>
-                              <a href="#signup" onClick={() => playSound('click')} className="hidden sm:flex bg-green-50/80 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200/50 dark:border-green-800/50 px-3 md:px-4 py-1.5 md:py-2 rounded-xl font-medium transition-colors items-center gap-1.5 win-button text-xs md:text-sm shadow-sm hover:bg-green-100 dark:hover:bg-green-900/50">
+                              <button
+                                  type="button"
+                                  onClick={() => { playSound('click'); if (typeof onOpenPublicMarketplace === 'function') onOpenPublicMarketplace(); }}
+                                  className="flex bg-blue-50/90 dark:bg-blue-900/30 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/70 dark:border-blue-800/50 px-2.5 md:px-4 py-1.5 md:py-2 rounded-xl font-semibold transition-colors items-center gap-1.5 win-button text-xs md:text-sm whitespace-nowrap shrink-0 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                              >
+                                  <Icon name="store" className="w-4 h-4 shrink-0" />
+                                  <span>Marketplace</span>
+                              </button>
+                              <a href="#signup" onClick={() => playSound('click')} className="hidden sm:flex bg-green-50/80 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200/50 dark:border-green-800/50 px-3 md:px-4 py-1.5 md:py-2 rounded-xl font-medium transition-colors items-center gap-1.5 win-button text-xs md:text-sm shadow-sm hover:bg-green-100 dark:hover:bg-green-900/50 whitespace-nowrap shrink-0">
                                   <Icon name="user-plus" className="w-4 h-4"/> Enroll Now
                               </a>
                               <a href="#login" onClick={() => playSound('click')} className="w-9 h-9 md:w-auto md:px-6 md:py-2 flex items-center justify-center bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-xl font-medium transition-colors shadow-sm gap-1.5 win-button text-sm shrink-0">
@@ -1375,6 +1484,106 @@
                                   )}
                               </div>
                           </section>
+
+                          {/* 🛒 PUBLIC MARKETPLACE RANDOM GIGS SHOWCASE (3 Rows: 1/row Mobile, 4-5/row PC + See More) */}
+                          {randomHomeGigs.length > 0 && (
+                              <section className="w-full max-w-[90rem] mx-auto mt-16 md:mt-20 px-2 sm:px-4 md:px-8 relative z-10 box-border text-left">
+                                  <div className="flex items-center justify-between gap-2 flex-nowrap mb-5">
+                                      <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2 whitespace-nowrap truncate">
+                                          <Icon name="store" className="w-5 h-5 sm:w-6 sm:h-6 text-[#005fb8] shrink-0" />
+                                          <span className="truncate">Marketplace</span>
+                                      </h2>
+                                      <button
+                                          type="button"
+                                          onClick={() => { playSound('click'); if (typeof onOpenPublicMarketplace === 'function') onOpenPublicMarketplace(); }}
+                                          className="px-3.5 py-2 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 win-button shadow-sm"
+                                      >
+                                          <span>See More</span>
+                                          <Icon name="arrow-right" className="w-3.5 h-3.5 shrink-0" />
+                                      </button>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 sm:gap-4">
+                                      {randomHomeGigs.slice(0, homeGigRowLimit).map(gig => {
+                                          const prices = (gig.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
+                                          const startPrice = prices.length > 0 ? Math.min(...prices) : 0;
+                                          return (
+                                              <article
+                                                  key={gig.id}
+                                                  onClick={() => { playSound('click'); setSelectedHomeGig(gig); }}
+                                                  className="bg-white dark:bg-[#18181b] rounded-2xl border border-gray-200/80 dark:border-white/10 overflow-hidden cursor-pointer hover:border-[#005fb8] transition-all flex flex-col group shadow-sm"
+                                              >
+                                                  <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden shrink-0">
+                                                      {gig.bannerUrl ? (
+                                                          <img src={gig.bannerUrl} alt={gig.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                      ) : (
+                                                          <div className="w-full h-full flex flex-col items-center justify-center text-white/80 p-3 text-center">
+                                                              <Icon name="briefcase" className="w-7 h-7 text-[#facc15] mb-1" />
+                                                              <span className="text-[10px] font-bold uppercase">{gig.category}</span>
+                                                          </div>
+                                                      )}
+                                                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/75 text-white text-[9px] font-bold whitespace-nowrap">
+                                                          {gig.category}
+                                                      </span>
+                                                  </div>
+
+                                                  <div className="p-3 flex-1 flex flex-col gap-2">
+                                                      <div
+                                                          onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              playSound('click');
+                                                              if (typeof onOpenPublicPortfolio === 'function') onOpenPublicPortfolio(gig.ownerShortId || gig.ownerName);
+                                                          }}
+                                                          className="flex items-center gap-1.5 min-w-0 hover:opacity-80"
+                                                      >
+                                                          <UserAvatar name={gig.ownerName} size="xs" showOnline={true} />
+                                                          <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{gig.ownerName}</span>
+                                                          {gig.isVerified !== false && (
+                                                              <svg className="w-3.5 h-3.5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none">
+                                                                  <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                                  <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                                              </svg>
+                                                          )}
+                                                      </div>
+
+                                                      <h3 className="text-xs sm:text-[13px] font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] transition-colors flex-1">
+                                                          {gig.title}
+                                                      </h3>
+
+                                                      <div className="pt-2 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2 whitespace-nowrap">
+                                                          <span className="text-[10px] font-semibold text-gray-400 font-numbers">{gig.ordersCount || 0} orders</span>
+                                                          <span className="text-sm font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">
+                                                              {CURRENCY_SYMBOL}{startPrice.toLocaleString()}
+                                                          </span>
+                                                      </div>
+                                                  </div>
+                                              </article>
+                                          );
+                                      })}
+                                  </div>
+
+                                  <div className="mt-6 text-center">
+                                      <button
+                                          type="button"
+                                          onClick={() => { playSound('click'); if (typeof onOpenPublicMarketplace === 'function') onOpenPublicMarketplace(); }}
+                                          className="px-6 py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-200 text-white dark:text-gray-900 text-xs sm:text-sm font-bold inline-flex items-center gap-2 win-button shadow-md whitespace-nowrap"
+                                      >
+                                          <span>See More ({publicGigs.length} Gigs)</span>
+                                          <Icon name="arrow-right" className="w-4 h-4 shrink-0" />
+                                      </button>
+                                  </div>
+
+                                  <GigDetailOrderModal
+                                      gig={selectedHomeGig}
+                                      onClose={() => setSelectedHomeGig(null)}
+                                      addToast={addToast}
+                                      onOpenOwnerPortfolio={(slug) => {
+                                          setSelectedHomeGig(null);
+                                          if (typeof onOpenPublicPortfolio === 'function') onOpenPublicPortfolio(slug);
+                                      }}
+                                  />
+                              </section>
+                          )}
 
                           <div className="w-full max-w-[90rem] mx-auto mt-32 mb-16 px-4 md:px-8 relative z-10 box-border">
                               <style>{`
@@ -23333,7 +23542,7 @@ const SmartPhoneAction = ({ phone }) => {
         // ==========================================
         // 🛒 FIVERR-STYLE MARKETPLACE VIEW (GIG MANAGER + SHAREABLE PORTFOLIO)
         // ==========================================
-        const MarketplaceView = ({ auth, gigs = [], projects = [], clientLeads = [], executeAPI, fetchOrders, addToast, onOpenPublicPortfolio }) => {
+        const MarketplaceView = ({ auth, gigs = [], projects = [], clientLeads = [], studentsPanel = [], studentLeads = [], executeAPI, fetchOrders, addToast, onOpenPublicPortfolio }) => {
             const playAudio = (type) => { if (typeof window.playSound === 'function') window.playSound(type); };
             const [serviceList] = useGlobalServices();
             const isAdminMgr = ['Admin', 'Manager'].includes(auth?.role);
@@ -23366,8 +23575,18 @@ const SmartPhoneAction = ({ phone }) => {
             };
             const [gigForm, setGigForm] = useState(defaultGigForm);
 
-            const portfolioSlug = encodeURIComponent(myName);
-            const publicPortfolioUrl = `${window.location.origin}/?portfolio=${portfolioSlug}`;
+            const normId = (v) => String(v || '').replace(/^'/, '').replace(/^\+88/, '').replace(/\s+/g, '').toLowerCase();
+            const myStMatch = useMemo(() => {
+                const uId = normId(myId);
+                const uNm = normId(myName);
+                return [...(studentsPanel || []), ...(studentLeads || [])].find(s =>
+                    (uId && (normId(s.phone) === uId || normId(s.id) === uId)) ||
+                    (uNm && normId(s.name) === uNm)
+                ) || null;
+            }, [studentsPanel, studentLeads, myId, myName]);
+
+            const portfolioSlug = getShortPortfolioId(myStMatch?.id, myStMatch?.phone || myId, myName);
+            const publicPortfolioUrl = `${window.location.origin}/?p=${encodeURIComponent(portfolioSlug)}`;
 
             const myGigs = useMemo(() => {
                 return gigs.filter(g =>
@@ -23562,7 +23781,7 @@ const SmartPhoneAction = ({ phone }) => {
                             <div className="flex items-center justify-between gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => { playAudio('click'); onOpenPublicPortfolio(g.ownerName); }}
+                                    onClick={() => { playAudio('click'); onOpenPublicPortfolio(g.ownerShortId || g.ownerName); }}
                                     className="flex items-center gap-2 min-w-0 text-left group"
                                 >
                                     <UserAvatar name={g.ownerName} size="xs" showOnline={true} />
@@ -23663,7 +23882,7 @@ const SmartPhoneAction = ({ phone }) => {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => { playAudio('click'); onOpenPublicPortfolio(myName); }}
+                                    onClick={() => { playAudio('click'); onOpenPublicPortfolio(portfolioSlug); }}
                                     className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold flex items-center justify-center gap-1 win-button whitespace-nowrap"
                                 >
                                     <Icon name="external-link" className="w-3.5 h-3.5" /> Public View
@@ -23879,17 +24098,462 @@ const SmartPhoneAction = ({ phone }) => {
             );
         };
 
+       // ==========================================
+        // 🎯 REUSABLE BALANCED 16:9 GIG DETAIL & ORDER MODAL (RESPONSIVE ON MOBILE & PC)
         // ==========================================
-        // 🌍 DEDICATED PUBLIC STUDENT PORTFOLIO LANDING PAGE (NO LOGIN REQUIRED)
+        const GigDetailOrderModal = ({ gig, onClose, addToast, onOpenOwnerPortfolio }) => {
+            const [selectedPkgIdx, setSelectedPkgIdx] = useState(0);
+            const [orderForm, setOrderForm] = useState({ clientName: '', clientPhone: '', clientEmail: '', brief: '', submitting: false });
+            const [orderSuccess, setOrderSuccess] = useState(null);
+
+            useEffect(() => {
+                setSelectedPkgIdx(0);
+                if (gig) {
+                    const pkgs = Array.isArray(gig.packages) ? gig.packages : [];
+                    const prices = pkgs.map(p => Number(p.price) || 0).filter(v => v > 0);
+                    const minP = prices.length ? Math.min(...prices) : 0;
+                    updateDynamicSEO({
+                        title: `${gig.title} by ${gig.ownerName} | Faridpur IT Institute`,
+                        description: String(gig.description || gig.title).slice(0, 155),
+                        url: `${window.location.origin}/?p=${encodeURIComponent(gig.ownerShortId || gig.ownerName)}`,
+                        image: gig.bannerUrl || '',
+                        schemaObj: {
+                            '@context': 'https://schema.org',
+                            '@type': 'Service',
+                            name: gig.title,
+                            description: gig.description,
+                            serviceType: gig.category,
+                            provider: { '@type': 'Person', name: gig.ownerName },
+                            offers: { '@type': 'Offer', priceCurrency: 'BDT', price: String(minP), availability: 'https://schema.org/InStock' }
+                        }
+                    });
+                }
+            }, [gig]);
+
+            const handlePlaceOrder = async (e) => {
+                e.preventDefault();
+                if (!gig) return;
+                const pkgs = Array.isArray(gig.packages) && gig.packages.length > 0
+                    ? gig.packages
+                    : [{ tier: 'Basic', price: 1500, deliveryDays: 3, features: [] }];
+                const activePkg = pkgs[selectedPkgIdx] || pkgs[0];
+                setOrderForm(prev => ({ ...prev, submitting: true }));
+                try {
+                    const res = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            action: 'place_marketplace_order',
+                            order: {
+                                gigId: gig.id,
+                                gigTitle: gig.title,
+                                category: gig.category,
+                                ownerName: gig.ownerName,
+                                packageName: activePkg.tier,
+                                packagePrice: activePkg.price,
+                                deliveryDays: activePkg.deliveryDays,
+                                clientName: orderForm.clientName,
+                                clientPhone: orderForm.clientPhone,
+                                clientEmail: orderForm.clientEmail,
+                                brief: orderForm.brief
+                            }
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        if (typeof window.playSound === 'function') window.playSound('success');
+                        setOrderSuccess({ orderId: data.orderId, message: data.message, gigTitle: gig.title, pkg: activePkg });
+                        setOrderForm({ clientName: '', clientPhone: '', clientEmail: '', brief: '', submitting: false });
+                        onClose();
+                    } else {
+                        if (typeof addToast === 'function') addToast((data && data.message) || 'Order could not be placed.', 'error');
+                        setOrderForm(prev => ({ ...prev, submitting: false }));
+                    }
+                } catch (err) {
+                    if (typeof addToast === 'function') addToast('Network error submitting order.', 'error');
+                    setOrderForm(prev => ({ ...prev, submitting: false }));
+                }
+            };
+
+            const pkgs = (gig && Array.isArray(gig.packages) && gig.packages.length > 0)
+                ? gig.packages
+                : [{ tier: 'Basic', price: 1500, deliveryDays: 3, features: ['Professional delivery'] }];
+            const activePkg = pkgs[selectedPkgIdx] || pkgs[0];
+
+            return (
+                <>
+                    <Modal isOpen={!!gig} onClose={onClose} title={gig?.category || 'Service Details'} maxWidth="max-w-4xl" compact={true}>
+                        {gig && (
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start w-full min-w-0">
+                                {/* Left Column (7/12 on PC): Proper 16:9 Image + Title + Description */}
+                                <div className="lg:col-span-7 space-y-3.5 min-w-0">
+                                    <div className="w-full aspect-video rounded-xl overflow-hidden bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] border border-gray-200/80 dark:border-white/10 relative">
+                                        {gig.bannerUrl ? (
+                                            <img src={gig.bannerUrl} alt={gig.title} referrerPolicy="no-referrer" className="w-full h-full object-cover block" />
+                                        ) : (
+                                            <div className="w-full h-full flex flex-col items-center justify-center text-white/85 p-4 text-center">
+                                                <Icon name="briefcase" className="w-10 h-10 text-[#facc15] mb-1.5" />
+                                                <span className="text-xs font-bold uppercase tracking-wider">{gig.category}</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2 flex-nowrap">
+                                        <button
+                                            type="button"
+                                            onClick={() => { if (typeof onOpenOwnerPortfolio === 'function') onOpenOwnerPortfolio(gig.ownerShortId || gig.ownerName); }}
+                                            className="flex items-center gap-2 min-w-0 hover:opacity-80 text-left"
+                                        >
+                                            <UserAvatar name={gig.ownerName} size="sm" showOnline={true} />
+                                            <span className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white truncate">{gig.ownerName}</span>
+                                            <svg className="w-3.5 h-3.5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none">
+                                                <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                            </svg>
+                                        </button>
+                                        <span className="text-[11px] font-numbers font-bold text-gray-500 whitespace-nowrap shrink-0">
+                                            {gig.ordersCount || 0} orders
+                                        </span>
+                                    </div>
+
+                                    <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white leading-snug break-words">
+                                        {gig.title}
+                                    </h2>
+
+                                    <div className="p-3.5 rounded-xl bg-gray-50/90 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
+                                        {gig.description}
+                                    </div>
+
+                                    {gig.demoUrl && (
+                                        <a href={gig.demoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold hover:underline whitespace-nowrap">
+                                            <Icon name="external-link" className="w-3.5 h-3.5 shrink-0" /> Live Sample / Demo
+                                        </a>
+                                    )}
+                                </div>
+
+                                {/* Right Column (5/12 on PC): Compact Package Selector + Order Form */}
+                                <div className="lg:col-span-5 space-y-3 min-w-0">
+                                    <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden">
+                                        <div className="grid grid-cols-3 bg-gray-100 dark:bg-dark-900 p-1 gap-1">
+                                            {pkgs.map((pk, idx) => (
+                                                <button
+                                                    key={pk.tier || idx}
+                                                    type="button"
+                                                    onClick={() => setSelectedPkgIdx(idx)}
+                                                    className={`py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors ${selectedPkgIdx === idx ? 'bg-[#005fb8] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}
+                                                >
+                                                    {pk.tier}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <div className="p-3 bg-white dark:bg-dark-800 space-y-2">
+                                            <div className="flex items-center justify-between gap-2 whitespace-nowrap">
+                                                <span className="text-[11px] font-bold text-gray-500 uppercase">{activePkg.tier}</span>
+                                                <span className="text-lg font-numbers font-bold text-emerald-600 dark:text-emerald-400">
+                                                    {CURRENCY_SYMBOL}{Number(activePkg.price || 0).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1.5 whitespace-nowrap">
+                                                <Icon name="clock" className="w-3.5 h-3.5 text-[#005fb8] shrink-0" /> {activePkg.deliveryDays || 3} Days Delivery
+                                            </p>
+                                            <ul className="space-y-1 pt-2 border-t border-gray-100 dark:border-white/10">
+                                                {(Array.isArray(activePkg.features) ? activePkg.features : []).map((ft, fi) => (
+                                                    <li key={fi} className="text-[11.5px] text-gray-700 dark:text-gray-200 flex items-start gap-1.5">
+                                                        <Icon name="check" className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                                                        <span className="break-words">{ft}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    <form onSubmit={handlePlaceOrder} className="p-3 rounded-xl bg-blue-500/[0.06] border border-blue-200/70 dark:border-blue-500/25 space-y-2">
+                                        <p className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] whitespace-nowrap">
+                                            Order {activePkg.tier} ({CURRENCY_SYMBOL}{Number(activePkg.price || 0).toLocaleString()})
+                                        </p>
+                                        <input type="text" required value={orderForm.clientName} onChange={e => setOrderForm({ ...orderForm, clientName: e.target.value })} className="w-full input-style px-3 py-2 text-xs" placeholder="আপনার নাম *" />
+                                        <input type="tel" required minLength={10} value={orderForm.clientPhone} onChange={e => setOrderForm({ ...orderForm, clientPhone: e.target.value })} className="w-full input-style px-3 py-2 text-xs font-mono-code" placeholder="হোয়াটসঅ্যাপ / ফোন নাম্বার *" />
+                                        <input type="email" value={orderForm.clientEmail} onChange={e => setOrderForm({ ...orderForm, clientEmail: e.target.value })} className="w-full input-style px-3 py-2 text-xs" placeholder="ইমেইল (Optional)" />
+                                        <textarea rows="2" value={orderForm.brief} onChange={e => setOrderForm({ ...orderForm, brief: e.target.value })} className="w-full input-style px-3 py-2 text-xs resize-none" placeholder="প্রজেক্টের বিবরণ লিখুন..." />
+                                        <button type="submit" disabled={orderForm.submitting} className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 whitespace-nowrap win-button">
+                                            {orderForm.submitting ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="check-circle" className="w-4 h-4" />}
+                                            <span>{orderForm.submitting ? 'Submitting...' : `Confirm Order (${CURRENCY_SYMBOL}${Number(activePkg.price || 0).toLocaleString()})`}</span>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+                    </Modal>
+
+                    <Modal isOpen={!!orderSuccess} onClose={() => setOrderSuccess(null)} title="Order Confirmed!" maxWidth="max-w-sm" compact={true}>
+                        {orderSuccess && (
+                            <div className="text-center space-y-3 py-2">
+                                <div className="w-11 h-11 rounded-full bg-emerald-500/15 text-emerald-600 flex items-center justify-center mx-auto">
+                                    <Icon name="check-circle" className="w-6 h-6" />
+                                </div>
+                                <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{orderSuccess.message}</p>
+                                <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-dark-800 border border-gray-200 dark:border-white/10 text-xs font-numbers space-y-1">
+                                    <div>Order ID: <strong>{orderSuccess.orderId}</strong></div>
+                                    <div>Budget: <strong className="text-emerald-600">{CURRENCY_SYMBOL}{Number(orderSuccess.pkg?.price || 0).toLocaleString()}</strong></div>
+                                </div>
+                                <button type="button" onClick={() => setOrderSuccess(null)} className="w-full py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">Done</button>
+                            </div>
+                        )}
+                    </Modal>
+                </>
+            );
+        };
+
         // ==========================================
-        const PublicPortfolioView = ({ slug, isDarkMode, setIsDarkMode, addToast, onClose }) => {
+        // 🛍️ FULL PUBLIC MARKETPLACE PAGE (ALL GIGS + PRICE / ORDER / DELIVERY FILTERS + SEO)
+        // ==========================================
+        const PublicMarketplaceView = ({ initialGigs = [], isDarkMode, setIsDarkMode, addToast, onOpenPortfolio, onClose }) => {
+            const [gigs, setGigs] = useState(initialGigs);
+            const [services, setServices] = useState(getStoredServices);
+            const [loading, setLoading] = useState(!(initialGigs && initialGigs.length > 0));
+            const [searchQ, setSearchQ] = useState('');
+            const [catFilter, setCatFilter] = useState('All');
+            const [priceFilter, setPriceFilter] = useState('All'); // 'All' | 'under2k' | '2k5k' | 'above5k'
+            const [deliveryFilter, setDeliveryFilter] = useState('All'); // 'All' | '3' | '5' | '7'
+            const [sortBy, setSortBy] = useState('popular'); // 'popular' | 'newest' | 'price_asc' | 'price_desc'
+            const [selectedGig, setSelectedGig] = useState(null);
+
+            useEffect(() => {
+                let cancelled = false;
+                fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'get_public_marketplace' })
+                })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (cancelled) return;
+                        if (data && data.success) {
+                            setGigs(data.gigs || []);
+                            if (Array.isArray(data.services) && data.services.length > 0) setServices(data.services);
+                        }
+                        setLoading(false);
+                    })
+                    .catch(() => { if (!cancelled) setLoading(false); });
+                return () => { cancelled = true; };
+            }, []);
+
+            // SEO & Structured Data for Google Indexing
+            useEffect(() => {
+                updateDynamicSEO({
+                    title: 'Marketplace — Hire Verified Freelancers | Faridpur IT Institute',
+                    description: 'Explore Web Development, SEO, Digital Marketing, Graphic Design & AI services by verified talents at Faridpur IT Institute.',
+                    url: `${window.location.origin}/?market=1`,
+                    schemaObj: {
+                        '@context': 'https://schema.org',
+                        '@type': 'ItemList',
+                        name: 'Faridpur IT Institute Freelance Marketplace',
+                        numberOfItems: gigs.length,
+                        itemListElement: gigs.slice(0, 20).map((g, idx) => {
+                            const ps = (g.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
+                            return {
+                                '@type': 'ListItem',
+                                position: idx + 1,
+                                item: {
+                                    '@type': 'Service',
+                                    name: g.title,
+                                    serviceType: g.category,
+                                    provider: { '@type': 'Person', name: g.ownerName },
+                                    offers: { '@type': 'Offer', priceCurrency: 'BDT', price: String(ps.length ? Math.min(...ps) : 0) }
+                                }
+                            };
+                        })
+                    }
+                });
+            }, [gigs]);
+
+            const getMinPrice = (g) => {
+                const ps = (g.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
+                return ps.length ? Math.min(...ps) : 0;
+            };
+            const getMinDays = (g) => {
+                const ds = (g.packages || []).map(p => Number(p.deliveryDays) || 3).filter(v => v > 0);
+                return ds.length ? Math.min(...ds) : 3;
+            };
+
+            const filteredGigs = useMemo(() => {
+                const q = searchQ.trim().toLowerCase();
+                return gigs.filter(g => {
+                    if (catFilter !== 'All' && String(g.category || '').toLowerCase() !== catFilter.toLowerCase()) return false;
+                    const p = getMinPrice(g);
+                    if (priceFilter === 'under2k' && p >= 2000) return false;
+                    if (priceFilter === '2k5k' && (p < 2000 || p > 5000)) return false;
+                    if (priceFilter === 'above5k' && p <= 5000) return false;
+                    if (deliveryFilter !== 'All' && getMinDays(g) > Number(deliveryFilter)) return false;
+                    if (q && !(`${g.title} ${g.ownerName} ${g.category} ${g.tags} ${g.description}`.toLowerCase().includes(q))) return false;
+                    return true;
+                }).sort((a, b) => {
+                    if (sortBy === 'popular') return (Number(b.ordersCount) || 0) - (Number(a.ordersCount) || 0);
+                    if (sortBy === 'price_asc') return getMinPrice(a) - getMinPrice(b);
+                    if (sortBy === 'price_desc') return getMinPrice(b) - getMinPrice(a);
+                    return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+                });
+            }, [gigs, searchQ, catFilter, priceFilter, deliveryFilter, sortBy]);
+
+            return (
+                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-slate-50 dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100 flex flex-col">
+                    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#141416]/90 backdrop-blur-xl border-b border-gray-200/70 dark:border-white/10 px-4 py-3">
+                        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 flex-nowrap">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-8 h-8 rounded-lg bg-[#005fb8] text-white flex items-center justify-center shrink-0">
+                                    <Icon name="store" className="w-4 h-4" />
+                                </div>
+                                <h1 className="text-sm sm:text-base font-bold whitespace-nowrap truncate">Marketplace</h1>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0 flex-nowrap">
+                                <button type="button" onClick={() => setIsDarkMode(prev => !prev)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0">
+                                    <Icon name={isDarkMode ? 'sun' : 'moon'} className="w-4 h-4" />
+                                </button>
+                                <button type="button" onClick={onClose} className="px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap shrink-0">
+                                    Portal Home
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 w-full max-w-7xl mx-auto px-3.5 sm:px-6 py-5 sm:py-8 space-y-5">
+                        {/* Filter Controls Bar */}
+                        <div className="bg-white dark:bg-[#161618] p-3.5 sm:p-4 rounded-2xl border border-gray-200/80 dark:border-white/10 space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5">
+                                <div className="lg:col-span-5 flex items-center bg-gray-50 dark:bg-dark-800 px-3 py-2 rounded-xl border border-gray-200/80 dark:border-white/10">
+                                    <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
+                                    <input
+                                        type="text"
+                                        value={searchQ}
+                                        onChange={e => setSearchQ(e.target.value)}
+                                        placeholder="সার্ভিস, ট্যাগ বা ফ্রিল্যান্সার খুঁজুন..."
+                                        className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium text-gray-800 dark:text-white"
+                                    />
+                                </div>
+
+                                <select value={priceFilter} onChange={e => setPriceFilter(e.target.value)} className="lg:col-span-2 input-style px-3 py-2 text-xs font-bold">
+                                    <option value="All">All Prices</option>
+                                    <option value="under2k">Under ৳2,000</option>
+                                    <option value="2k5k">৳2,000 – ৳5,000</option>
+                                    <option value="above5k">৳5,000+</option>
+                                </select>
+
+                                <select value={deliveryFilter} onChange={e => setDeliveryFilter(e.target.value)} className="lg:col-span-2 input-style px-3 py-2 text-xs font-bold">
+                                    <option value="All">Any Delivery</option>
+                                    <option value="3">Up to 3 Days</option>
+                                    <option value="5">Up to 5 Days</option>
+                                    <option value="7">Up to 7 Days</option>
+                                </select>
+
+                                <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="lg:col-span-3 input-style px-3 py-2 text-xs font-bold">
+                                    <option value="popular">Sort: Most Orders</option>
+                                    <option value="newest">Sort: Newest</option>
+                                    <option value="price_asc">Price: Low to High</option>
+                                    <option value="price_desc">Price: High to Low</option>
+                                </select>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap pt-1">
+                                {['All', ...services].map(c => (
+                                    <button
+                                        key={c}
+                                        type="button"
+                                        onClick={() => setCatFilter(c)}
+                                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap shrink-0 border transition-colors ${
+                                            catFilter === c
+                                                ? 'bg-[#005fb8] text-white border-[#005fb8]'
+                                                : 'bg-gray-50 dark:bg-dark-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10'
+                                        }`}
+                                    >
+                                        {c}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {loading ? (
+                            <div className="py-20 text-center"><Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" /></div>
+                        ) : filteredGigs.length === 0 ? (
+                            <div className="py-16 text-center bg-white dark:bg-[#161618] rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
+                                এই ফিল্টারে কোনো গিগ পাওয়া যায়নি।
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                                {filteredGigs.map(gig => {
+                                    const startPrice = getMinPrice(gig);
+                                    return (
+                                        <article
+                                            key={gig.id}
+                                            onClick={() => setSelectedGig(gig)}
+                                            className="bg-white dark:bg-[#161618] rounded-2xl border border-gray-200/80 dark:border-white/10 overflow-hidden cursor-pointer hover:border-[#005fb8] transition-all flex flex-col group shadow-sm"
+                                        >
+                                            <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden shrink-0">
+                                                {gig.bannerUrl ? (
+                                                    <img src={gig.bannerUrl} alt={gig.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                ) : (
+                                                    <div className="w-full h-full flex flex-col items-center justify-center text-white/80 p-3 text-center">
+                                                        <Icon name="briefcase" className="w-7 h-7 text-[#facc15] mb-1" />
+                                                        <span className="text-[10px] font-bold uppercase">{gig.category}</span>
+                                                    </div>
+                                                )}
+                                                <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/75 text-white text-[9px] font-bold whitespace-nowrap">
+                                                    {gig.category}
+                                                </span>
+                                            </div>
+                                            <div className="p-3 flex-1 flex flex-col gap-2">
+                                                <div
+                                                    onClick={(e) => { e.stopPropagation(); onOpenPortfolio(gig.ownerShortId || gig.ownerName); }}
+                                                    className="flex items-center gap-1.5 min-w-0 hover:opacity-80"
+                                                >
+                                                    <UserAvatar name={gig.ownerName} size="xs" showOnline={true} />
+                                                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{gig.ownerName}</span>
+                                                    {gig.isVerified !== false && (
+                                                        <svg className="w-3.5 h-3.5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none">
+                                                            <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                            <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                                        </svg>
+                                                    )}
+                                                </div>
+                                                <h3 className="text-xs sm:text-[13px] font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] flex-1">
+                                                    {gig.title}
+                                                </h3>
+                                                <div className="pt-2 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2 whitespace-nowrap">
+                                                    <span className="text-[10px] font-semibold text-gray-400 font-numbers">{gig.ordersCount || 0} orders</span>
+                                                    <span className="text-sm font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">
+                                                        {CURRENCY_SYMBOL}{startPrice.toLocaleString()}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </article>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </main>
+
+                    <footer className="py-5 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs font-semibold text-gray-500">
+                        Faridpur IT Institute
+                    </footer>
+
+                    <GigDetailOrderModal
+                        gig={selectedGig}
+                        onClose={() => setSelectedGig(null)}
+                        addToast={addToast}
+                        onOpenOwnerPortfolio={(slug) => { setSelectedGig(null); onOpenPortfolio(slug); }}
+                    />
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 🌍 DEDICATED PUBLIC STUDENT PORTFOLIO PAGE (4-DIGIT SHORT URL + CLEAN NO-WRAP + SEO)
+        // ==========================================
+        const PublicPortfolioView = ({ slug, isDarkMode, setIsDarkMode, addToast, onClose, onOpenMarketplace }) => {
             const [loading, setLoading] = useState(true);
             const [portfolio, setPortfolio] = useState(null);
             const [errorMsg, setErrorMsg] = useState('');
             const [selectedGig, setSelectedGig] = useState(null);
-            const [selectedPkgIdx, setSelectedPkgIdx] = useState(0);
-            const [orderForm, setOrderForm] = useState({ clientName: '', clientPhone: '', clientEmail: '', brief: '', submitting: false });
-            const [orderSuccess, setOrderSuccess] = useState(null);
 
             useEffect(() => {
                 let cancelled = false;
@@ -23904,8 +24568,37 @@ const SmartPhoneAction = ({ phone }) => {
                     .then(data => {
                         if (cancelled) return;
                         if (data && data.success && data.portfolio) {
-                            setPortfolio(data.portfolio);
-                            document.title = `${data.portfolio.name} — Verified Talent | Faridpur IT Institute`;
+                            const pf = data.portfolio;
+                            setPortfolio(pf);
+                            const shortUrl = `${window.location.origin}/?p=${encodeURIComponent(pf.shortId || slug)}`;
+                            const desc = `${pf.name} — ${(pf.courses || []).join(', ')} specialist offering ${(pf.gigs || []).length} professional services at Faridpur IT Institute.`;
+                            updateDynamicSEO({
+                                title: `${pf.name} | Faridpur IT Institute`,
+                                description: desc,
+                                url: shortUrl,
+                                image: (pf.gigs && pf.gigs[0] && pf.gigs[0].bannerUrl) || '',
+                                schemaObj: {
+                                    '@context': 'https://schema.org',
+                                    '@type': 'ProfilePage',
+                                    mainEntity: {
+                                        '@type': 'Person',
+                                        name: pf.name,
+                                        url: shortUrl,
+                                        knowsAbout: pf.courses || [],
+                                        sameAs: [pf.linkedin, pf.fbProfile, pf.website].filter(Boolean)
+                                    },
+                                    hasPart: (pf.gigs || []).map(g => {
+                                        const ps = (g.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
+                                        return {
+                                            '@type': 'Service',
+                                            name: g.title,
+                                            description: g.description,
+                                            serviceType: g.category,
+                                            offers: { '@type': 'Offer', priceCurrency: 'BDT', price: String(ps.length ? Math.min(...ps) : 0) }
+                                        };
+                                    })
+                                }
+                            });
                         } else {
                             setErrorMsg((data && data.message) || 'Portfolio not found.');
                         }
@@ -23917,76 +24610,38 @@ const SmartPhoneAction = ({ phone }) => {
                 return () => { cancelled = true; };
             }, [slug]);
 
-            const handlePlaceOrder = async (e) => {
-                e.preventDefault();
-                if (!selectedGig) return;
-                const activePkg = (selectedGig.packages || [])[selectedPkgIdx] || { tier: 'Basic', price: 0, deliveryDays: 3 };
-                setOrderForm(prev => ({ ...prev, submitting: true }));
-                try {
-                    const res = await fetch(API_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        body: JSON.stringify({
-                            action: 'place_marketplace_order',
-                            order: {
-                                gigId: selectedGig.id,
-                                gigTitle: selectedGig.title,
-                                category: selectedGig.category,
-                                ownerName: portfolio?.name || selectedGig.ownerName,
-                                packageName: activePkg.tier,
-                                packagePrice: activePkg.price,
-                                deliveryDays: activePkg.deliveryDays,
-                                clientName: orderForm.clientName,
-                                clientPhone: orderForm.clientPhone,
-                                clientEmail: orderForm.clientEmail,
-                                brief: orderForm.brief
-                            }
-                        })
-                    });
-                    const data = await res.json();
-                    if (data && data.success) {
-                        if (typeof window.playSound === 'function') window.playSound('success');
-                        setOrderSuccess({ orderId: data.orderId, message: data.message, gigTitle: selectedGig.title, pkg: activePkg });
-                        setOrderForm({ clientName: '', clientPhone: '', clientEmail: '', brief: '', submitting: false });
-                        setSelectedGig(null);
-                    } else {
-                        addToast((data && data.message) || 'Order could not be placed.', 'error');
-                        setOrderForm(prev => ({ ...prev, submitting: false }));
-                    }
-                } catch (err) {
-                    addToast('Network error submitting order.', 'error');
-                    setOrderForm(prev => ({ ...prev, submitting: false }));
-                }
-            };
-
             return (
                 <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-slate-50 dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100 flex flex-col">
-                    {/* Clean Minimal Top Bar */}
                     <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#141416]/90 backdrop-blur-xl border-b border-gray-200/70 dark:border-white/10 px-4 py-3">
-                        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
+                        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2 flex-nowrap">
                             <div className="flex items-center gap-2 min-w-0">
                                 <div className="w-8 h-8 rounded-lg bg-[#005fb8] text-white flex items-center justify-center shrink-0">
                                     <Icon name="award" className="w-4 h-4" />
                                 </div>
-                                <div className="min-w-0">
-                                    <p className="text-xs sm:text-sm font-bold leading-tight truncate">Faridpur IT Talent</p>
-                                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold truncate">Verified Portfolio</p>
-                                </div>
+                                <span className="text-xs sm:text-sm font-bold whitespace-nowrap truncate">Faridpur IT Institute</span>
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-nowrap">
                                 <button
                                     type="button"
                                     onClick={() => setIsDarkMode(prev => !prev)}
-                                    className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300"
-                                    title="Toggle Theme"
+                                    className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0"
                                 >
                                     <Icon name={isDarkMode ? 'sun' : 'moon'} className="w-4 h-4" />
                                 </button>
+                                {typeof onOpenMarketplace === 'function' && (
+                                    <button
+                                        type="button"
+                                        onClick={onOpenMarketplace}
+                                        className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold whitespace-nowrap shrink-0"
+                                    >
+                                        Marketplace
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={onClose}
-                                    className="px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap"
+                                    className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap shrink-0"
                                 >
                                     Portal Home
                                 </button>
@@ -23994,51 +24649,47 @@ const SmartPhoneAction = ({ phone }) => {
                         </div>
                     </header>
 
-                    {/* Body */}
-                    <main className="flex-1 w-full max-w-5xl mx-auto px-3.5 sm:px-6 py-6 sm:py-10 space-y-6 sm:space-y-8">
+                    <main className="flex-1 w-full max-w-5xl mx-auto px-3.5 sm:px-6 py-6 sm:py-9 space-y-6">
                         {loading ? (
                             <div className="py-24 text-center space-y-3">
                                 <Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" />
-                                <p className="text-xs font-semibold text-gray-500">Loading verified portfolio...</p>
+                                <p className="text-xs font-semibold text-gray-500">Loading portfolio...</p>
                             </div>
                         ) : errorMsg || !portfolio ? (
-                            <div className="py-20 text-center space-y-3 bg-white dark:bg-[#161618] rounded-2xl border border-gray-200 dark:border-white/10 p-6">
+                            <div className="py-16 text-center space-y-3 bg-white dark:bg-[#161618] rounded-2xl border border-gray-200 dark:border-white/10 p-6">
                                 <Icon name="user-x" className="w-10 h-10 text-gray-400 mx-auto" />
-                                <h2 className="text-lg font-bold">{errorMsg || 'Portfolio Not Found'}</h2>
+                                <h2 className="text-base font-bold">{errorMsg || 'Portfolio Not Found'}</h2>
                                 <button type="button" onClick={onClose} className="px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">
-                                    Back to Faridpur IT
+                                    Back to Home
                                 </button>
                             </div>
                         ) : (
                             <>
-                                {/* 1. Premium Balanced Profile Hero Card */}
-                                <section className="bg-white dark:bg-[#161618] rounded-3xl p-5 sm:p-7 border border-gray-200/80 dark:border-white/10 shadow-sm relative overflow-hidden">
-                                    <div className="absolute -top-20 -right-20 w-56 h-56 bg-[#005fb8]/10 rounded-full blur-3xl pointer-events-none" />
-                                    <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
-                                        <div className="flex items-center gap-4 min-w-0">
+                                {/* Clean Minimal Profile Card (Icon-Only Verified Badge) */}
+                                <section className="bg-white dark:bg-[#161618] rounded-3xl p-4 sm:p-6 border border-gray-200/80 dark:border-white/10 shadow-sm">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                        <div className="flex items-center gap-3.5 min-w-0">
                                             <div className="relative shrink-0">
                                                 <img
                                                     src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(portfolio.name)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
                                                     alt={portfolio.name}
-                                                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-[3px] border-white dark:border-[#242428] shadow-md bg-gray-100"
+                                                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-[3px] border-white dark:border-[#242428] shadow-sm bg-gray-100"
                                                 />
                                                 <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#161618]" />
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-1.5 flex-wrap">
-                                                    <h1 className="text-xl sm:text-2xl font-bold tracking-tight truncate">{portfolio.name}</h1>
+                                                <div className="flex items-center gap-1.5 flex-nowrap">
+                                                    <h1 className="text-lg sm:text-2xl font-bold tracking-tight truncate">{portfolio.name}</h1>
                                                     {portfolio.isVerified && (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold">
-                                                            <Icon name="badge-check" className="w-3.5 h-3.5" /> Verified Talent
-                                                        </span>
+                                                        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none" aria-label="Verified">
+                                                            <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                            <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                                        </svg>
                                                     )}
                                                 </div>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                                    Certified Professional • Faridpur IT Institute
-                                                </p>
-                                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                                <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap mt-2">
                                                     {(portfolio.courses || []).map(c => (
-                                                        <span key={c} className="px-2.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.07] text-[10px] font-bold text-gray-700 dark:text-gray-200">
+                                                        <span key={c} className="px-2.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.07] text-[10px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap shrink-0">
                                                             {c}
                                                         </span>
                                                     ))}
@@ -24046,74 +24697,70 @@ const SmartPhoneAction = ({ phone }) => {
                                             </div>
                                         </div>
 
-                                        {/* Social Links + Quick Hire Stats */}
-                                        <div className="flex flex-col sm:flex-row md:flex-col items-stretch sm:items-center md:items-end gap-3 shrink-0">
+                                        <div className="flex flex-col sm:flex-row md:flex-col items-stretch sm:items-center md:items-end gap-2.5 shrink-0">
                                             <div className="grid grid-cols-3 gap-2 text-center">
-                                                <div className="px-3 py-2 rounded-xl bg-blue-500/[0.08] border border-blue-200/60 dark:border-blue-500/20">
-                                                    <span className="block text-sm sm:text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{portfolio.skillProgress}%</span>
+                                                <div className="px-3 py-1.5 rounded-xl bg-blue-500/[0.08] border border-blue-200/60 dark:border-blue-500/20 whitespace-nowrap">
+                                                    <span className="block text-sm font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{portfolio.skillProgress}%</span>
                                                     <span className="text-[9px] font-bold uppercase text-gray-500">Skill</span>
                                                 </div>
-                                                <div className="px-3 py-2 rounded-xl bg-emerald-500/[0.08] border border-emerald-200/60 dark:border-emerald-500/20">
-                                                    <span className="block text-sm sm:text-base font-numbers font-bold text-emerald-600 dark:text-emerald-400">{(portfolio.gigs || []).length}</span>
-                                                    <span className="text-[9px] font-bold uppercase text-gray-500">Services</span>
+                                                <div className="px-3 py-1.5 rounded-xl bg-emerald-500/[0.08] border border-emerald-200/60 dark:border-emerald-500/20 whitespace-nowrap">
+                                                    <span className="block text-sm font-numbers font-bold text-emerald-600 dark:text-emerald-400">{(portfolio.gigs || []).length}</span>
+                                                    <span className="text-[9px] font-bold uppercase text-gray-500">Gigs</span>
                                                 </div>
-                                                <div className="px-3 py-2 rounded-xl bg-amber-500/[0.08] border border-amber-200/60 dark:border-amber-500/20">
-                                                    <span className="block text-sm sm:text-base font-numbers font-bold text-amber-600 dark:text-amber-400">{portfolio.totalOrders || 0}</span>
+                                                <div className="px-3 py-1.5 rounded-xl bg-amber-500/[0.08] border border-amber-200/60 dark:border-amber-500/20 whitespace-nowrap">
+                                                    <span className="block text-sm font-numbers font-bold text-amber-600 dark:text-amber-400">{portfolio.totalOrders || 0}</span>
                                                     <span className="text-[9px] font-bold uppercase text-gray-500">Orders</span>
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center justify-start md:justify-end gap-1.5 flex-wrap">
-                                                {portfolio.linkedin && <a href={portfolio.linkedin} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-[#0A66C2]/10 text-[#0A66C2] text-[11px] font-bold">LinkedIn</a>}
-                                                {portfolio.fbProfile && <a href={portfolio.fbProfile} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-[#1877F2]/10 text-[#1877F2] text-[11px] font-bold">Facebook</a>}
-                                                {portfolio.website && <a href={portfolio.website} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold">Website</a>}
-                                            </div>
+                                            {(portfolio.linkedin || portfolio.fbProfile || portfolio.website) && (
+                                                <div className="flex items-center gap-1.5 flex-nowrap">
+                                                    {portfolio.linkedin && <a href={portfolio.linkedin} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-[#0A66C2]/10 text-[#0A66C2] text-[11px] font-bold whitespace-nowrap">LinkedIn</a>}
+                                                    {portfolio.fbProfile && <a href={portfolio.fbProfile} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-[#1877F2]/10 text-[#1877F2] text-[11px] font-bold whitespace-nowrap">Facebook</a>}
+                                                    {portfolio.website && <a href={portfolio.website} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold whitespace-nowrap">Website</a>}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
-                                    {/* Verified Institute Exam Badges */}
                                     {Array.isArray(portfolio.passedExams) && portfolio.passedExams.length > 0 && (
-                                        <div className="mt-5 pt-4 border-t border-gray-100 dark:border-white/10">
-                                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Verified Skill Assessments</p>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {portfolio.passedExams.slice(0, 6).map((ex, idx) => (
-                                                    <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/[0.09] border border-emerald-300/50 dark:border-emerald-500/25 text-[11px] font-semibold text-emerald-800 dark:text-emerald-200">
-                                                        <Icon name="check-circle" className="w-3 h-3 text-emerald-600 shrink-0" />
-                                                        <span>{ex.moduleTitle} ({ex.bestScore}%)</span>
-                                                    </span>
-                                                ))}
-                                            </div>
+                                        <div className="mt-4 pt-3.5 border-t border-gray-100 dark:border-white/10 flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                                            {portfolio.passedExams.slice(0, 6).map((ex, idx) => (
+                                                <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/[0.09] border border-emerald-300/50 dark:border-emerald-500/25 text-[10.5px] font-semibold text-emerald-800 dark:text-emerald-200 whitespace-nowrap shrink-0">
+                                                    <Icon name="check-circle" className="w-3 h-3 text-emerald-600 shrink-0" />
+                                                    <span>{ex.moduleTitle} ({ex.bestScore}%)</span>
+                                                </span>
+                                            ))}
                                         </div>
                                     )}
                                 </section>
 
-                                {/* 2. Fiverr-Style Services & Gigs Showcase */}
+                                {/* Services & Packages Section (Strictly No-Wrap Heading, Zero Extra Text) */}
                                 <section className="space-y-4">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <h2 className="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2">
-                                            <Icon name="briefcase" className="w-5 h-5 text-[#005fb8]" />
+                                    <div className="flex items-center justify-between gap-2 flex-nowrap">
+                                        <h2 className="text-base sm:text-xl font-bold tracking-tight flex items-center gap-2 whitespace-nowrap truncate">
+                                            <Icon name="briefcase" className="w-5 h-5 text-[#005fb8] shrink-0" />
                                             <span>Services &amp; Packages ({(portfolio.gigs || []).length})</span>
                                         </h2>
-                                        <span className="text-xs text-gray-500">Click any service to view packages &amp; order</span>
                                     </div>
 
                                     {(!portfolio.gigs || portfolio.gigs.length === 0) ? (
                                         <div className="bg-white dark:bg-[#161618] rounded-2xl p-10 text-center border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
-                                            এই প্রোফাইলে এখনো কোনো সার্ভিস গিগ পাবলিশ করা হয়নি।
+                                            কোনো সার্ভিস পাওয়া যায়নি।
                                         </div>
                                     ) : (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                             {portfolio.gigs.map(gig => {
                                                 const prices = (gig.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
                                                 const startPrice = prices.length > 0 ? Math.min(...prices) : 0;
                                                 const fastDays = Math.min(...((gig.packages || []).map(p => Number(p.deliveryDays) || 3)));
                                                 return (
-                                                    <div
+                                                    <article
                                                         key={gig.id}
-                                                        onClick={() => { setSelectedGig(gig); setSelectedPkgIdx(0); }}
+                                                        onClick={() => setSelectedGig({ ...gig, ownerName: portfolio.name, ownerShortId: portfolio.shortId })}
                                                         className="bg-white dark:bg-[#161618] rounded-2xl border border-gray-200/80 dark:border-white/10 overflow-hidden cursor-pointer hover:border-[#005fb8] shadow-sm transition-all flex flex-col group"
                                                     >
-                                                        <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden">
+                                                        <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden shrink-0">
                                                             {gig.bannerUrl ? (
                                                                 <img src={gig.bannerUrl} alt={gig.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                                             ) : (
@@ -24122,35 +24769,32 @@ const SmartPhoneAction = ({ phone }) => {
                                                                     <span className="text-xs font-bold uppercase">{gig.category}</span>
                                                                 </div>
                                                             )}
-                                                            <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-md bg-black/75 text-white text-[10px] font-bold">
+                                                            <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/75 text-white text-[10px] font-bold whitespace-nowrap">
                                                                 {gig.category}
                                                             </span>
                                                         </div>
 
-                                                        <div className="p-4 flex-1 flex flex-col gap-2">
-                                                            <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] transition-colors">
+                                                        <div className="p-3.5 flex-1 flex flex-col gap-2">
+                                                            <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] transition-colors">
                                                                 {gig.title}
                                                             </h3>
                                                             <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed flex-1">
                                                                 {gig.description}
                                                             </p>
 
-                                                            <div className="pt-3 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2">
-                                                                <div>
-                                                                    <span className="text-[9px] uppercase font-bold text-gray-400 block leading-none">Starting at</span>
-                                                                    <span className="text-lg font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">
-                                                                        {CURRENCY_SYMBOL}{startPrice.toLocaleString()}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="text-right">
-                                                                    <span className="text-[10px] text-gray-500 block font-semibold">{fastDays}d delivery</span>
-                                                                    <span className="inline-block mt-0.5 px-3 py-1 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold">
+                                                            <div className="pt-2.5 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2 whitespace-nowrap">
+                                                                <span className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">
+                                                                    {CURRENCY_SYMBOL}{startPrice.toLocaleString()}
+                                                                </span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[10px] text-gray-400 font-semibold">{fastDays}d</span>
+                                                                    <span className="px-3 py-1 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold">
                                                                         Order Now
                                                                     </span>
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    </div>
+                                                    </article>
                                                 );
                                             })}
                                         </div>
@@ -24160,112 +24804,15 @@ const SmartPhoneAction = ({ phone }) => {
                         )}
                     </main>
 
-                    {/* Footer */}
-                    <footer className="py-5 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs text-gray-500">
-                        Verified Talent Portfolio • Powered by <strong className="text-gray-800 dark:text-gray-200">Faridpur IT Institute</strong> (faridpurit.com)
+                    <footer className="py-5 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs font-semibold text-gray-500">
+                        Faridpur IT Institute
                     </footer>
 
-                    {/* Interactive 3-Package Selection & Client Order Modal */}
-                    <Modal isOpen={!!selectedGig} onClose={() => setSelectedGig(null)} title={selectedGig?.title || 'Service Packages'} maxWidth="max-w-2xl" compact={true}>
-                        {selectedGig && (() => {
-                            const pkgs = Array.isArray(selectedGig.packages) && selectedGig.packages.length > 0
-                                ? selectedGig.packages
-                                : [{ tier: 'Basic', price: 1500, deliveryDays: 3, features: ['Professional delivery'] }];
-                            const activePkg = pkgs[selectedPkgIdx] || pkgs[0];
-
-                            return (
-                                <div className="space-y-4">
-                                    {selectedGig.bannerUrl && (
-                                        <img src={selectedGig.bannerUrl} alt={selectedGig.title} referrerPolicy="no-referrer" className="w-full max-h-48 object-cover rounded-xl border border-gray-200 dark:border-white/10" />
-                                    )}
-
-                                    <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
-                                        {selectedGig.description}
-                                    </p>
-
-                                    {selectedGig.demoUrl && (
-                                        <a href={selectedGig.demoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">
-                                            <Icon name="external-link" className="w-3.5 h-3.5" /> View Live Sample / Demo
-                                        </a>
-                                    )}
-
-                                    {/* Basic / Standard / Premium Tabs */}
-                                    <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden">
-                                        <div className="grid grid-cols-3 bg-gray-100 dark:bg-dark-900 p-1 gap-1">
-                                            {pkgs.map((pk, idx) => (
-                                                <button
-                                                    key={pk.tier || idx}
-                                                    type="button"
-                                                    onClick={() => setSelectedPkgIdx(idx)}
-                                                    className={`py-2 rounded-lg text-xs font-bold transition-colors ${selectedPkgIdx === idx ? 'bg-[#005fb8] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}
-                                                >
-                                                    {pk.tier}
-                                                </button>
-                                            ))}
-                                        </div>
-
-                                        <div className="p-3.5 sm:p-4 bg-white dark:bg-dark-800 space-y-2.5">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs font-bold text-gray-500 uppercase">{activePkg.tier} Package</span>
-                                                <span className="text-xl font-numbers font-bold text-emerald-600 dark:text-emerald-400">
-                                                    {CURRENCY_SYMBOL}{Number(activePkg.price || 0).toLocaleString()}
-                                                </span>
-                                            </div>
-                                            <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
-                                                <Icon name="clock" className="w-3.5 h-3.5 text-[#005fb8]" /> {activePkg.deliveryDays || 3} Days Delivery
-                                            </p>
-                                            <ul className="space-y-1.5 pt-2 border-t border-gray-100 dark:border-white/10">
-                                                {(Array.isArray(activePkg.features) ? activePkg.features : []).map((ft, fi) => (
-                                                    <li key={fi} className="text-xs text-gray-700 dark:text-gray-200 flex items-start gap-2">
-                                                        <Icon name="check" className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                                                        <span>{ft}</span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    </div>
-
-                                    {/* Client Order Submission Form */}
-                                    <form onSubmit={handlePlaceOrder} className="p-3.5 rounded-2xl bg-blue-500/[0.06] border border-blue-200/70 dark:border-blue-500/25 space-y-2.5">
-                                        <p className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff]">
-                                            Order "{activePkg.tier}" Package ({CURRENCY_SYMBOL}{Number(activePkg.price || 0).toLocaleString()})
-                                        </p>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            <input type="text" required value={orderForm.clientName} onChange={e => setOrderForm({ ...orderForm, clientName: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm" placeholder="আপনার নাম *" />
-                                            <input type="tel" required minLength={10} value={orderForm.clientPhone} onChange={e => setOrderForm({ ...orderForm, clientPhone: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-mono-code" placeholder="হোয়াটসঅ্যাপ / ফোন নাম্বার *" />
-                                        </div>
-                                        <input type="email" value={orderForm.clientEmail} onChange={e => setOrderForm({ ...orderForm, clientEmail: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm" placeholder="ইমেইল (Optional)" />
-                                        <textarea rows="2" value={orderForm.brief} onChange={e => setOrderForm({ ...orderForm, brief: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm resize-none" placeholder="আপনার প্রজেক্ট সম্পর্কে সংক্ষেপে লিখুন..." />
-                                        <button type="submit" disabled={orderForm.submitting} className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 win-button">
-                                            {orderForm.submitting ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="check-circle" className="w-4 h-4" />}
-                                            <span>{orderForm.submitting ? 'Placing Order...' : `Confirm Order (${CURRENCY_SYMBOL}${Number(activePkg.price || 0).toLocaleString()})`}</span>
-                                        </button>
-                                    </form>
-                                </div>
-                            );
-                        })()}
-                    </Modal>
-
-                    {/* Order Confirmed Success Modal */}
-                    <Modal isOpen={!!orderSuccess} onClose={() => setOrderSuccess(null)} title="Order Placed Successfully!" maxWidth="max-w-md" compact={true}>
-                        {orderSuccess && (
-                            <div className="text-center space-y-3 py-2">
-                                <div className="w-12 h-12 rounded-full bg-emerald-500/15 text-emerald-600 flex items-center justify-center mx-auto">
-                                    <Icon name="check-circle" className="w-7 h-7" />
-                                </div>
-                                <h3 className="text-base font-bold text-gray-900 dark:text-white">অর্ডার কনফার্ম হয়েছে!</h3>
-                                <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{orderSuccess.message}</p>
-                                <div className="p-3 rounded-xl bg-gray-50 dark:bg-dark-800 border border-gray-200 dark:border-white/10 text-xs font-numbers space-y-1">
-                                    <div>Order ID: <strong>{orderSuccess.orderId}</strong></div>
-                                    <div>Service: <strong>{orderSuccess.gigTitle}</strong> ({orderSuccess.pkg?.tier})</div>
-                                    <div>Budget: <strong className="text-emerald-600">{CURRENCY_SYMBOL}{Number(orderSuccess.pkg?.price || 0).toLocaleString()}</strong></div>
-                                </div>
-                                <button type="button" onClick={() => setOrderSuccess(null)} className="w-full py-2.5 rounded-xl bg-[#005fb8] text-white text-xs font-bold">
-                                    Done
-                                </button>
-                            </div>
-                        )}
-                    </Modal>
+                    <GigDetailOrderModal
+                        gig={selectedGig}
+                        onClose={() => setSelectedGig(null)}
+                        addToast={addToast}
+                    />
                 </div>
             );
         };
@@ -24280,13 +24827,21 @@ const SmartPhoneAction = ({ phone }) => {
             const [publicPortfolioSlug, setPublicPortfolioSlug] = useState(() => {
                 try {
                     const sp = new URLSearchParams(window.location.search);
-                    const qp = sp.get('portfolio');
+                    const qp = sp.get('p') || sp.get('portfolio');
                     if (qp && qp.trim()) return qp.trim();
                 } catch (e) {}
                 const h = String(window.location.hash || '');
-                const m = h.match(/^#portfolio\/(.+)$/i);
+                const m = h.match(/^#(?:p|portfolio)\/(.+)$/i);
                 return (m && m[1]) ? decodeURIComponent(m[1]).trim() : '';
             });
+            const [showPublicMarketplace, setShowPublicMarketplace] = useState(() => {
+                try {
+                    const sp = new URLSearchParams(window.location.search);
+                    if (sp.get('market') || sp.get('marketplace')) return true;
+                } catch (e) {}
+                return String(window.location.hash || '').toLowerCase() === '#market';
+            });
+            const [publicGigs, setPublicGigs] = useState([]);
             const [isRouteLoading, setIsRouteLoading] = useState(false); // 🟢 NEW: Page Transition State
             // 🟢 কমিউনিটি চ্যাট ফিল্টার ও দৈনিক মেসেজ লিমিট (ডিফল্ট ১২ — এখান থেকে অথবা ড্যাশবোর্ড থেকেই যেকোনো সময় বদলানো যাবে)
             const [communityFilterOnlyMine, setCommunityFilterOnlyMine] = useState(false);
@@ -24554,8 +25109,19 @@ const handleAISubmit = async (e) => {
             // Clean history for API
             const cleanHistory = aiMessages.map(m => ({ role: m.role, content: m.content }));
 
+            const myStForAi = studentsPanel.find(s =>
+                String(s.phone || '').replace(/^'/, '') === String(auth?.userId || '') ||
+                String(s.name || '').toLowerCase() === String(auth?.name || auth?.username || '').toLowerCase()
+            );
+            const myShortPfUrl = auth ? `${window.location.origin}/?p=${getShortPortfolioId(myStForAi?.id, myStForAi?.phone || auth.userId, auth.name || auth.userId)}` : '';
             const res = await executeAPI({
-                action: actionType, auth: auth, userContext: userContext, message: userMsg, history: cleanHistory, language: 'Bangla'
+                action: actionType,
+                auth: auth,
+                userContext: userContext,
+                message: userMsg,
+                history: cleanHistory,
+                language: 'Bangla',
+                appContext: scanLiveAppContext({ route: currentRoute, totalGigs: marketplaceGigs.length, portfolioUrl: myShortPfUrl })
             });
             const data = await res.json();
             
@@ -25163,10 +25729,11 @@ const [courseModules, setCourseModules] = useState([]);
                     
                     if (resData.success) {
                         const d = resData.data || {};
-                        // 🟢 লগআউট অবস্থায় শুধু পাবলিক কোর্স ও সার্ভিস সিঙ্ক করবে
+                        // 🟢 লগআউট অবস্থায় শুধু পাবলিক কোর্স, সার্ভিস ও মার্কেটপ্লেস গিগ সিঙ্ক করবে
                         if (resData.publicOnly) {
                             if (Array.isArray(d.courses) && d.courses.length > 0) syncCoursesFromDB(d.courses, []);
                             if (Array.isArray(d.services) && d.services.length > 0) syncServicesFromDB(d.services, []);
+                            if (Array.isArray(d.publicGigs)) setPublicGigs(d.publicGigs);
                             return;
                         }
 
@@ -26109,6 +26676,46 @@ const [courseModules, setCourseModules] = useState([]);
                 };
             }, [filteredOrders, myFilteredOrders, orders, filteredExpensesData, payouts, myPayouts, startDate, endDate, auth, networkList]);
 
+        const clearPublicParams = () => {
+             try {
+                 const u = new URL(window.location.href);
+                 u.searchParams.delete('p');
+                 u.searchParams.delete('portfolio');
+                 u.searchParams.delete('market');
+                 u.searchParams.delete('marketplace');
+                 u.hash = '';
+                 window.history.replaceState({}, '', u.toString());
+             } catch (e) { window.location.hash = ''; }
+         };
+
+         const openShortPortfolio = (slug) => {
+             const cleanSlug = String(slug || '').trim();
+             if (!cleanSlug) return;
+             setShowPublicMarketplace(false);
+             setPublicPortfolioSlug(cleanSlug);
+             try {
+                 const u = new URL(window.location.href);
+                 u.searchParams.delete('portfolio');
+                 u.searchParams.delete('market');
+                 u.searchParams.set('p', cleanSlug);
+                 u.hash = '';
+                 window.history.replaceState({}, '', u.toString());
+             } catch (e) {}
+         };
+
+         const openFullPublicMarketplace = () => {
+             setPublicPortfolioSlug('');
+             setShowPublicMarketplace(true);
+             try {
+                 const u = new URL(window.location.href);
+                 u.searchParams.delete('p');
+                 u.searchParams.delete('portfolio');
+                 u.searchParams.set('market', '1');
+                 u.hash = '';
+                 window.history.replaceState({}, '', u.toString());
+             } catch (e) {}
+         };
+
          if (publicPortfolioSlug) {
              return (
                  <>
@@ -26118,21 +26725,47 @@ const [courseModules, setCourseModules] = useState([]);
                          isDarkMode={isDarkMode}
                          setIsDarkMode={setIsDarkMode}
                          addToast={addToast}
-                         onClose={() => {
-                             setPublicPortfolioSlug('');
-                             try {
-                                 const u = new URL(window.location.href);
-                                 u.searchParams.delete('portfolio');
-                                 u.hash = '';
-                                 window.history.replaceState({}, '', u.toString());
-                             } catch (e) { window.location.hash = ''; }
-                         }}
+                         onOpenMarketplace={openFullPublicMarketplace}
+                         onClose={() => { setPublicPortfolioSlug(''); clearPublicParams(); }}
                      />
                  </>
              );
          }
 
-         if (!auth) return <><ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} /><LandingView auth={auth} currentRoute={currentRoute} setAuth={setAuth} addToast={addToast} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></>;
+         if (showPublicMarketplace) {
+             return (
+                 <>
+                     <ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
+                     <PublicMarketplaceView
+                         initialGigs={publicGigs.length > 0 ? publicGigs : marketplaceGigs}
+                         isDarkMode={isDarkMode}
+                         setIsDarkMode={setIsDarkMode}
+                         addToast={addToast}
+                         onOpenPortfolio={openShortPortfolio}
+                         onClose={() => { setShowPublicMarketplace(false); clearPublicParams(); }}
+                     />
+                 </>
+             );
+         }
+
+         if (!auth) {
+             return (
+                 <>
+                     <ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
+                     <LandingView
+                         auth={auth}
+                         currentRoute={currentRoute}
+                         setAuth={setAuth}
+                         addToast={addToast}
+                         isDarkMode={isDarkMode}
+                         setIsDarkMode={setIsDarkMode}
+                         publicGigs={publicGigs}
+                         onOpenPublicMarketplace={openFullPublicMarketplace}
+                         onOpenPublicPortfolio={openShortPortfolio}
+                     />
+                 </>
+             );
+         }
             return (
                 <div className="flex h-[100dvh] w-full max-w-[100vw] overflow-hidden text-gray-800 dark:text-gray-200 transition-colors bg-cover bg-center">
                     {/* 🧠 Global Smart Suggestions (Auto-Suggests Saved Usernames, Emails & Phones App-Wide) */}
@@ -26774,10 +27407,12 @@ const [courseModules, setCourseModules] = useState([]);
                                                         gigs={marketplaceGigs}
                                                         projects={myProjects}
                                                         clientLeads={myClientLeads}
+                                                        studentsPanel={studentsPanel}
+                                                        studentLeads={studentLeads}
                                                         executeAPI={executeAPI}
                                                         fetchOrders={fetchOrders}
                                                         addToast={addToast}
-                                                        onOpenPublicPortfolio={(slug) => setPublicPortfolioSlug(slug)}
+                                                        onOpenPublicPortfolio={openShortPortfolio}
                                                     />
                                                 )}
                                                 {currentRoute === 'projects' && <ProjectsView addToast={addToast} executeAPI={executeAPI} projects={myProjects} orders={orders} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} />}
