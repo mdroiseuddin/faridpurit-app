@@ -19124,8 +19124,32 @@ const SmartPhoneAction = ({ phone }) => {
             const [visibleLimit, setVisibleLimit] = useState(20); // মোবাইলে স্মুথ স্ক্রলের জন্য শুরুতে 20টি মেসেজ
             const [lightboxImg, setLightboxImg] = useState(null);
             const [typedWelcome, setTypedWelcome] = useState('');
+            const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
+            const [unreadBelowCount, setUnreadBelowCount] = useState(0);
+            const chatFeedRef = useRef(null);
+            const isNearBottomRef = useRef(true);
+            const hasInitialScrolledRef = useRef(false);
             const chatEndRef = useRef(null);
             const fileInputRef = useRef(null);
+
+            const scrollToLatestBottom = useCallback((smooth = true) => {
+                const el = chatFeedRef.current;
+                if (!el) return;
+                el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+                setShowScrollBottomBtn(false);
+                setUnreadBelowCount(0);
+                isNearBottomRef.current = true;
+            }, []);
+
+            const handleFeedScroll = useCallback(() => {
+                const el = chatFeedRef.current;
+                if (!el) return;
+                const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+                const nearBottom = distFromBottom < 140;
+                isNearBottomRef.current = nearBottom;
+                setShowScrollBottomBtn(!nearBottom);
+                if (nearBottom) setUnreadBelowCount(0);
+            }, []);
 
             // 🟢 Optimistic Sync Refs (মেসেজ যেন কখনো গায়েব না হয়)
             const pendingLocalMsgsRef = useRef(new Map());
@@ -19333,12 +19357,29 @@ const SmartPhoneAction = ({ phone }) => {
                     : visibleMessages;
             }, [visibleMessages, visibleLimit]);
 
+            // 🟢 কমিউনিটি চ্যাটে ঢোকার সাথে সাথেই লেটেস্ট মেসেজে স্ক্রল করবে
             useEffect(() => {
-                if (visibleMessages.length > prevVisibleCountRef.current) {
-                    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                if (displayedMessages.length === 0) return;
+                if (!hasInitialScrolledRef.current) {
+                    hasInitialScrolledRef.current = true;
+                    requestAnimationFrame(() => {
+                        scrollToLatestBottom(false);
+                        setTimeout(() => scrollToLatestBottom(false), 180);
+                    });
+                    prevVisibleCountRef.current = visibleMessages.length;
+                    return;
+                }
+                const diff = visibleMessages.length - prevVisibleCountRef.current;
+                if (diff > 0) {
+                    if (isNearBottomRef.current) {
+                        requestAnimationFrame(() => scrollToLatestBottom(true));
+                    } else {
+                        setUnreadBelowCount(prev => prev + diff);
+                        setShowScrollBottomBtn(true);
+                    }
                 }
                 prevVisibleCountRef.current = visibleMessages.length;
-            }, [visibleMessages.length]);
+            }, [visibleMessages.length, displayedMessages.length, scrollToLatestBottom]);
 
             // 🟢 Text Parser for Links
             const parseText = (text) => {
@@ -19688,19 +19729,24 @@ const SmartPhoneAction = ({ phone }) => {
                         </div>
                     )}
                     
-                   {/* Zero-Network CSS Pattern Layer (ইনস্ট্যান্ট রেন্ডার, কোনো ইমেজ ডাউনলোড ল্যাগ নেই) */}
+                   {/* Authentic WhatsApp-Style Seamless Doodle Wallpaper (0ms Instant SVG, Light & Dark Ready) */}
                     <div
-                        className="absolute inset-0 pointer-events-none z-0 opacity-[0.35] dark:opacity-[0.08]"
+                        className="absolute inset-0 pointer-events-none z-0"
                         style={{
-                            backgroundImage: isDarkMode
-                                ? 'radial-gradient(rgba(255,255,255,0.22) 1px, transparent 1px)'
-                                : 'radial-gradient(rgba(0,0,0,0.12) 1px, transparent 1px)',
-                            backgroundSize: '20px 20px'
+                            opacity: isDarkMode ? 0.065 : 0.11,
+                            backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220' fill='none' stroke='${isDarkMode ? '#e9edef' : '#54656f'}' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M22 28h26a6 6 0 0 1 6 6v14a6 6 0 0 1-6 6H31l-9 7v-7a6 6 0 0 1-6-6V34a6 6 0 0 1 6-6z'/><circle cx='96' cy='38' r='12'/><path d='M91 40s2 3 5 3 5-3 5-3M92 35h.01M100 35h.01'/><path d='M156 26l26 11-11 5-5 11-10-27z'/><rect x='26' y='96' width='28' height='20' rx='3'/><path d='M22 120h36'/><path d='M104 94l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-7z'/><path d='M168 96a12 12 0 1 1-11 16l-6 2 2-6a12 12 0 0 1 15-12z'/><path d='M32 172c0-7 12-7 12 0 0 6-6 9-6 13-1-4-6-7-6-13z'/><path d='M94 166l-8 8 8 8M110 166l8 8-8 8M104 163l-4 22'/><path d='M164 166h18v12a9 9 0 0 1-18 0v-12zm18 3h4a3 3 0 0 1 0 6h-4'/><circle cx='138' cy='70' r='2.5'/><circle cx='66' cy='72' r='2'/><circle cx='140' cy='144' r='2.5'/><circle cx='68' cy='148' r='2'/></svg>`)}")`,
+                            backgroundRepeat: 'repeat',
+                            backgroundSize: '220px 220px'
                         }}
                     />
 
                     {/* Scrollable Chat Feed - 100% Wide */}
-                    <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain w-full px-3 sm:px-5 md:px-6 py-4 space-y-4 hide-scrollbar flex flex-col relative z-10" style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
+                    <div
+                        ref={chatFeedRef}
+                        onScroll={handleFeedScroll}
+                        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain w-full px-3 sm:px-5 md:px-6 py-4 space-y-4 hide-scrollbar flex flex-col relative z-10"
+                        style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}
+                    >
                         
                         {/* Clean In-Flow Date Indicator */}
                         <div className="flex justify-center mb-1 shrink-0">
@@ -19870,6 +19916,23 @@ const SmartPhoneAction = ({ phone }) => {
                         
                         <div ref={chatEndRef} className="h-2 shrink-0" />
                     </div>
+
+                    {/* WhatsApp-Style Floating Scroll-to-Bottom Button */}
+                    {showScrollBottomBtn && (
+                        <button
+                            type="button"
+                            onClick={() => { playAudio('click'); scrollToLatestBottom(true); }}
+                            className="absolute right-4 sm:right-6 bottom-[134px] md:bottom-[76px] z-30 w-10 h-10 rounded-full bg-white dark:bg-[#202c33] text-gray-700 dark:text-gray-200 hover:bg-[#00a884] hover:text-white border border-gray-200 dark:border-white/15 shadow-lg flex items-center justify-center transition-all win-button"
+                            title="Scroll to latest message"
+                        >
+                            <Icon name="chevron-down" className="w-5 h-5" />
+                            {unreadBelowCount > 0 && (
+                                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#00a884] text-white text-[10px] font-numbers font-bold flex items-center justify-center shadow">
+                                    {unreadBelowCount > 99 ? '99+' : unreadBelowCount}
+                                </span>
+                            )}
+                        </button>
+                    )}
 
                     {/* 100% Wide Fixed Footer Input Bar (Mobile Bottom Nav Safe) */}
                     <div className="w-full px-2.5 sm:px-4 md:px-5 pt-2.5 pb-[68px] md:pb-3 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-gray-200/80 dark:border-white/10 shrink-0 z-20 relative">
@@ -24228,24 +24291,7 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 </div>
 
-                                {/* Detailed Skills Builder */}
-                                <div className="space-y-2 pt-3 border-t border-gray-100 dark:border-white/10">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200">Skills &amp; Proficiency (%)</span>
-                                        <button type="button" onClick={() => setPfState(p => ({ ...p, skills: [...p.skills, { name: '', level: 85 }] }))} className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold">
-                                            + Add Skill
-                                        </button>
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {pfState.skills.map((sk, idx) => (
-                                            <div key={idx} className="flex items-center gap-2 bg-gray-50 dark:bg-dark-800 p-2 rounded-xl border border-gray-200/70 dark:border-white/10">
-                                                <input type="text" value={sk.name} onChange={e => setPfState(p => ({ ...p, skills: p.skills.map((x, i) => i === idx ? { ...x, name: e.target.value } : x) }))} className="flex-1 min-w-0 input-style px-2.5 py-1.5 text-xs font-semibold" placeholder="Skill name (e.g. React, SEO)" />
-                                                <input type="number" min="10" max="100" value={sk.level} onChange={e => setPfState(p => ({ ...p, skills: p.skills.map((x, i) => i === idx ? { ...x, level: e.target.value } : x) }))} className="w-16 input-style px-2 py-1.5 text-xs font-numbers font-bold text-center" />
-                                                <button type="button" onClick={() => setPfState(p => ({ ...p, skills: p.skills.filter((_, i) => i !== idx) }))} className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg"><Icon name="x" className="w-3.5 h-3.5" /></button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
+                                
 
                                 {/* Portfolio Image + Case Study Builder (INSTANT AUTO-SAVE TO GOOGLE SHEETS!) */}
                                 <div className="space-y-3 pt-3 border-t border-gray-100 dark:border-white/10">
@@ -24375,11 +24421,11 @@ const SmartPhoneAction = ({ phone }) => {
                         </div>
                     )}
 
-                    {/* TAB 4: INCOMING ORDERS */}
+                    {/* TAB 4: INCOMING ORDERS (CLIENT CONTACT STRICTLY PROTECTED FROM STUDENTS) */}
                     {activeTab === 'orders' && (
                         <div className="glass-panel rounded-2xl border border-gray-200/70 dark:border-white/10 overflow-hidden divide-y divide-gray-100 dark:divide-white/10">
                             {incomingOrders.length === 0 ? (
-                                <div className="py-12 px-4 text-center text-xs text-gray-500">এখনো কোনো মার্কেটপ্লেস অর্ডার আসেনি।</div>
+                                <div className="py-12 px-4 text-center text-xs text-gray-500">No marketplace orders received yet.</div>
                             ) : incomingOrders.map(p => (
                                 <div key={p.id} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                                     <div className="min-w-0 flex-1">
@@ -24387,9 +24433,14 @@ const SmartPhoneAction = ({ phone }) => {
                                             <span className="px-2 py-0.5 rounded bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-mono-code font-bold">{p.id}</span>
                                             <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">{p.status}</span>
                                             <span className="text-[10px] text-gray-400 font-numbers">Deadline: {moment(parseCustomDate(p.deadline)).format('DD MMM YYYY')}</span>
+                                            {!isAdminMgr && (
+                                                <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[9px] font-bold">Coordinated by Institute</span>
+                                            )}
                                         </div>
                                         <h4 className="text-sm font-bold text-gray-900 dark:text-white mt-1 break-words">{p.name}</h4>
-                                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">Client: <strong>{p.client}</strong> {p.clientPhone ? `• ${p.clientPhone}` : ''}</p>
+                                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
+                                            Client: <strong>{p.client}</strong> {isAdminMgr && p.clientPhone ? `• ${p.clientPhone}` : ''}
+                                        </p>
                                     </div>
                                     <div className="flex items-center justify-between sm:flex-col sm:items-end gap-1.5 shrink-0">
                                         <span className="text-base font-numbers font-bold text-emerald-600 dark:text-emerald-400">{CURRENCY_SYMBOL}{Number(p.revenue || 0).toLocaleString()}</span>
@@ -24605,7 +24656,7 @@ const SmartPhoneAction = ({ phone }) => {
                     } catch (e) {}
                 }
                 if (navigator.clipboard) navigator.clipboard.writeText(shareGigUrl);
-                if (typeof addToast === 'function') addToast('গিগ লিংক কপি হয়েছে!', 'success');
+                if (typeof addToast === 'function') addToast('Service link copied to clipboard!', 'success');
             };
 
             const pkgs = (gig && Array.isArray(gig.packages) && gig.packages.length > 0)
@@ -24702,7 +24753,7 @@ const SmartPhoneAction = ({ phone }) => {
                                 <button type="button" onClick={onOpenMarketplace} className="px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">Browse Marketplace</button>
                             </div>
                         ) : (
-                            <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+                            <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-7 items-start">
                                 {/* Left Column (7/12): Title + Seller Bar + 16:9 Banner + Full Description */}
                                 <div className="lg:col-span-7 space-y-5 min-w-0">
                                     <div className="space-y-3">
@@ -24817,18 +24868,47 @@ const SmartPhoneAction = ({ phone }) => {
                                         </div>
                                     </div>
 
-                                    <form onSubmit={handlePlaceOrder} className="p-4 rounded-2xl bg-blue-500/[0.06] border border-blue-200/70 dark:border-blue-500/25 space-y-2.5">
-                                        <p className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] whitespace-nowrap">
+                                    <form onSubmit={handlePlaceOrder} className="p-4 sm:p-5 rounded-2xl bg-blue-500/[0.06] border border-blue-200/70 dark:border-blue-500/25 space-y-3">
+                                        <p className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] uppercase tracking-wider">
                                             Place Order — {activePkg.tier} ({CURRENCY_SYMBOL}{Number(activePkg.price || 0).toLocaleString()})
                                         </p>
-                                        <input type="text" required value={orderForm.clientName} onChange={e => setOrderForm({ ...orderForm, clientName: e.target.value })} className="w-full input-style px-3 py-2 text-sm" placeholder="আপনার নাম *" />
-                                        <input type="tel" required minLength={10} value={orderForm.clientPhone} onChange={e => setOrderForm({ ...orderForm, clientPhone: e.target.value })} className="w-full input-style px-3 py-2 text-sm font-mono-code" placeholder="হোয়াটসঅ্যাপ / ফোন নাম্বার *" />
-                                        <input type="email" value={orderForm.clientEmail} onChange={e => setOrderForm({ ...orderForm, clientEmail: e.target.value })} className="w-full input-style px-3 py-2 text-sm" placeholder="ইমেইল (Optional)" />
-                                        <textarea rows="3" value={orderForm.brief} onChange={e => setOrderForm({ ...orderForm, brief: e.target.value })} className="w-full input-style px-3 py-2 text-sm resize-none" placeholder="আপনার প্রজেক্ট সম্পর্কে সংক্ষেপে লিখুন..." />
+                                        <input type="text" required value={orderForm.clientName} onChange={e => setOrderForm({ ...orderForm, clientName: e.target.value })} className="w-full input-style px-3 py-2.5 text-sm" placeholder="Your Full Name *" />
+                                        <input type="tel" required minLength={10} value={orderForm.clientPhone} onChange={e => setOrderForm({ ...orderForm, clientPhone: e.target.value })} className="w-full input-style px-3 py-2.5 text-sm font-mono-code" placeholder="WhatsApp / Phone Number *" />
+                                        <input type="email" value={orderForm.clientEmail} onChange={e => setOrderForm({ ...orderForm, clientEmail: e.target.value })} className="w-full input-style px-3 py-2.5 text-sm" placeholder="Email Address (Optional)" />
+                                        <textarea rows="3" value={orderForm.brief} onChange={e => setOrderForm({ ...orderForm, brief: e.target.value })} className="w-full input-style px-3 py-2.5 text-sm resize-none" placeholder="Describe your project goals, features, and preferred budget..." />
                                         <button type="submit" disabled={orderForm.submitting} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 whitespace-nowrap win-button shadow-sm">
                                             {orderForm.submitting ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="check-circle" className="w-4 h-4" />}
-                                            <span>{orderForm.submitting ? 'Submitting...' : `Confirm Order (${CURRENCY_SYMBOL}${Number(activePkg.price || 0).toLocaleString()})`}</span>
+                                            <span>{orderForm.submitting ? 'Submitting Order...' : `Confirm Order (${CURRENCY_SYMBOL}${Number(activePkg.price || 0).toLocaleString()})`}</span>
                                         </button>
+
+                                        {/* Terms & Conditions + Agency Quality Assurance */}
+                                        <div className="pt-3 mt-1 border-t border-blue-200/70 dark:border-white/10 space-y-2 text-[11.5px] leading-relaxed text-gray-600 dark:text-gray-300">
+                                            <div className="flex items-center gap-1.5 font-bold text-gray-900 dark:text-white text-xs">
+                                                <Icon name="shield-check" className="w-4 h-4 text-emerald-600 shrink-0" />
+                                                <span>Terms &amp; Conditions — Backed by Faridpur IT Institute</span>
+                                            </div>
+                                            <p>
+                                                Every order is officially managed and quality-assured by the <strong>Faridpur IT Institute</strong> team. Our mentors and verified talent work together in full detail to deliver clean, reliable results tailored to your exact requirements and budget. Place your order now to start discussing your project with our coordinator right away.
+                                            </p>
+                                            <div className="flex flex-wrap items-center gap-2 pt-1">
+                                                <a
+                                                    href="https://wa.me/8801642890942"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white font-bold text-[11px] transition-colors"
+                                                >
+                                                    <Icon name="message-circle" className="w-3.5 h-3.5 shrink-0" /> WhatsApp: +880 1642890942
+                                                </a>
+                                                <a
+                                                    href="https://faridpurit.com"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white font-bold text-[11px] transition-colors"
+                                                >
+                                                    <Icon name="globe" className="w-3.5 h-3.5 shrink-0" /> Visit Official Website ↗
+                                                </a>
+                                            </div>
+                                        </div>
                                     </form>
                                 </div>
                             </div>
@@ -24860,8 +24940,8 @@ const SmartPhoneAction = ({ phone }) => {
 
         
 
-        // ==========================================
-        // 🌐 PUBLIC MARKETPLACE VIEW (FULL-WIDTH + SEARCH + CATEGORY FILTER)
+       // ==========================================
+        // 🌐 PUBLIC MARKETPLACE VIEW (100% ENGLISH, FULL-WIDTH ZERO EXTRA PADDING, SEO)
         // ==========================================
         const PublicMarketplaceView = ({ initialGigs = [], isDarkMode, setIsDarkMode, addToast, onOpenPortfolio, onOpenGig, onClose }) => {
             const [loading, setLoading] = useState(initialGigs.length === 0);
@@ -24873,9 +24953,15 @@ const SmartPhoneAction = ({ phone }) => {
             useEffect(() => {
                 if (typeof updateDynamicSEO === 'function') {
                     updateDynamicSEO({
-                        title: 'Freelance Marketplace | Faridpur IT Institute',
-                        description: 'Hire verified freelance students & digital experts from Faridpur IT Institute for Web Development, SEO, Digital Marketing & Design.',
-                        url: `${window.location.origin}/?market=1`
+                        title: 'Verified Freelance Marketplace | Faridpur IT Institute',
+                        description: 'Hire verified freelance students and digital specialists from Faridpur IT Institute for Web Development, SEO, Digital Marketing, Graphics Design & Software.',
+                        url: `${window.location.origin}/?market=1`,
+                        schemaObj: {
+                            '@context': 'https://schema.org',
+                            '@type': 'CollectionPage',
+                            name: 'Faridpur IT Institute Freelance Marketplace',
+                            url: `${window.location.origin}/?market=1`
+                        }
                     });
                 }
                 let cancelled = false;
@@ -24919,20 +25005,26 @@ const SmartPhoneAction = ({ phone }) => {
                     try { await navigator.share({ title: g.title, url }); return; } catch (err) {}
                 }
                 if (navigator.clipboard) navigator.clipboard.writeText(url);
-                if (typeof addToast === 'function') addToast('গিগ লিংক কপি হয়েছে!', 'success');
+                if (typeof addToast === 'function') addToast('Service link copied to clipboard!', 'success');
             };
 
             return (
-                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-white dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100 flex flex-col">
-                    <header className="sticky top-0 z-40 w-full bg-white/95 dark:bg-[#141416]/95 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/10 px-3 sm:px-6 lg:px-8 py-3">
+                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-gray-50/40 dark:bg-[#0b0b0d] text-gray-900 dark:text-gray-100 flex flex-col">
+                    <header className="sticky top-0 z-40 w-full bg-white/95 dark:bg-[#141416]/95 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/10 px-3 sm:px-5 py-3">
                         <div className="w-full flex items-center justify-between gap-2 flex-nowrap">
-                            <div className="flex items-center gap-2 min-w-0">
-                                <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 flex items-center justify-center shrink-0" title="Back">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 flex items-center justify-center shrink-0" title="Back to Home">
                                     <Icon name="arrow-left" className="w-4 h-4" />
                                 </button>
-                                <span className="text-xs sm:text-sm font-bold whitespace-nowrap truncate">Faridpur IT Marketplace</span>
+                                <div className="min-w-0">
+                                    <span className="text-xs sm:text-sm font-bold whitespace-nowrap truncate block leading-tight">Faridpur IT Marketplace</span>
+                                    <span className="hidden sm:block text-[10px] text-gray-500 dark:text-gray-400">Institute-Backed Freelance Services</span>
+                                </div>
                             </div>
                             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-nowrap">
+                                <a href="https://wa.me/8801642890942" target="_blank" rel="noopener noreferrer" className="hidden md:inline-flex h-8 px-3 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-bold items-center gap-1.5 whitespace-nowrap">
+                                    <Icon name="message-circle" className="w-3.5 h-3.5" /> Support
+                                </a>
                                 <button type="button" onClick={() => setIsDarkMode(prev => !prev)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0">
                                     <Icon name={isDarkMode ? 'sun' : 'moon'} className="w-4 h-4" />
                                 </button>
@@ -24943,117 +25035,118 @@ const SmartPhoneAction = ({ phone }) => {
                         </div>
                     </header>
 
-                    <main className="flex-1 w-full px-3 sm:px-6 lg:px-8 py-5 sm:py-7 space-y-5">
-                        <div className="w-full max-w-7xl mx-auto space-y-5">
-                            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-500/[0.07] via-transparent to-emerald-500/[0.07] border border-gray-200/80 dark:border-white/10 space-y-3">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                    <div>
-                                        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Verified Freelance Services</h1>
-                                        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">সরাসরি আমাদের ভেরিফায়েড স্টুডেন্ট ও এক্সপার্টদের সার্ভিস অর্ডার করুন।</p>
-                                    </div>
-                                    <span className="self-start sm:self-auto px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-numbers font-bold whitespace-nowrap">
-                                        {filteredGigs.length} Active Services
-                                    </span>
+                    {/* Full-Width Main Area — Zero Extra Left/Right Margin */}
+                    <main className="flex-1 w-full px-3 sm:px-5 py-4 sm:py-5 space-y-4">
+                        <div className="w-full p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 shadow-sm space-y-3.5">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div>
+                                    <h1 className="text-lg sm:text-2xl font-bold tracking-tight">Hire Verified Talent &amp; Digital Experts</h1>
+                                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                                        Explore professional services by verified Faridpur IT Institute students &amp; teams — quality-checked and delivered within your budget.
+                                    </p>
                                 </div>
-
-                                <div className="flex flex-col md:flex-row gap-2.5">
-                                    <div className="flex items-center bg-white dark:bg-[#18181b] px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 flex-1">
-                                        <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
-                                        <input type="text" value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="সার্ভিস, স্কিল বা ফ্রিল্যান্সারের নাম খুঁজুন..." className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium" />
-                                    </div>
-                                    <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
-                                        {['All', ...categories].map(c => (
-                                            <button key={c} type="button" onClick={() => setCatFilter(c)} className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${catFilter === c ? 'bg-[#005fb8] text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300'}`}>
-                                                {c}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+                                <span className="self-start sm:self-auto px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-numbers font-bold whitespace-nowrap shrink-0">
+                                    {filteredGigs.length} Active Services
+                                </span>
                             </div>
 
-                            {loading ? (
-                                <div className="py-20 text-center space-y-2">
-                                    <Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" />
-                                    <p className="text-xs font-semibold text-gray-500">Loading services...</p>
+                            <div className="flex flex-col lg:flex-row gap-2.5">
+                                <div className="flex items-center bg-gray-50 dark:bg-[#1c1c21] px-3.5 py-2 rounded-xl border border-gray-200 dark:border-white/10 flex-1 focus-within:border-[#005fb8]">
+                                    <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
+                                    <input type="text" value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search by service, category, or freelancer name..." className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium" />
                                 </div>
-                            ) : filteredGigs.length === 0 ? (
-                                <div className="py-16 text-center rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
-                                    কোনো সার্ভিস পাওয়া যায়নি।
+                                <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                                    {['All', ...categories].map(c => (
+                                        <button key={c} type="button" onClick={() => setCatFilter(c)} className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${catFilter === c ? 'bg-[#005fb8] text-white shadow-sm' : 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/15'}`}>
+                                            {c}
+                                        </button>
+                                    ))}
                                 </div>
-                            ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                                    {filteredGigs.map(g => {
-                                        const startPrice = getStartPrice(g);
-                                        return (
-                                            <div key={g.id} onClick={() => onOpenGig && onOpenGig(g)} className="cursor-pointer rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#161618] overflow-hidden flex flex-col hover:border-[#005fb8]/60 hover:shadow-md transition-all group">
-                                                <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden">
-                                                    {g.bannerUrl ? (
-                                                        <img src={g.bannerUrl} alt={g.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                                                    ) : (
-                                                        <div className="w-full h-full flex flex-col items-center justify-center text-white/80 p-4 text-center">
-                                                            <Icon name="briefcase" className="w-8 h-8 mb-1.5 text-[#facc15]" />
-                                                            <span className="text-[11px] font-bold uppercase tracking-wider">{g.category}</span>
-                                                        </div>
-                                                    )}
-                                                    <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/75 text-white text-[10px] font-bold backdrop-blur-sm">
-                                                        {g.category}
-                                                    </span>
+                            </div>
+                        </div>
+
+                        {loading ? (
+                            <div className="py-20 text-center space-y-2">
+                                <Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" />
+                                <p className="text-xs font-semibold text-gray-500">Loading verified services...</p>
+                            </div>
+                        ) : filteredGigs.length === 0 ? (
+                            <div className="py-16 text-center rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500 bg-white dark:bg-[#141417]">
+                                No matching services found. Try another keyword or category.
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 sm:gap-4">
+                                {filteredGigs.map(g => {
+                                    const startPrice = getStartPrice(g);
+                                    return (
+                                        <div key={g.id} onClick={() => onOpenGig && onOpenGig(g)} className="cursor-pointer rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#141417] overflow-hidden flex flex-col hover:border-[#005fb8] hover:shadow-lg transition-all group">
+                                            <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden">
+                                                {g.bannerUrl ? (
+                                                    <img src={g.bannerUrl} alt={g.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                ) : (
+                                                    <div className="w-full h-full flex flex-col items-center justify-center text-white/85 p-4 text-center">
+                                                        <Icon name="briefcase" className="w-8 h-8 mb-1.5 text-[#facc15]" />
+                                                        <span className="text-[11px] font-bold uppercase tracking-wider">{g.category}</span>
+                                                    </div>
+                                                )}
+                                                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/75 text-white text-[10px] font-bold backdrop-blur-sm">
+                                                    {g.category}
+                                                </span>
+                                            </div>
+
+                                            <div className="p-3.5 flex-1 flex flex-col gap-2">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); onOpenPortfolio && onOpenPortfolio(g.ownerShortId || g.ownerName); }}
+                                                        className="flex items-center gap-2 min-w-0 text-left hover:text-[#005fb8]"
+                                                    >
+                                                        <UserAvatar name={g.ownerName} size="xs" showOnline={true} />
+                                                        <span className="text-xs font-bold truncate">{g.ownerName}</span>
+                                                        {g.isVerified !== false && (
+                                                            <svg className="w-3.5 h-3.5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none" aria-label="Verified">
+                                                                <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                                <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                                            </svg>
+                                                        )}
+                                                    </button>
+                                                    <span className="text-[10px] font-numbers font-bold text-gray-400 shrink-0">{g.ordersCount || 0} orders</span>
                                                 </div>
 
-                                                <div className="p-3.5 flex-1 flex flex-col gap-2">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => { e.stopPropagation(); onOpenPortfolio && onOpenPortfolio(g.ownerShortId || g.ownerName); }}
-                                                            className="flex items-center gap-2 min-w-0 text-left hover:text-[#005fb8]"
-                                                        >
-                                                            <UserAvatar name={g.ownerName} size="xs" showOnline={true} />
-                                                            <span className="text-xs font-bold truncate">{g.ownerName}</span>
-                                                            {g.isVerified !== false && (
-                                                                <svg className="w-3.5 h-3.5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none">
-                                                                    <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
-                                                                    <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
-                                                                </svg>
-                                                            )}
-                                                        </button>
-                                                        <span className="text-[10px] font-numbers font-bold text-gray-400 shrink-0">{g.ordersCount || 0} orders</span>
+                                                <h3 className="text-sm font-bold leading-snug line-clamp-2 group-hover:text-[#005fb8]">{g.title}</h3>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 flex-1">{g.description}</p>
+
+                                                <div className="pt-2.5 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2">
+                                                    <div>
+                                                        <span className="text-[9px] uppercase font-bold text-gray-400 block leading-none">Starting at</span>
+                                                        <span className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{CURRENCY_SYMBOL}{startPrice.toLocaleString()}</span>
                                                     </div>
-
-                                                    <h3 className="text-sm sm:text-[15px] font-bold leading-snug line-clamp-2 group-hover:text-[#005fb8]">{g.title}</h3>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 flex-1">{g.description}</p>
-
-                                                    <div className="pt-2.5 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2">
-                                                        <div>
-                                                            <span className="text-[9px] uppercase font-bold text-gray-400 block leading-none">Starting at</span>
-                                                            <span className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{CURRENCY_SYMBOL}{startPrice.toLocaleString()}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1.5">
-                                                            <button type="button" onClick={(e) => shareGig(e, g)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white" title="Share">
-                                                                <Icon name="share-2" className="w-3.5 h-3.5" />
-                                                            </button>
-                                                            <span className="px-3 py-1.5 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold whitespace-nowrap">View &amp; Order</span>
-                                                        </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button type="button" onClick={(e) => shareGig(e, g)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white transition-colors" title="Share Service">
+                                                            <Icon name="share-2" className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <span className="px-2.5 py-1.5 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold whitespace-nowrap">Order →</span>
                                                     </div>
                                                 </div>
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </main>
 
-                    <footer className="py-5 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs font-semibold text-gray-500">
-                        Faridpur IT Institute • Verified Freelance Marketplace
+                    <footer className="py-4 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs font-semibold text-gray-500 bg-white dark:bg-[#141417]">
+                        Faridpur IT Institute • Verified Freelance Marketplace • <a href="https://faridpurit.com" target="_blank" rel="noopener noreferrer" className="text-[#005fb8] dark:text-[#60cdff] hover:underline">faridpurit.com</a>
                     </footer>
                 </div>
             );
         };
 
         // ==========================================
-        // 👤 PUBLIC PORTFOLIO VIEW (UPWORK + FIVERR HYBRID PROFILE + CASE STUDIES + GIGS)
+        // 👤 PUBLIC PORTFOLIO VIEW (REAL LEADERBOARD SKILL % + DEDICATED CASE STUDY LINKS + 100% ENGLISH)
         // ==========================================
-        const PublicPortfolioView = ({ slug, isDarkMode, setIsDarkMode, addToast, onOpenMarketplace, onOpenGig, onClose }) => {
+        const PublicPortfolioView = ({ slug, isDarkMode, setIsDarkMode, addToast, onOpenMarketplace, onOpenGig, onOpenCaseStudy, onClose }) => {
             const normSlug = String(slug || '').trim().toLowerCase().replace(/[^a-z0-9\u0980-\u09ff]/g, '');
             const cacheKey = `fit_pf_cache_${normSlug}`;
 
@@ -25066,7 +25159,6 @@ const SmartPhoneAction = ({ phone }) => {
             });
             const [loading, setLoading] = useState(!profile);
             const [errorMsg, setErrorMsg] = useState('');
-            const [activeCaseStudy, setActiveCaseStudy] = useState(null);
 
             useEffect(() => {
                 if (!slug) return;
@@ -25086,7 +25178,7 @@ const SmartPhoneAction = ({ phone }) => {
                             setProfile(data.portfolio);
                             try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: data.portfolio })); } catch (e) {}
                         } else if (!profile) {
-                            setErrorMsg((data && data.message) || 'Portfolio not found.');
+                            setErrorMsg((data && data.message) || 'Portfolio profile not found.');
                         }
                         setLoading(false);
                     })
@@ -25104,9 +25196,19 @@ const SmartPhoneAction = ({ phone }) => {
                 const pfUrl = `${window.location.origin}/?p=${encodeURIComponent(profile.shortId || slug)}`;
                 if (typeof updateDynamicSEO === 'function') {
                     updateDynamicSEO({
-                        title: `${profile.name} | Verified Freelancer — Faridpur IT Institute`,
-                        description: profile.tagline || profile.bio || `Verified portfolio and freelance services of ${profile.name} at Faridpur IT Institute.`,
-                        url: pfUrl
+                        title: `${profile.name} | Verified Portfolio — Faridpur IT Institute`,
+                        description: profile.tagline || profile.bio || `Verified freelance portfolio, case studies, and services of ${profile.name} at Faridpur IT Institute.`,
+                        url: pfUrl,
+                        schemaObj: {
+                            '@context': 'https://schema.org',
+                            '@type': 'ProfilePage',
+                            mainEntity: {
+                                '@type': 'Person',
+                                name: profile.name,
+                                description: profile.tagline || profile.bio || '',
+                                url: pfUrl
+                            }
+                        }
                     });
                 }
             }, [profile, slug]);
@@ -25118,7 +25220,7 @@ const SmartPhoneAction = ({ phone }) => {
                     try { await navigator.share({ title: `${profile?.name || 'Portfolio'} — Faridpur IT`, url: shareProfileUrl }); return; } catch (e) {}
                 }
                 if (navigator.clipboard) navigator.clipboard.writeText(shareProfileUrl);
-                if (typeof addToast === 'function') addToast('পোর্টফোলিও লিংক কপি হয়েছে!', 'success');
+                if (typeof addToast === 'function') addToast('Portfolio link copied to clipboard!', 'success');
             };
 
             const getStartPrice = (g) => {
@@ -25127,8 +25229,8 @@ const SmartPhoneAction = ({ phone }) => {
             };
 
             return (
-                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-white dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100 flex flex-col">
-                    <header className="sticky top-0 z-40 w-full bg-white/95 dark:bg-[#141416]/95 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/10 px-3 sm:px-6 lg:px-8 py-3">
+                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-gray-50/40 dark:bg-[#0b0b0d] text-gray-900 dark:text-gray-100 flex flex-col">
+                    <header className="sticky top-0 z-40 w-full bg-white/95 dark:bg-[#141416]/95 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/10 px-3 sm:px-5 py-3">
                         <div className="w-full flex items-center justify-between gap-2 flex-nowrap">
                             <div className="flex items-center gap-2 min-w-0">
                                 <button type="button" onClick={onOpenMarketplace} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 flex items-center justify-center shrink-0" title="Marketplace">
@@ -25139,7 +25241,7 @@ const SmartPhoneAction = ({ phone }) => {
                             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-nowrap">
                                 <button type="button" onClick={handleShareProfile} className="h-8 px-2.5 sm:px-3 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold flex items-center gap-1 whitespace-nowrap shrink-0">
                                     <Icon name="share-2" className="w-3.5 h-3.5 shrink-0" />
-                                    <span className="hidden sm:inline">Share</span>
+                                    <span className="hidden sm:inline">Share Profile</span>
                                 </button>
                                 <button type="button" onClick={() => setIsDarkMode(prev => !prev)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0">
                                     <Icon name={isDarkMode ? 'sun' : 'moon'} className="w-4 h-4" />
@@ -25154,22 +25256,22 @@ const SmartPhoneAction = ({ phone }) => {
                         </div>
                     </header>
 
-                    <main className="flex-1 w-full px-3 sm:px-6 lg:px-8 py-5 sm:py-8">
+                    <main className="flex-1 w-full px-3 sm:px-5 py-5">
                         {loading ? (
                             <div className="py-24 text-center space-y-3">
                                 <Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" />
-                                <p className="text-xs font-semibold text-gray-500">Loading portfolio...</p>
+                                <p className="text-xs font-semibold text-gray-500">Loading verified portfolio...</p>
                             </div>
                         ) : errorMsg || !profile ? (
-                            <div className="py-16 text-center space-y-3 bg-gray-50 dark:bg-[#161618] rounded-2xl border border-gray-200 dark:border-white/10 p-6 max-w-lg mx-auto">
+                            <div className="py-16 text-center space-y-3 bg-white dark:bg-[#141417] rounded-2xl border border-gray-200 dark:border-white/10 p-6 max-w-lg mx-auto">
                                 <Icon name="user-x" className="w-10 h-10 text-gray-400 mx-auto" />
                                 <h2 className="text-base font-bold">{errorMsg || 'Profile Not Found'}</h2>
-                                <button type="button" onClick={onOpenMarketplace} className="px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">Browse Marketplace</button>
+                                <button type="button" onClick={onOpenMarketplace} className="px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">Explore Marketplace</button>
                             </div>
                         ) : (
-                            <div className="w-full max-w-6xl mx-auto space-y-6">
-                                {/* Top Hero Card */}
-                                <div className="p-5 sm:p-6 rounded-2xl border border-gray-200/80 dark:border-white/10 bg-gradient-to-br from-blue-500/[0.05] via-transparent to-emerald-500/[0.05] space-y-4">
+                            <div className="w-full space-y-6">
+                                {/* Full-Width Freelancer Profile Hero */}
+                                <div className="p-5 sm:p-6 rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#141417] shadow-sm space-y-4">
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                         <div className="flex items-center gap-4 min-w-0">
                                             <div className="relative shrink-0">
@@ -25179,7 +25281,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                     className="w-16 h-16 sm:w-20 sm:h-20 object-cover border-2 border-white dark:border-[#18181b] shadow-sm bg-gray-100"
                                                     style={{ borderRadius: '9999px' }}
                                                 />
-                                                <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#0d0d0f]" style={{ borderRadius: '9999px' }} />
+                                                <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#141417]" style={{ borderRadius: '9999px' }} />
                                             </div>
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -25205,18 +25307,19 @@ const SmartPhoneAction = ({ phone }) => {
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-3 gap-2 shrink-0">
-                                            <div className="px-3 py-2 rounded-xl bg-white dark:bg-[#161618] border border-gray-200/80 dark:border-white/10 text-center">
-                                                <p className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{(profile.gigs || []).length}</p>
+                                        {/* Authentic Stats: Real Leaderboard/Dashboard Skill % */}
+                                        <div className="grid grid-cols-3 gap-2.5 shrink-0">
+                                            <div className="px-3.5 py-2.5 rounded-xl bg-blue-500/[0.06] border border-blue-200/60 dark:border-blue-500/20 text-center">
+                                                <p className="text-base sm:text-lg font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{(profile.gigs || []).length}</p>
                                                 <p className="text-[9px] font-bold uppercase text-gray-500">Services</p>
                                             </div>
-                                            <div className="px-3 py-2 rounded-xl bg-white dark:bg-[#161618] border border-gray-200/80 dark:border-white/10 text-center">
-                                                <p className="text-base font-numbers font-bold text-emerald-600 dark:text-emerald-400">{profile.totalOrders || 0}</p>
+                                            <div className="px-3.5 py-2.5 rounded-xl bg-emerald-500/[0.06] border border-emerald-200/60 dark:border-emerald-500/20 text-center">
+                                                <p className="text-base sm:text-lg font-numbers font-bold text-emerald-600 dark:text-emerald-400">{profile.totalOrders || 0}</p>
                                                 <p className="text-[9px] font-bold uppercase text-gray-500">Orders</p>
                                             </div>
-                                            <div className="px-3 py-2 rounded-xl bg-white dark:bg-[#161618] border border-gray-200/80 dark:border-white/10 text-center">
-                                                <p className="text-base font-numbers font-bold text-purple-600 dark:text-purple-400">{profile.skillProgress || 90}%</p>
-                                                <p className="text-[9px] font-bold uppercase text-gray-500">Skill</p>
+                                            <div className="px-3.5 py-2.5 rounded-xl bg-purple-500/[0.07] border border-purple-200/60 dark:border-purple-500/20 text-center" title="Verified Leaderboard & Academy Skill Score">
+                                                <p className="text-base sm:text-lg font-numbers font-bold text-purple-600 dark:text-purple-400">{Number(profile.skillProgress || 0)}%</p>
+                                                <p className="text-[9px] font-bold uppercase text-gray-500">Verified Skill</p>
                                             </div>
                                         </div>
                                     </div>
@@ -25227,10 +25330,9 @@ const SmartPhoneAction = ({ phone }) => {
                                         </p>
                                     )}
 
-                                    {/* Social & Meta Pills */}
                                     <div className="flex flex-wrap items-center gap-2 pt-1">
-                                        {profile.languages && <span className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-[11px] font-semibold">🌐 {profile.languages}</span>}
-                                        {profile.experience && <span className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-[11px] font-semibold">💼 {profile.experience}</span>}
+                                        {profile.languages && <span className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-[11px] font-semibold">Languages: {profile.languages}</span>}
+                                        {profile.experience && <span className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-[11px] font-semibold">Experience: {profile.experience}</span>}
                                         {profile.linkedin && <a href={profile.linkedin} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold">LinkedIn ↗</a>}
                                         {profile.website && <a href={profile.website} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold">Website ↗</a>}
                                         {profile.fbProfile && <a href={profile.fbProfile} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 text-[11px] font-bold">Facebook ↗</a>}
@@ -25244,11 +25346,11 @@ const SmartPhoneAction = ({ phone }) => {
                                         <span>Available Services ({(profile.gigs || []).length})</span>
                                     </h2>
                                     {(profile.gigs || []).length === 0 ? (
-                                        <p className="text-xs text-gray-500 p-6 rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-center">কোনো অ্যাক্টিভ সার্ভিস গিগ নেই।</p>
+                                        <p className="text-xs text-gray-500 p-6 rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-center bg-white dark:bg-[#141417]">No active service gigs published yet.</p>
                                     ) : (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                             {(profile.gigs || []).map(g => (
-                                                <div key={g.id} onClick={() => onOpenGig && onOpenGig(g)} className="cursor-pointer rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#161618] overflow-hidden flex flex-col hover:border-[#005fb8]/60 hover:shadow-md transition-all group">
+                                                <div key={g.id} onClick={() => onOpenGig && onOpenGig(g)} className="cursor-pointer rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#141417] overflow-hidden flex flex-col hover:border-[#005fb8] hover:shadow-md transition-all group">
                                                     <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden">
                                                         {g.bannerUrl ? (
                                                             <img src={g.bannerUrl} alt={g.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -25271,22 +25373,33 @@ const SmartPhoneAction = ({ phone }) => {
                                     )}
                                 </div>
 
-                                {/* Portfolio & Case Studies */}
+                                {/* Portfolio & Case Studies — Opens Dedicated Full-Width Page */}
                                 {Array.isArray(profile.portfolioItems) && profile.portfolioItems.length > 0 && (
                                     <div className="space-y-3">
-                                        <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
-                                            <Icon name="layers" className="w-4 h-4 text-emerald-500" />
-                                            <span>Portfolio &amp; Case Studies ({profile.portfolioItems.length})</span>
-                                        </h2>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div className="flex items-center justify-between">
+                                            <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
+                                                <Icon name="layers" className="w-4 h-4 text-emerald-500" />
+                                                <span>Portfolio &amp; Case Studies ({profile.portfolioItems.length})</span>
+                                            </h2>
+                                            <span className="text-[11px] text-gray-500 font-semibold">Click any work to view full case study</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                             {profile.portfolioItems.map(item => (
-                                                <div key={item.id} onClick={() => setActiveCaseStudy(item)} className="cursor-pointer rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#161618] overflow-hidden hover:border-emerald-500/60 transition-all group">
-                                                    <div className="aspect-video bg-gray-100 dark:bg-dark-900 overflow-hidden">
+                                                <div
+                                                    key={item.id}
+                                                    onClick={() => onOpenCaseStudy && onOpenCaseStudy(profile.shortId || slug, item.id, profile, item)}
+                                                    className="cursor-pointer rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#141417] overflow-hidden hover:border-emerald-500 hover:shadow-md transition-all group flex flex-col"
+                                                >
+                                                    <div className="relative aspect-video bg-gray-100 dark:bg-dark-900 overflow-hidden">
                                                         <img src={item.imageUrl} alt={item.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                        <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-emerald-600/90 text-white text-[9px] font-bold uppercase tracking-wider">Portfolio</span>
                                                     </div>
-                                                    <div className="p-3.5">
-                                                        <h3 className="text-sm font-bold truncate">{item.title}</h3>
-                                                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">{item.caseStudy}</p>
+                                                    <div className="p-3.5 flex-1 flex flex-col gap-1.5">
+                                                        <h3 className="text-sm font-bold line-clamp-1 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">{item.title}</h3>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 flex-1">{item.caseStudy || 'Explore full project showcase and outcome.'}</p>
+                                                        <span className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] pt-1.5 inline-flex items-center gap-1">
+                                                            View Case Study <Icon name="arrow-right" className="w-3 h-3" />
+                                                        </span>
                                                     </div>
                                                 </div>
                                             ))}
@@ -25294,58 +25407,291 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 )}
 
-                                {/* Skills & Verified Exam Badges */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {Array.isArray(profile.customSkills) && profile.customSkills.length > 0 && (
-                                        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#161618] space-y-3">
-                                            <h3 className="text-sm font-bold flex items-center gap-2"><Icon name="zap" className="w-4 h-4 text-amber-500" /> Top Skills</h3>
-                                            <div className="space-y-2.5">
-                                                {profile.customSkills.map((sk, idx) => (
-                                                    <div key={idx} className="space-y-1">
-                                                        <div className="flex justify-between text-xs font-semibold">
-                                                            <span>{sk.name}</span>
-                                                            <span className="font-numbers text-[#005fb8] dark:text-[#60cdff]">{sk.level}%</span>
+                                {/* Verified Academy Exam Certifications */}
+                                {Array.isArray(profile.passedExams) && profile.passedExams.length > 0 && (
+                                    <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#141417] space-y-3">
+                                        <h3 className="text-sm font-bold flex items-center gap-2"><Icon name="award" className="w-4 h-4 text-emerald-500" /> Verified Skill Assessments ({profile.passedExams.length})</h3>
+                                        <div className="flex flex-wrap gap-2">
+                                            {profile.passedExams.map((ex, idx) => (
+                                                <span key={idx} className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-300/50 dark:border-emerald-500/30 text-xs font-bold text-emerald-800 dark:text-emerald-200">
+                                                    ✓ {ex.moduleTitle} ({ex.bestScore}% • Grade {ex.grade})
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </main>
+
+                    <footer className="py-4 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs font-semibold text-gray-500 bg-white dark:bg-[#141417]">
+                        Faridpur IT Institute • Verified Freelancer Portfolio • <a href="https://faridpurit.com" target="_blank" rel="noopener noreferrer" className="text-[#005fb8] dark:text-[#60cdff] hover:underline">faridpurit.com</a>
+                    </footer>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 🖼️ DEDICATED FULL-WIDTH PORTFOLIO / CASE STUDY SHOWCASE PAGE (GIG-STYLE UI, PORTFOLIO ONLY)
+        // ==========================================
+        const PublicCaseStudyView = ({ slug, itemId, initialProfile = null, initialItem = null, isDarkMode, setIsDarkMode, addToast, onOpenPortfolio, onOpenMarketplace, onOpenGig, onOpenCaseStudy, onClose }) => {
+            const [profile, setProfile] = useState(initialProfile);
+            const [item, setItem] = useState(initialItem);
+            const [loading, setLoading] = useState(!initialItem || !initialProfile);
+            const [errorMsg, setErrorMsg] = useState('');
+
+            useEffect(() => {
+                if (initialProfile && initialItem && String(initialItem.id) === String(itemId)) {
+                    setProfile(initialProfile);
+                    setItem(initialItem);
+                    setLoading(false);
+                    return;
+                }
+                if (!slug) { setErrorMsg('Portfolio project not found.'); setLoading(false); return; }
+                let cancelled = false;
+                setLoading(true);
+                setErrorMsg('');
+
+                fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'get_public_portfolio', slug })
+                })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (cancelled) return;
+                        if (data && data.success && data.portfolio) {
+                            setProfile(data.portfolio);
+                            const found = (data.portfolio.portfolioItems || []).find(x => String(x.id) === String(itemId));
+                            if (found) setItem(found);
+                            else setErrorMsg('Case study not found.');
+                        } else {
+                            setErrorMsg((data && data.message) || 'Portfolio not found.');
+                        }
+                        setLoading(false);
+                    })
+                    .catch(() => {
+                        if (!cancelled) { setErrorMsg('Network error loading case study.'); setLoading(false); }
+                    });
+                return () => { cancelled = true; };
+            }, [slug, itemId]);
+
+            useEffect(() => {
+                if (!item || !profile) return;
+                const csUrl = `${window.location.origin}/?p=${encodeURIComponent(profile.shortId || slug)}&cs=${encodeURIComponent(item.id)}`;
+                if (typeof updateDynamicSEO === 'function') {
+                    updateDynamicSEO({
+                        title: `${item.title} | Portfolio by ${profile.name} — Faridpur IT Institute`,
+                        description: String(item.caseStudy || item.title).slice(0, 155),
+                        url: csUrl,
+                        image: item.imageUrl || '',
+                        schemaObj: {
+                            '@context': 'https://schema.org',
+                            '@type': 'CreativeWork',
+                            name: item.title,
+                            description: item.caseStudy || '',
+                            image: item.imageUrl || undefined,
+                            url: csUrl,
+                            creator: { '@type': 'Person', name: profile.name }
+                        }
+                    });
+                }
+            }, [item, profile, slug]);
+
+            const shareUrl = `${window.location.origin}/?p=${encodeURIComponent(profile?.shortId || slug || '')}&cs=${encodeURIComponent(item?.id || itemId || '')}`;
+            const handleShare = async () => {
+                if (typeof window.playSound === 'function') window.playSound('click');
+                if (navigator.share) {
+                    try { await navigator.share({ title: item?.title || 'Portfolio Showcase', url: shareUrl }); return; } catch (e) {}
+                }
+                if (navigator.clipboard) navigator.clipboard.writeText(shareUrl);
+                if (typeof addToast === 'function') addToast('Portfolio showcase link copied!', 'success');
+            };
+
+            const otherWorks = (profile?.portfolioItems || []).filter(x => String(x.id) !== String(item?.id));
+            const creatorGigs = (profile?.gigs || []).slice(0, 3);
+
+            return (
+                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-gray-50/40 dark:bg-[#0b0b0d] text-gray-900 dark:text-gray-100 flex flex-col">
+                    <header className="sticky top-0 z-40 w-full bg-white/95 dark:bg-[#141416]/95 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/10 px-3 sm:px-5 py-3">
+                        <div className="w-full flex items-center justify-between gap-2 flex-nowrap">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <button type="button" onClick={() => onOpenPortfolio(profile?.shortId || slug)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 flex items-center justify-center shrink-0" title="Back to Portfolio">
+                                    <Icon name="arrow-left" className="w-4 h-4" />
+                                </button>
+                                <span className="text-xs sm:text-sm font-bold whitespace-nowrap truncate">Portfolio Showcase</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-nowrap">
+                                <button type="button" onClick={handleShare} className="h-8 px-2.5 sm:px-3 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold flex items-center gap-1 whitespace-nowrap shrink-0">
+                                    <Icon name="share-2" className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="hidden sm:inline">Share</span>
+                                </button>
+                                <button type="button" onClick={() => setIsDarkMode(prev => !prev)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0">
+                                    <Icon name={isDarkMode ? 'sun' : 'moon'} className="w-4 h-4" />
+                                </button>
+                                <button type="button" onClick={onOpenMarketplace} className="h-8 px-2.5 sm:px-3 rounded-lg bg-gray-100 dark:bg-white/10 text-xs font-bold whitespace-nowrap shrink-0">
+                                    Marketplace
+                                </button>
+                                <button type="button" onClick={onClose} className="h-8 px-2.5 sm:px-3 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap shrink-0">
+                                    Portal Home
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 w-full px-3 sm:px-5 py-5 sm:py-7">
+                        {loading ? (
+                            <div className="py-24 text-center space-y-3">
+                                <Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" />
+                                <p className="text-xs font-semibold text-gray-500">Loading portfolio showcase...</p>
+                            </div>
+                        ) : errorMsg || !item || !profile ? (
+                            <div className="py-16 text-center space-y-3 bg-white dark:bg-[#141417] rounded-2xl border border-gray-200 dark:border-white/10 p-6 max-w-lg mx-auto">
+                                <Icon name="alert-circle" className="w-10 h-10 text-gray-400 mx-auto" />
+                                <h2 className="text-base font-bold">{errorMsg || 'Case Study Not Found'}</h2>
+                                <button type="button" onClick={onOpenMarketplace} className="px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">Browse Marketplace</button>
+                            </div>
+                        ) : (
+                            <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-7 items-start">
+                                {/* Left Column (8/12): Gig-Style Portfolio Showcase */}
+                                <div className="lg:col-span-8 space-y-5 min-w-0">
+                                    <div className="space-y-3">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold uppercase tracking-wider">
+                                            <Icon name="layers" className="w-3.5 h-3.5" /> Portfolio Case Study
+                                        </span>
+                                        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold leading-snug tracking-tight break-words">
+                                            {item.title}
+                                        </h1>
+
+                                        {/* Creator Strip */}
+                                        <div className="flex items-center justify-between gap-2 py-2.5 border-y border-gray-200/80 dark:border-white/10">
+                                            <button type="button" onClick={() => onOpenPortfolio(profile.shortId || slug)} className="flex items-center gap-2.5 min-w-0 text-left group">
+                                                <div className="relative shrink-0">
+                                                    <img
+                                                        src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(profile.name)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
+                                                        alt={profile.name}
+                                                        className="w-10 h-10 object-cover border border-gray-200 dark:border-white/10 bg-gray-100"
+                                                        style={{ borderRadius: '9999px' }}
+                                                    />
+                                                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-[#0b0b0d]" style={{ borderRadius: '9999px' }} />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-sm font-bold group-hover:text-[#005fb8] truncate">{profile.name}</span>
+                                                        {profile.isVerified !== false && (
+                                                            <svg className="w-4 h-4 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none">
+                                                                <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                                <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                                            </svg>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[11px] text-[#005fb8] dark:text-[#60cdff] font-semibold">View Full Profile →</span>
+                                                </div>
+                                            </button>
+
+                                            <span className="px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-700 dark:text-purple-300 text-xs font-numbers font-bold whitespace-nowrap shrink-0">
+                                                Skill: {Number(profile.skillProgress || 0)}%
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Crisp 16:9 Showcase Image */}
+                                    <div className="w-full aspect-video rounded-2xl overflow-hidden bg-gray-100 dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 shadow-sm">
+                                        <img src={item.imageUrl} alt={item.title} referrerPolicy="no-referrer" className="w-full h-full object-cover block" />
+                                    </div>
+
+                                    {/* Detailed Case Study Write-up */}
+                                    <div className="p-5 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 space-y-2.5">
+                                        <h2 className="text-base sm:text-lg font-bold">Project Overview &amp; Case Study</h2>
+                                        <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
+                                            {item.caseStudy || 'Completed real-world project delivered with clean execution and institute-level quality standards.'}
+                                        </div>
+                                    </div>
+
+                                    {/* More Portfolio Works by Creator */}
+                                    {otherWorks.length > 0 && (
+                                        <div className="space-y-3 pt-2">
+                                            <h3 className="text-base font-bold">More Portfolio Works by {profile.name}</h3>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+                                                {otherWorks.map(ow => (
+                                                    <div key={ow.id} onClick={() => onOpenCaseStudy(profile.shortId || slug, ow.id, profile, ow)} className="cursor-pointer rounded-xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#141417] overflow-hidden hover:border-emerald-500 transition-all group">
+                                                        <div className="aspect-video bg-gray-100 dark:bg-dark-900 overflow-hidden">
+                                                            <img src={ow.imageUrl} alt={ow.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                                         </div>
-                                                        <div className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
-                                                            <div className="h-full bg-[#005fb8] rounded-full" style={{ width: `${Math.min(100, Number(sk.level) || 80)}%` }} />
+                                                        <div className="p-3">
+                                                            <p className="text-xs font-bold truncate group-hover:text-emerald-600">{ow.title}</p>
                                                         </div>
                                                     </div>
                                                 ))}
                                             </div>
                                         </div>
                                     )}
+                                </div>
 
-                                    {Array.isArray(profile.passedExams) && profile.passedExams.length > 0 && (
-                                        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#161618] space-y-3">
-                                            <h3 className="text-sm font-bold flex items-center gap-2"><Icon name="award" className="w-4 h-4 text-emerald-500" /> Verified Skill Assessments</h3>
-                                            <div className="flex flex-wrap gap-2">
-                                                {profile.passedExams.map((ex, idx) => (
-                                                    <span key={idx} className="px-2.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-300/50 dark:border-emerald-500/30 text-xs font-bold text-emerald-800 dark:text-emerald-200">
-                                                        ✓ {ex.moduleTitle} ({ex.bestScore}% • {ex.grade})
-                                                    </span>
+                                {/* Right Column (4/12 Sticky): Creator Summary + Services + Agency Trust Card */}
+                                <div className="lg:col-span-4 lg:sticky lg:top-20 space-y-4 min-w-0">
+                                    <div className="p-5 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 shadow-sm space-y-3.5">
+                                        <h3 className="text-sm font-bold flex items-center gap-2">
+                                            <Icon name="user-check" className="w-4 h-4 text-[#005fb8]" />
+                                            <span>About the Creator</span>
+                                        </h3>
+                                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                                            {profile.tagline || profile.bio || `Verified specialist trained at Faridpur IT Institute.`}
+                                        </p>
+                                        <div className="grid grid-cols-2 gap-2 text-center">
+                                            <div className="p-2.5 rounded-xl bg-purple-500/[0.07] border border-purple-200/60 dark:border-purple-500/20">
+                                                <p className="text-base font-numbers font-bold text-purple-600 dark:text-purple-400">{Number(profile.skillProgress || 0)}%</p>
+                                                <p className="text-[9px] font-bold uppercase text-gray-500">Verified Skill</p>
+                                            </div>
+                                            <div className="p-2.5 rounded-xl bg-emerald-500/[0.07] border border-emerald-200/60 dark:border-emerald-500/20">
+                                                <p className="text-base font-numbers font-bold text-emerald-600 dark:text-emerald-400">{profile.totalOrders || 0}</p>
+                                                <p className="text-[9px] font-bold uppercase text-gray-500">Orders</p>
+                                            </div>
+                                        </div>
+                                        <button type="button" onClick={() => onOpenPortfolio(profile.shortId || slug)} className="w-full py-2.5 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold win-button">
+                                            View Full Profile &amp; Services →
+                                        </button>
+                                    </div>
+
+                                    {creatorGigs.length > 0 && (
+                                        <div className="p-4 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 space-y-2.5">
+                                            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">Services Offered by {profile.name}</h3>
+                                            <div className="space-y-2">
+                                                {creatorGigs.map(g => (
+                                                    <button key={g.id} type="button" onClick={() => onOpenGig(g)} className="w-full p-2.5 rounded-xl bg-gray-50 dark:bg-white/[0.04] hover:bg-blue-500/10 border border-gray-200/70 dark:border-white/10 text-left flex items-center justify-between gap-2 transition-colors">
+                                                        <span className="text-xs font-bold truncate flex-1">{g.title}</span>
+                                                        <span className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] shrink-0">View →</span>
+                                                    </button>
                                                 ))}
                                             </div>
                                         </div>
                                     )}
+
+                                    <div className="p-4 rounded-2xl bg-blue-500/[0.06] border border-blue-200/70 dark:border-blue-500/25 space-y-2.5 text-xs text-gray-600 dark:text-gray-300">
+                                        <div className="flex items-center gap-1.5 font-bold text-gray-900 dark:text-white">
+                                            <Icon name="shield-check" className="w-4 h-4 text-emerald-600 shrink-0" />
+                                            <span>Want a Similar Project?</span>
+                                        </div>
+                                        <p className="leading-relaxed">
+                                            Our <strong>Faridpur IT Institute</strong> team can build a tailored version of this project within your exact requirements and budget.
+                                        </p>
+                                        <div className="flex flex-col gap-2 pt-1">
+                                            <a href="https://wa.me/8801642890942" target="_blank" rel="noopener noreferrer" className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-center flex items-center justify-center gap-1.5">
+                                                <Icon name="message-circle" className="w-4 h-4" /> WhatsApp: +880 1642890942
+                                            </a>
+                                            <a href="https://faridpurit.com" target="_blank" rel="noopener noreferrer" className="w-full py-2 rounded-xl bg-white dark:bg-[#1c1c21] border border-gray-200 dark:border-white/10 font-bold text-center text-[#005fb8] dark:text-[#60cdff]">
+                                                Visit Official Website (faridpurit.com)
+                                            </a>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}
                     </main>
 
-                    <footer className="py-5 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs font-semibold text-gray-500">
-                        Faridpur IT Institute • Verified Student Portfolio
+                    <footer className="py-4 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs font-semibold text-gray-500 bg-white dark:bg-[#141417]">
+                        Faridpur IT Institute • Official Portfolio Showcase
                     </footer>
-
-                    <Modal isOpen={!!activeCaseStudy} onClose={() => setActiveCaseStudy(null)} title={activeCaseStudy?.title || 'Case Study'} maxWidth="max-w-2xl" compact={true}>
-                        {activeCaseStudy && (
-                            <div className="space-y-3.5">
-                                <div className="aspect-video rounded-xl overflow-hidden bg-gray-100 dark:bg-dark-900">
-                                    <img src={activeCaseStudy.imageUrl} alt={activeCaseStudy.title} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                                </div>
-                                <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap break-words">{activeCaseStudy.caseStudy || 'No case study description added.'}</p>
-                            </div>
-                        )}
-                    </Modal>
                 </div>
             );
         };
@@ -25362,12 +25708,14 @@ const SmartPhoneAction = ({ phone }) => {
                 const rawHref = String(window.location.href || '').replace(/&amp;/g, '&');
                 let pSlug = '';
                 let gId = '';
+                let csId = '';
                 let isMkt = false;
 
                 try {
                     const sp = new URLSearchParams(window.location.search);
                     pSlug = sp.get('p') || sp.get('u') || sp.get('portfolio') || '';
                     gId = sp.get('g') || sp.get('gig') || '';
+                    csId = sp.get('cs') || sp.get('case') || '';
                     if (sp.get('market') || sp.get('marketplace')) isMkt = true;
                 } catch (e) {}
 
@@ -25407,17 +25755,22 @@ const SmartPhoneAction = ({ phone }) => {
                     }
                 } catch (e) {}
 
-                return { pSlug, gId, isMkt };
+                csId = String(csId || '').split('?')[0].split('#')[0].trim();
+                return { pSlug, gId, csId, isMkt };
             };
 
             const [publicGigState, setPublicGigState] = useState(() => ({ id: extractPublicParams().gId, initialGig: null }));
+            const [publicCaseStudyState, setPublicCaseStudyState] = useState(() => {
+                const parsed = extractPublicParams();
+                return parsed.csId && parsed.pSlug ? { slug: parsed.pSlug, itemId: parsed.csId, initialProfile: null, initialItem: null } : { slug: '', itemId: '', initialProfile: null, initialItem: null };
+            });
             const [publicPortfolioSlug, setPublicPortfolioSlug] = useState(() => {
                 const parsed = extractPublicParams();
-                return parsed.gId ? '' : parsed.pSlug;
+                return (parsed.gId || parsed.csId) ? '' : parsed.pSlug;
             });
             const [showPublicMarketplace, setShowPublicMarketplace] = useState(() => {
                 const parsed = extractPublicParams();
-                return !parsed.gId && !parsed.pSlug && parsed.isMkt;
+                return !parsed.gId && !parsed.csId && !parsed.pSlug && parsed.isMkt;
             });
             const [publicGigs, setPublicGigs] = useState([]);
             const [myPortfolioConfig, setMyPortfolioConfig] = useState({ tagline: '', bio: '', skills: [], portfolioItems: [] });
@@ -27271,19 +27624,14 @@ const [courseModules, setCourseModules] = useState([]);
                 };
             }, [filteredOrders, myFilteredOrders, orders, filteredExpensesData, payouts, myPayouts, startDate, endDate, auth, networkList]);
 
-       const clearPublicParams = () => {
+      const clearPublicParams = () => {
              try {
                  sessionStorage.removeItem('fit_pub_p_tmp');
                  sessionStorage.removeItem('fit_pub_g_tmp');
              } catch (e) {}
              try {
                  const u = new URL(window.location.href);
-                 u.searchParams.delete('p');
-                 u.searchParams.delete('portfolio');
-                 u.searchParams.delete('g');
-                 u.searchParams.delete('gig');
-                 u.searchParams.delete('market');
-                 u.searchParams.delete('marketplace');
+                 ['p', 'portfolio', 'g', 'gig', 'cs', 'case', 'market', 'marketplace'].forEach(k => u.searchParams.delete(k));
                  u.hash = '';
                  window.history.replaceState({}, '', u.toString());
              } catch (e) { window.location.hash = ''; }
@@ -27292,16 +27640,32 @@ const [courseModules, setCourseModules] = useState([]);
          const openPublicGig = (gigOrId) => {
              const id = typeof gigOrId === 'string' ? gigOrId.trim() : String(gigOrId?.id || '').trim();
              if (!id) return;
+             setPublicCaseStudyState({ slug: '', itemId: '', initialProfile: null, initialItem: null });
              setShowPublicMarketplace(false);
              setPublicPortfolioSlug('');
              setPublicGigState({ id, initialGig: typeof gigOrId === 'object' ? gigOrId : null });
              try {
                  const u = new URL(window.location.href);
-                 u.searchParams.delete('p');
-                 u.searchParams.delete('portfolio');
-                 u.searchParams.delete('market');
-                 u.searchParams.delete('marketplace');
+                 ['p', 'portfolio', 'cs', 'case', 'market', 'marketplace'].forEach(k => u.searchParams.delete(k));
                  u.searchParams.set('g', id);
+                 u.hash = '';
+                 window.history.replaceState({}, '', u.toString());
+             } catch (e) {}
+         };
+
+         const openPublicCaseStudy = (slug, itemId, initialProfile = null, initialItem = null) => {
+             const cleanSlug = String(slug || '').trim();
+             const cleanId = String(itemId || '').trim();
+             if (!cleanSlug || !cleanId) return;
+             setPublicGigState({ id: '', initialGig: null });
+             setShowPublicMarketplace(false);
+             setPublicPortfolioSlug('');
+             setPublicCaseStudyState({ slug: cleanSlug, itemId: cleanId, initialProfile, initialItem });
+             try {
+                 const u = new URL(window.location.href);
+                 ['portfolio', 'g', 'gig', 'market', 'marketplace'].forEach(k => u.searchParams.delete(k));
+                 u.searchParams.set('p', cleanSlug);
+                 u.searchParams.set('cs', cleanId);
                  u.hash = '';
                  window.history.replaceState({}, '', u.toString());
              } catch (e) {}
@@ -27311,14 +27675,12 @@ const [courseModules, setCourseModules] = useState([]);
              const cleanSlug = String(slug || '').trim();
              if (!cleanSlug) return;
              setPublicGigState({ id: '', initialGig: null });
+             setPublicCaseStudyState({ slug: '', itemId: '', initialProfile: null, initialItem: null });
              setShowPublicMarketplace(false);
              setPublicPortfolioSlug(cleanSlug);
              try {
                  const u = new URL(window.location.href);
-                 u.searchParams.delete('portfolio');
-                 u.searchParams.delete('g');
-                 u.searchParams.delete('gig');
-                 u.searchParams.delete('market');
+                 ['portfolio', 'g', 'gig', 'cs', 'case', 'market', 'marketplace'].forEach(k => u.searchParams.delete(k));
                  u.searchParams.set('p', cleanSlug);
                  u.hash = '';
                  window.history.replaceState({}, '', u.toString());
@@ -27327,14 +27689,12 @@ const [courseModules, setCourseModules] = useState([]);
 
          const openFullPublicMarketplace = () => {
              setPublicGigState({ id: '', initialGig: null });
+             setPublicCaseStudyState({ slug: '', itemId: '', initialProfile: null, initialItem: null });
              setPublicPortfolioSlug('');
              setShowPublicMarketplace(true);
              try {
                  const u = new URL(window.location.href);
-                 u.searchParams.delete('p');
-                 u.searchParams.delete('portfolio');
-                 u.searchParams.delete('g');
-                 u.searchParams.delete('gig');
+                 ['p', 'portfolio', 'g', 'gig', 'cs', 'case'].forEach(k => u.searchParams.delete(k));
                  u.searchParams.set('market', '1');
                  u.hash = '';
                  window.history.replaceState({}, '', u.toString());
@@ -27359,6 +27719,28 @@ const [courseModules, setCourseModules] = useState([]);
              );
          }
 
+         if (publicCaseStudyState.itemId) {
+             return (
+                 <>
+                     <ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
+                     <PublicCaseStudyView
+                         slug={publicCaseStudyState.slug}
+                         itemId={publicCaseStudyState.itemId}
+                         initialProfile={publicCaseStudyState.initialProfile}
+                         initialItem={publicCaseStudyState.initialItem}
+                         isDarkMode={isDarkMode}
+                         setIsDarkMode={setIsDarkMode}
+                         addToast={addToast}
+                         onOpenPortfolio={openShortPortfolio}
+                         onOpenMarketplace={openFullPublicMarketplace}
+                         onOpenGig={openPublicGig}
+                         onOpenCaseStudy={openPublicCaseStudy}
+                         onClose={() => { setPublicCaseStudyState({ slug: '', itemId: '', initialProfile: null, initialItem: null }); clearPublicParams(); }}
+                     />
+                 </>
+             );
+         }
+
          if (publicPortfolioSlug) {
              return (
                  <>
@@ -27370,6 +27752,7 @@ const [courseModules, setCourseModules] = useState([]);
                          addToast={addToast}
                          onOpenMarketplace={openFullPublicMarketplace}
                          onOpenGig={openPublicGig}
+                         onOpenCaseStudy={openPublicCaseStudy}
                          onClose={() => { setPublicPortfolioSlug(''); clearPublicParams(); }}
                      />
                  </>
