@@ -23651,41 +23651,115 @@ const SmartPhoneAction = ({ phone }) => {
             );
         };
 
+// ==========================================
+        // 🛒 FIVERR-STYLE MARKETPLACE VIEW (MAX 6 GIGS + LINE-BY-LINE FEATURES + AUTO-SAVE UPWORK PROFILE)
         // ==========================================
-        // 🛒 FIVERR-STYLE MARKETPLACE VIEW (GIG MANAGER + SHAREABLE PORTFOLIO)
-        // ==========================================
-        const MarketplaceView = ({ auth, gigs = [], projects = [], clientLeads = [], studentsPanel = [], studentLeads = [], myPortfolioConfig = null, executeAPI, fetchOrders, addToast, onOpenPublicPortfolio }) => {
+        const MarketplaceView = ({ auth, gigs = [], projects = [], clientLeads = [], studentsPanel = [], studentLeads = [], myPortfolioConfig = null, setMyPortfolioConfig, executeAPI, fetchOrders, addToast }) => {
             const playAudio = (type) => { if (typeof window.playSound === 'function') window.playSound(type); };
             const [serviceList] = useGlobalServices();
             const isAdminMgr = ['Admin', 'Manager'].includes(auth?.role);
             const myId = String(auth?.userId || '').trim();
             const myName = String(auth?.name || auth?.username || myId).trim();
+            const MAX_GIGS_PER_PROFILE = 6;
 
-            const [activeTab, setActiveTab] = useState('my-gigs'); // 'my-gigs' | 'explore' | 'orders' | 'customize'
-            const [pfTagline, setPfTagline] = useState(myPortfolioConfig?.tagline || '');
-            const [pfBio, setPfBio] = useState(myPortfolioConfig?.bio || '');
-            const [pfSkills, setPfSkills] = useState(Array.isArray(myPortfolioConfig?.skills) && myPortfolioConfig.skills.length > 0 ? myPortfolioConfig.skills : [{ name: '', level: 90 }]);
-            const [pfItems, setPfItems] = useState(Array.isArray(myPortfolioConfig?.portfolioItems) ? myPortfolioConfig.portfolioItems : []);
-            const [newCaseStudy, setNewCaseStudy] = useState({ title: '', imageUrl: '', caseStudy: '', uploading: false });
-            const [savingPortfolio, setSavingPortfolio] = useState(false);
+            const normId = (v) => String(v || '').replace(/^'/, '').replace(/^\+88/, '').replace(/[^a-z0-9\u0980-\u09ff]/gi, '').toLowerCase();
+            const myStMatch = useMemo(() => {
+                const uId = normId(myId);
+                const uNm = normId(myName);
+                return [...(studentsPanel || []), ...(studentLeads || [])].find(s =>
+                    (uId && (normId(s.phone) === uId || normId(s.id) === uId)) ||
+                    (uNm && normId(s.name) === uNm)
+                ) || null;
+            }, [studentsPanel, studentLeads, myId, myName]);
 
-            useEffect(() => {
-                if (!myPortfolioConfig) return;
-                setPfTagline(myPortfolioConfig.tagline || '');
-                setPfBio(myPortfolioConfig.bio || '');
-                if (Array.isArray(myPortfolioConfig.skills) && myPortfolioConfig.skills.length > 0) setPfSkills(myPortfolioConfig.skills);
-                if (Array.isArray(myPortfolioConfig.portfolioItems)) setPfItems(myPortfolioConfig.portfolioItems);
-            }, [myPortfolioConfig]);
+            const portfolioSlug = getShortPortfolioId(myStMatch?.id, myStMatch?.phone || myId, myName);
+            const publicPortfolioUrl = `${window.location.origin}/?p=${encodeURIComponent(portfolioSlug)}`;
+
+            const [activeTab, setActiveTab] = useState('my-gigs'); // 'my-gigs' | 'customize' | 'explore' | 'orders'
             const [searchQ, setSearchQ] = useState('');
             const [catFilter, setCatFilter] = useState('All');
             const [modalOpen, setModalOpen] = useState(false);
             const [saving, setSaving] = useState(false);
             const [uploadingBanner, setUploadingBanner] = useState(false);
 
+            // Profile Customization States (Hydrated once so 30s background sync NEVER wipes unsaved typing!)
+            const hydratedRef = useRef(false);
+            const [pfState, setPfState] = useState({
+                tagline: myPortfolioConfig?.tagline || '',
+                bio: myPortfolioConfig?.bio || '',
+                location: myPortfolioConfig?.location || 'Faridpur, Bangladesh',
+                availability: myPortfolioConfig?.availability || 'Available Now',
+                hourlyRate: myPortfolioConfig?.hourlyRate || '',
+                languages: myPortfolioConfig?.languages || 'Bengali, English',
+                responseTime: myPortfolioConfig?.responseTime || 'Within 1 hour',
+                experience: myPortfolioConfig?.experience || 'Verified Talent',
+                skills: Array.isArray(myPortfolioConfig?.skills) && myPortfolioConfig.skills.length > 0 ? myPortfolioConfig.skills : [{ name: '', level: 90 }],
+                portfolioItems: Array.isArray(myPortfolioConfig?.portfolioItems) ? myPortfolioConfig.portfolioItems : []
+            });
+            const [newCaseStudy, setNewCaseStudy] = useState({ title: '', imageUrl: '', caseStudy: '', uploading: false });
+            const [savingPortfolio, setSavingPortfolio] = useState(false);
+
+            useEffect(() => {
+                if (!hydratedRef.current && myPortfolioConfig && (myPortfolioConfig.tagline || myPortfolioConfig.bio || (myPortfolioConfig.skills || []).length > 0 || (myPortfolioConfig.portfolioItems || []).length > 0)) {
+                    hydratedRef.current = true;
+                    setPfState({
+                        tagline: myPortfolioConfig.tagline || '',
+                        bio: myPortfolioConfig.bio || '',
+                        location: myPortfolioConfig.location || 'Faridpur, Bangladesh',
+                        availability: myPortfolioConfig.availability || 'Available Now',
+                        hourlyRate: myPortfolioConfig.hourlyRate || '',
+                        languages: myPortfolioConfig.languages || 'Bengali, English',
+                        responseTime: myPortfolioConfig.responseTime || 'Within 1 hour',
+                        experience: myPortfolioConfig.experience || 'Verified Talent',
+                        skills: Array.isArray(myPortfolioConfig.skills) && myPortfolioConfig.skills.length > 0 ? myPortfolioConfig.skills : [{ name: '', level: 90 }],
+                        portfolioItems: Array.isArray(myPortfolioConfig.portfolioItems) ? myPortfolioConfig.portfolioItems : []
+                    });
+                }
+            }, [myPortfolioConfig]);
+
+            const persistPortfolioToDB = async (nextState, successMsg = 'প্রোফাইল ও পোর্টফোলিও সেভ হয়েছে!') => {
+                setSavingPortfolio(true);
+                playAudio('action');
+                try {
+                    const cleanSkills = (nextState.skills || [])
+                        .map(s => ({ name: String(s.name || '').trim(), level: Math.min(100, Math.max(10, Number(s.level) || 85)) }))
+                        .filter(s => s.name);
+                    const payloadCfg = {
+                        shortId: portfolioSlug,
+                        tagline: nextState.tagline,
+                        bio: nextState.bio,
+                        location: nextState.location,
+                        availability: nextState.availability,
+                        hourlyRate: nextState.hourlyRate,
+                        languages: nextState.languages,
+                        responseTime: nextState.responseTime,
+                        experience: nextState.experience,
+                        skills: cleanSkills,
+                        portfolioItems: nextState.portfolioItems || []
+                    };
+                    const res = await executeAPI({ action: 'save_user_portfolio', portfolioConfig: payloadCfg });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        playAudio('success');
+                        if (typeof setMyPortfolioConfig === 'function' && data.portfolioConfig) {
+                            setMyPortfolioConfig(data.portfolioConfig);
+                        }
+                        try { localStorage.removeItem(`fit_pf_cache_${normId(portfolioSlug)}`); } catch (e) {}
+                        addToast(successMsg, 'success');
+                        fetchOrders(true);
+                    } else {
+                        addToast((data && data.message) || 'Save failed.', 'error');
+                    }
+                } catch (err) {
+                    addToast('Network error saving portfolio.', 'error');
+                }
+                setSavingPortfolio(false);
+            };
+
             const makeDefaultPackages = () => ([
-                { tier: 'Basic', price: '1500', deliveryDays: '3', features: 'Clean modern design\nMobile responsive\n2 Revisions' },
-                { tier: 'Standard', price: '3500', deliveryDays: '5', features: 'Full custom setup\nSpeed & SEO optimized\n5 Revisions\nSource files' },
-                { tier: 'Premium', price: '7000', deliveryDays: '7', features: 'Complete A-Z solution\nAdvanced automation\nUnlimited revisions\nPriority support' }
+                { tier: 'Basic', price: '1500', deliveryDays: '3', features: ['Clean modern design', 'Mobile responsive', '2 Revisions'] },
+                { tier: 'Standard', price: '3500', deliveryDays: '5', features: ['Full custom setup', 'Speed & SEO optimized', '5 Revisions', 'Source files'] },
+                { tier: 'Premium', price: '7000', deliveryDays: '7', features: ['Complete A-Z solution', 'Advanced automation', 'Unlimited revisions', 'Priority support'] }
             ]);
 
             const defaultGigForm = {
@@ -23701,25 +23775,14 @@ const SmartPhoneAction = ({ phone }) => {
             };
             const [gigForm, setGigForm] = useState(defaultGigForm);
 
-            const normId = (v) => String(v || '').replace(/^'/, '').replace(/^\+88/, '').replace(/\s+/g, '').toLowerCase();
-            const myStMatch = useMemo(() => {
-                const uId = normId(myId);
-                const uNm = normId(myName);
-                return [...(studentsPanel || []), ...(studentLeads || [])].find(s =>
-                    (uId && (normId(s.phone) === uId || normId(s.id) === uId)) ||
-                    (uNm && normId(s.name) === uNm)
-                ) || null;
-            }, [studentsPanel, studentLeads, myId, myName]);
-
-            const portfolioSlug = getShortPortfolioId(myStMatch?.id, myStMatch?.phone || myId, myName);
-            const publicPortfolioUrl = `${window.location.origin}/?p=${encodeURIComponent(portfolioSlug)}`;
-
             const myGigs = useMemo(() => {
                 return gigs.filter(g =>
-                    String(g.ownerId || '').toLowerCase() === myId.toLowerCase() ||
-                    String(g.ownerName || '').toLowerCase() === myName.toLowerCase()
+                    normId(g.ownerId) === normId(myId) ||
+                    normId(g.ownerName) === normId(myName)
                 );
             }, [gigs, myId, myName]);
+
+            const isGigLimitReached = myGigs.length >= MAX_GIGS_PER_PROFILE;
 
             const exploreGigs = useMemo(() => {
                 const q = searchQ.trim().toLowerCase();
@@ -23742,60 +23805,74 @@ const SmartPhoneAction = ({ phone }) => {
                 }));
             };
 
-            // গিগ ব্যানার কম্প্রেস করে Google Drive-এ সরাসরি আপলোড
+            const updatePackageFeature = (pkgIdx, featIdx, val) => {
+                setGigForm(prev => ({
+                    ...prev,
+                    packages: prev.packages.map((pk, i) => {
+                        if (i !== pkgIdx) return pk;
+                        const nextFeats = (Array.isArray(pk.features) ? pk.features : ['']).map((f, fi) => fi === featIdx ? val : f);
+                        return { ...pk, features: nextFeats };
+                    })
+                }));
+            };
+
+            const addPackageFeature = (pkgIdx) => {
+                playAudio('click');
+                setGigForm(prev => ({
+                    ...prev,
+                    packages: prev.packages.map((pk, i) => i === pkgIdx ? { ...pk, features: [...(Array.isArray(pk.features) ? pk.features : []), ''] } : pk)
+                }));
+            };
+
+            const removePackageFeature = (pkgIdx, featIdx) => {
+                playAudio('click');
+                setGigForm(prev => ({
+                    ...prev,
+                    packages: prev.packages.map((pk, i) => {
+                        if (i !== pkgIdx) return pk;
+                        const nextFeats = (Array.isArray(pk.features) ? pk.features : []).filter((_, fi) => fi !== featIdx);
+                        return { ...pk, features: nextFeats.length > 0 ? nextFeats : [''] };
+                    })
+                }));
+            };
+
             const handleBannerUpload = (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 if (!file.type.startsWith('image/')) return addToast('অনুগ্রহ করে শুধু ইমেজ ফাইল সিলেক্ট করুন।', 'error');
                 setUploadingBanner(true);
                 playAudio('click');
-
                 const img = new Image();
                 const objUrl = URL.createObjectURL(file);
                 img.onload = async () => {
                     try {
-                        const maxW = 960;
-                        const scale = Math.min(1, maxW / img.width);
+                        const scale = Math.min(1, 960 / img.width);
                         const canvas = document.createElement('canvas');
                         canvas.width = Math.round(img.width * scale);
                         canvas.height = Math.round(img.height * scale);
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-                        const base64 = dataUrl.split(',')[1];
-
-                        const res = await executeAPI({
-                            action: 'upload_chat_file',
-                            filename: `gig_banner_${Date.now()}.jpg`,
-                            mimeType: 'image/jpeg',
-                            data: base64
-                        });
+                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                        const base64 = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
+                        const res = await executeAPI({ action: 'upload_chat_file', filename: `gig_banner_${Date.now()}.jpg`, mimeType: 'image/jpeg', data: base64 });
                         const data = await res.json();
                         if (data && data.success && data.fileId) {
-                            const directUrl = `https://lh3.googleusercontent.com/d/${data.fileId}=w1000`;
-                            setGigForm(prev => ({ ...prev, bannerUrl: directUrl }));
+                            setGigForm(prev => ({ ...prev, bannerUrl: `https://lh3.googleusercontent.com/d/${data.fileId}=w1000` }));
                             playAudio('success');
                             addToast('ব্যানার ছবি আপলোড হয়েছে!', 'success');
-                        } else {
-                            addToast((data && data.message) || 'Upload failed.', 'error');
-                        }
-                    } catch (err) {
-                        addToast('Image upload error.', 'error');
-                    }
+                        } else addToast((data && data.message) || 'Upload failed.', 'error');
+                    } catch (err) { addToast('Image upload error.', 'error'); }
                     URL.revokeObjectURL(objUrl);
                     setUploadingBanner(false);
                     e.target.value = '';
                 };
-                img.onerror = () => {
-                    URL.revokeObjectURL(objUrl);
-                    setUploadingBanner(false);
-                    addToast('Could not read image.', 'error');
-                };
+                img.onerror = () => { URL.revokeObjectURL(objUrl); setUploadingBanner(false); addToast('Could not read image.', 'error'); };
                 img.src = objUrl;
             };
 
             const handleSaveGig = async (e) => {
                 e.preventDefault();
+                if (!gigForm.id && isGigLimitReached) {
+                    return addToast(`একটি প্রোফাইল থেকে সর্বোচ্চ ${MAX_GIGS_PER_PROFILE}টি গিগ পাবলিশ করা যাবে।`, 'error');
+                }
                 if (!gigForm.title.trim()) return addToast('গিগের টাইটেল লিখুন।', 'error');
                 setSaving(true);
                 playAudio('action');
@@ -23804,7 +23881,7 @@ const SmartPhoneAction = ({ phone }) => {
                         tier: pk.tier,
                         price: Math.max(0, Number(pk.price) || 0),
                         deliveryDays: Math.max(1, Number(pk.deliveryDays) || 3),
-                        features: String(pk.features || '').split('\n').map(f => f.trim()).filter(Boolean)
+                        features: (Array.isArray(pk.features) ? pk.features : String(pk.features || '').split('\n')).map(f => String(f || '').trim()).filter(Boolean)
                     })).filter(pk => pk.price > 0);
 
                     if (cleanPackages.length === 0) {
@@ -23814,7 +23891,7 @@ const SmartPhoneAction = ({ phone }) => {
 
                     const res = await executeAPI({
                         action: 'save_marketplace_gig',
-                        gig: { ...gigForm, packages: cleanPackages }
+                        gig: { ...gigForm, shortId: portfolioSlug, packages: cleanPackages }
                     });
                     const data = await res.json();
                     if (data && data.success) {
@@ -23823,12 +23900,8 @@ const SmartPhoneAction = ({ phone }) => {
                         setModalOpen(false);
                         setGigForm(defaultGigForm);
                         fetchOrders(true);
-                    } else {
-                        addToast((data && data.message) || 'Could not save gig.', 'error');
-                    }
-                } catch (err) {
-                    addToast('Network error saving gig.', 'error');
-                }
+                    } else addToast((data && data.message) || 'Could not save gig.', 'error');
+                } catch (err) { addToast('Network error saving gig.', 'error'); }
                 setSaving(false);
             };
 
@@ -23837,12 +23910,15 @@ const SmartPhoneAction = ({ phone }) => {
                 const base = makeDefaultPackages();
                 const mergedPkgs = base.map((defPkg, idx) => {
                     const ex = (g.packages || []).find(p => String(p.tier).toLowerCase() === defPkg.tier.toLowerCase()) || (g.packages || [])[idx];
-                    if (!ex) return { ...defPkg, price: '' };
+                    if (!ex) return { ...defPkg, price: '', features: [''] };
+                    const featList = Array.isArray(ex.features)
+                        ? ex.features.map(f => String(f || '').trim()).filter(Boolean)
+                        : String(ex.features || '').split('\n').map(f => f.trim()).filter(Boolean);
                     return {
                         tier: defPkg.tier,
                         price: String(ex.price || ''),
                         deliveryDays: String(ex.deliveryDays || defPkg.deliveryDays),
-                        features: Array.isArray(ex.features) ? ex.features.join('\n') : String(ex.features || '')
+                        features: featList.length > 0 ? featList : ['']
                     };
                 });
                 setGigForm({
@@ -23865,13 +23941,19 @@ const SmartPhoneAction = ({ phone }) => {
                 try {
                     const res = await executeAPI({ action: 'delete_marketplace_gig', id: g.id });
                     const data = await res.json();
-                    if (data && data.success) {
-                        addToast(data.message || 'Gig deleted.', 'success');
-                        fetchOrders(true);
-                    } else addToast((data && data.message) || 'Delete failed.', 'error');
-                } catch (err) {
-                    addToast('Network error.', 'error');
+                    if (data && data.success) { addToast(data.message || 'Gig deleted.', 'success'); fetchOrders(true); }
+                    else addToast((data && data.message) || 'Delete failed.', 'error');
+                } catch (err) { addToast('Network error.', 'error'); }
+            };
+
+            const shareGigLink = async (g) => {
+                playAudio('click');
+                const gigUrl = `${window.location.origin}/?g=${encodeURIComponent(g.id)}`;
+                if (navigator.share) {
+                    try { await navigator.share({ title: g.title, url: gigUrl }); return; } catch (e) {}
                 }
+                if (navigator.clipboard) navigator.clipboard.writeText(gigUrl);
+                addToast('গিগের ডেডিকেটেড লিংক কপি হয়েছে!', 'success');
             };
 
             const getStartingPrice = (g) => {
@@ -23881,12 +23963,14 @@ const SmartPhoneAction = ({ phone }) => {
 
             const renderGigCard = (g, allowManage = false) => {
                 const startPrice = getStartingPrice(g);
-                const minDays = Math.min(...((g.packages || []).map(p => Number(p.deliveryDays) || 3)));
+                const gigPublicUrl = `${window.location.origin}/?g=${encodeURIComponent(g.id)}`;
+                const ownerPfUrl = `${window.location.origin}/?p=${encodeURIComponent(g.ownerShortId || normId(g.ownerName))}`;
+
                 return (
                     <div key={g.id} className="glass-panel rounded-2xl border border-gray-200/70 dark:border-white/10 overflow-hidden flex flex-col hover:border-[#005fb8]/60 transition-all">
-                        <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden">
+                        <a href={gigPublicUrl} target="_blank" rel="noopener noreferrer" className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden block group">
                             {g.bannerUrl ? (
-                                <img src={g.bannerUrl} alt={g.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                                <img src={g.bannerUrl} alt={g.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                             ) : (
                                 <div className="w-full h-full flex flex-col items-center justify-center text-white/80 p-4 text-center">
                                     <Icon name="briefcase" className="w-8 h-8 mb-1.5 text-[#facc15]" />
@@ -23901,56 +23985,48 @@ const SmartPhoneAction = ({ phone }) => {
                                     {g.status}
                                 </span>
                             )}
-                        </div>
+                        </a>
 
                         <div className="p-3.5 flex-1 flex flex-col gap-2">
                             <div className="flex items-center justify-between gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => { playAudio('click'); onOpenPublicPortfolio(g.ownerShortId || g.ownerName); }}
-                                    className="flex items-center gap-2 min-w-0 text-left group"
-                                >
+                                <a href={ownerPfUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 min-w-0 group">
                                     <UserAvatar name={g.ownerName} size="xs" showOnline={true} />
                                     <span className="text-xs font-bold text-gray-800 dark:text-gray-200 group-hover:text-[#005fb8] truncate">{g.ownerName}</span>
-                                </button>
-                                <span className="text-[10px] font-numbers font-bold text-gray-400 shrink-0">
-                                    {g.ordersCount || 0} orders
-                                </span>
+                                </a>
+                                <span className="text-[10px] font-numbers font-bold text-gray-400 shrink-0">{g.ordersCount || 0} orders</span>
                             </div>
 
-                            <h3 className="text-[15px] sm:text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 tracking-tight" title={g.title}>
+                            <a href={gigPublicUrl} target="_blank" rel="noopener noreferrer" className="text-[15px] sm:text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 hover:text-[#005fb8] tracking-tight" title={g.title}>
                                 {g.title}
-                            </h3>
-                            <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed flex-1">
+                            </a>
+                            <p className="text-[11.5px] text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed flex-1">
                                 {g.description}
                             </p>
 
-                            <div className="pt-2.5 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2">
-                                <div>
-                                    <span className="text-[9px] uppercase font-bold text-gray-400 block leading-none">Starting at</span>
+                            <div className="pt-2.5 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-1.5 flex-nowrap">
+                                <div className="shrink-0">
+                                    <span className="text-[9px] uppercase font-bold text-gray-400 block leading-none">From</span>
                                     <span className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">
                                         {CURRENCY_SYMBOL}{startPrice.toLocaleString()}
                                     </span>
                                 </div>
 
-                                <div className="flex items-center gap-1.5">
-                                    {allowManage ? (
+                                <div className="flex items-center gap-1 flex-nowrap shrink-0">
+                                    <button type="button" onClick={() => shareGigLink(g)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white transition-colors win-button" title="Share Gig Link">
+                                        <Icon name="share-2" className="w-3.5 h-3.5" />
+                                    </button>
+                                    <a href={gigPublicUrl} target="_blank" rel="noopener noreferrer" onClick={() => playAudio('click')} className="px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-800 dark:text-gray-200 hover:bg-[#005fb8] hover:text-white text-[11px] font-bold flex items-center gap-1 whitespace-nowrap transition-colors win-button" title="Open Gig in New Tab">
+                                        <Icon name="external-link" className="w-3 h-3" /> View
+                                    </a>
+                                    {allowManage && (
                                         <>
-                                            <button type="button" onClick={() => openEditGig(g)} className="px-2.5 py-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold win-button">
+                                            <button type="button" onClick={() => openEditGig(g)} className="px-2 py-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold win-button">
                                                 Edit
                                             </button>
                                             <button type="button" onClick={() => handleDeleteGig(g)} className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 win-button" title="Delete">
                                                 <Icon name="trash-2" className="w-3.5 h-3.5" />
                                             </button>
                                         </>
-                                    ) : (
-                                        <button
-                                            type="button"
-                                            onClick={() => { playAudio('click'); onOpenPublicPortfolio(g.ownerName); }}
-                                            className="px-3 py-1.5 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold win-button whitespace-nowrap"
-                                        >
-                                            View Portfolio
-                                        </button>
                                     )}
                                 </div>
                             </div>
@@ -23961,32 +24037,39 @@ const SmartPhoneAction = ({ phone }) => {
 
             return (
                 <div className="space-y-4 sm:space-y-5 pb-12 w-full max-w-full overflow-x-hidden">
-                    {/* Dedicated Public Portfolio Share Banner */}
+                    {/* Dedicated Portfolio Banner */}
                     <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-blue-200/70 dark:border-white/10 bg-gradient-to-r from-blue-500/[0.06] via-transparent to-emerald-500/[0.06] space-y-3.5">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="min-w-0">
-                                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold uppercase tracking-wider mb-1">
-                                    <Icon name="store" className="w-3 h-3 shrink-0" />
-                                    <span>Faridpur IT Freelance Marketplace</span>
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold uppercase tracking-wider">
+                                        <Icon name="store" className="w-3 h-3 shrink-0" /> Freelance Marketplace
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-numbers font-bold ${isGigLimitReached ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300' : 'bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff]'}`}>
+                                        {myGigs.length}/{MAX_GIGS_PER_PROFILE} Gigs Used
+                                    </span>
                                 </div>
                                 <h2 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight truncate">
-                                    Your Dedicated Portfolio &amp; Gigs
+                                    Your Portfolio &amp; Service Gigs
                                 </h2>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                    নিজের সার্ভিস গিগ ও ৩টি প্যাকেজ তৈরি করুন এবং পাবলিক পোর্টফোলিও লিংক শেয়ার করে ক্লায়েন্ট অর্ডার নিন।
-                                </p>
                             </div>
 
                             <button
                                 type="button"
-                                onClick={() => { playAudio('click'); setGigForm(defaultGigForm); setModalOpen(true); }}
-                                className="h-10 px-4 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm shrink-0 whitespace-nowrap win-button"
+                                onClick={() => {
+                                    if (isGigLimitReached) return addToast(`সর্বোচ্চ ${MAX_GIGS_PER_PROFILE}টি গিগ তৈরি করা যাবে। আগের কোনো গিগ এডিট বা ডিলিট করুন।`, 'error');
+                                    playAudio('click');
+                                    setGigForm(defaultGigForm);
+                                    setModalOpen(true);
+                                }}
+                                className={`h-10 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm shrink-0 whitespace-nowrap win-button ${isGigLimitReached ? 'bg-gray-300 dark:bg-dark-700 text-gray-500 cursor-not-allowed' : 'bg-[#005fb8] hover:bg-[#004a94] text-white'}`}
                             >
-                                <Icon name="plus" className="w-4 h-4 shrink-0" /> Create New Gig
+                                <Icon name="plus" className="w-4 h-4 shrink-0" />
+                                <span>{isGigLimitReached ? 'Limit Reached (6/6)' : 'Create New Gig'}</span>
                             </button>
                         </div>
 
-                        {/* Shareable Public Link Bar */}
+                        {/* Shareable Short Link Bar (Opens in New Tab!) */}
                         <div className="p-2.5 rounded-xl bg-white/85 dark:bg-dark-900/60 border border-gray-200/80 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0 flex-1">
                                 <Icon name="globe" className="w-4 h-4 text-[#005fb8] shrink-0" />
@@ -24006,18 +24089,20 @@ const SmartPhoneAction = ({ phone }) => {
                                 >
                                     <Icon name="copy" className="w-3.5 h-3.5" /> Copy Link
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => { playAudio('click'); onOpenPublicPortfolio(portfolioSlug); }}
+                                <a
+                                    href={publicPortfolioUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => playAudio('click')}
                                     className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold flex items-center justify-center gap-1 win-button whitespace-nowrap"
                                 >
                                     <Icon name="external-link" className="w-3.5 h-3.5" /> Public View
-                                </button>
+                                </a>
                                 <a
-                                    href={`https://wa.me/?text=${encodeURIComponent(`হ্যালো! আমার প্রফেশনাল সার্ভিস ও পোর্টফোলিও দেখুন এবং সরাসরি অর্ডার করুন:\n${publicPortfolioUrl}`)}`}
+                                    href={`https://wa.me/?text=${encodeURIComponent(`হ্যালো! আমার প্রফেশনাল পোর্টফোলিও ও সার্ভিসগুলো দেখুন:\n${publicPortfolioUrl}`)}`}
                                     target="_blank"
-                                    rel="noreferrer"
-                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center justify-center gap-1 win-button whitespace-nowrap"
+                                    rel="noopener noreferrer"
+                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center justify-center win-button whitespace-nowrap"
                                     title="Share on WhatsApp"
                                 >
                                     <Icon name="share-2" className="w-3.5 h-3.5" />
@@ -24029,7 +24114,7 @@ const SmartPhoneAction = ({ phone }) => {
                     {/* 4-Tab Navigation */}
                     <div className="glass-panel p-1.5 rounded-xl border border-gray-200/70 dark:border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                         {[
-                            { id: 'my-gigs', label: `My Gigs (${myGigs.length})`, icon: 'layers' },
+                            { id: 'my-gigs', label: `My Gigs (${myGigs.length}/6)`, icon: 'layers' },
                             { id: 'customize', label: `Profile & Portfolio`, icon: 'sliders' },
                             { id: 'explore', label: `Marketplace (${gigs.length})`, icon: 'compass' },
                             { id: 'orders', label: `Orders (${incomingOrders.length})`, icon: 'shopping-bag' }
@@ -24054,165 +24139,126 @@ const SmartPhoneAction = ({ phone }) => {
                             <div className="glass-panel py-12 px-4 rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-center space-y-2.5">
                                 <Icon name="store" className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto" />
                                 <p className="text-sm font-bold text-gray-800 dark:text-gray-200">আপনার এখনো কোনো গিগ নেই</p>
-                                <p className="text-xs text-gray-500 max-w-md mx-auto">আপনার প্রথম সার্ভিস গিগ ও প্যাকেজ যুক্ত করুন, তারপর আপনার ডেডিকেটেড পোর্টফোলিও লিংক সোশ্যাল মিডিয়ায় শেয়ার করে ক্লায়েন্ট অর্ডার নিন।</p>
+                                <p className="text-xs text-gray-500 max-w-md mx-auto">সর্বোচ্চ ৬টি সার্ভিস গিগ তৈরি করে আপনার ডেডিকেটেড পোর্টফোলিওতে পাবলিশ করতে পারবেন।</p>
                                 <button type="button" onClick={() => { setGigForm(defaultGigForm); setModalOpen(true); }} className="mt-2 px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold win-button">
                                     + প্রথম গিগ তৈরি করুন
                                 </button>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 {myGigs.map(g => renderGigCard(g, true))}
                             </div>
                         )
                     )}
 
-                    {/* TAB 2: EXPLORE ALL MARKETPLACE GIGS */}
-                    {activeTab === 'explore' && (
-                        <div className="space-y-3.5">
-                            <div className="glass-panel p-3 rounded-xl border border-gray-200/70 dark:border-white/10 flex flex-col sm:flex-row gap-2.5">
-                                <div className="flex items-center bg-white dark:bg-dark-800 px-3 py-1.5 rounded-lg border border-gray-200/80 dark:border-white/10 flex-1">
-                                    <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
-                                    <input
-                                        type="text"
-                                        value={searchQ}
-                                        onChange={e => setSearchQ(e.target.value)}
-                                        placeholder="গিগ, ক্যাটাগরি বা ফ্রিল্যান্সারের নাম খুঁজুন..."
-                                        className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium text-gray-800 dark:text-white"
-                                    />
-                                </div>
-                                <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
-                                    {['All', ...serviceList].map(c => (
-                                        <button
-                                            key={c}
-                                            type="button"
-                                            onClick={() => setCatFilter(c)}
-                                            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap shrink-0 ${catFilter === c ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300'}`}
-                                        >
-                                            {c}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {exploreGigs.length === 0 ? (
-                                <div className="glass-panel py-10 text-center text-xs text-gray-500 rounded-2xl border border-dashed">কোনো গিগ পাওয়া যায়নি।</div>
-                            ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {exploreGigs.map(g => renderGigCard(g, isAdminMgr || String(g.ownerId).toLowerCase() === myId.toLowerCase()))}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* TAB 3: INCOMING MARKETPLACE ORDERS */}
-                    {activeTab === 'orders' && (
-                        <div className="glass-panel rounded-2xl border border-gray-200/70 dark:border-white/10 overflow-hidden divide-y divide-gray-100 dark:divide-white/10">
-                            {incomingOrders.length === 0 ? (
-                                <div className="py-12 px-4 text-center text-xs text-gray-500">
-                                    এখনো কোনো মার্কেটপ্লেস অর্ডার আসেনি। ক্লায়েন্ট আপনার পোর্টফোলিও থেকে অর্ডার দিলেই এখানে, All Projects এবং Client Leads-এ অটো যুক্ত হবে।
-                                </div>
-                            ) : incomingOrders.map(p => (
-                                <div key={p.id} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className="px-2 py-0.5 rounded bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-mono-code font-bold">{p.id}</span>
-                                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">{p.status}</span>
-                                            <span className="text-[10px] text-gray-400 font-numbers">Deadline: {moment(parseCustomDate(p.deadline)).format('DD MMM YYYY')}</span>
-                                        </div>
-                                        <h4 className="text-sm font-bold text-gray-900 dark:text-white mt-1 break-words">{p.name}</h4>
-                                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
-                                            Client: <strong>{p.client}</strong> {p.clientPhone ? `• ${p.clientPhone}` : ''}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center justify-between sm:flex-col sm:items-end gap-1.5 shrink-0">
-                                        <span className="text-base font-numbers font-bold text-emerald-600 dark:text-emerald-400">
-                                            {CURRENCY_SYMBOL}{Number(p.revenue || 0).toLocaleString()}
-                                        </span>
-                                        <a href="#projects" onClick={() => playAudio('click')} className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">
-                                            Open in Projects →
-                                        </a>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* TAB 4: PROFILE CUSTOMIZATION (TAGLINE, BIO, SKILLS + IMAGE & CASE STUDY PORTFOLIO) */}
+                    {/* TAB 2: ADVANCED REAL-TIME PROFILE & PORTFOLIO CUSTOMIZER (AUTO-SAVES TO DB!) */}
                     {activeTab === 'customize' && (
                         <div className="space-y-4">
-                            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-4">
-                                <div className="flex items-center justify-between gap-2 flex-wrap border-b border-gray-100 dark:border-white/10 pb-3">
-                                    <div>
-                                        <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">Customize Dedicated Profile</h3>
-                                        <p className="text-xs text-gray-500">আপনার পাবলিক পোর্টফোলিও পেজের বায়ো, দক্ষতা (%) এবং কাজের ছবি ও কেস স্টাডি সাজান।</p>
+                            {/* Live Real-Time Preview Strip */}
+                            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-[#005fb8]/10 to-emerald-500/10 border border-blue-200/70 dark:border-blue-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <UserAvatar name={myName} size="md" showOnline={true} />
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="text-sm font-bold text-gray-900 dark:text-white truncate">{myName}</span>
+                                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[9px] font-bold">{pfState.availability}</span>
+                                        </div>
+                                        <p className="text-xs text-gray-600 dark:text-gray-300 truncate">{pfState.tagline || 'Add a professional headline below...'}</p>
+                                        <p className="text-[10px] text-gray-500 truncate">{pfState.location} • {pfState.languages} {pfState.hourlyRate ? `• ${pfState.hourlyRate}` : ''}</p>
                                     </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <a href={publicPortfolioUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-xl bg-white dark:bg-dark-800 text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-white/10 text-xs font-bold whitespace-nowrap">
+                                        Preview Live ↗
+                                    </a>
                                     <button
                                         type="button"
                                         disabled={savingPortfolio}
-                                        onClick={async () => {
-                                            setSavingPortfolio(true);
-                                            playAudio('action');
-                                            try {
-                                                const cleanSkills = pfSkills.map(s => ({ name: String(s.name || '').trim(), level: Math.min(100, Math.max(10, Number(s.level) || 80)) })).filter(s => s.name);
-                                                const res = await executeAPI({
-                                                    action: 'save_user_portfolio',
-                                                    portfolioConfig: { shortId: portfolioSlug, tagline: pfTagline, bio: pfBio, skills: cleanSkills, portfolioItems: pfItems }
-                                                });
-                                                const data = await res.json();
-                                                if (data && data.success) {
-                                                    playAudio('success');
-                                                    addToast(data.message || 'Saved!', 'success');
-                                                    fetchOrders(true);
-                                                } else addToast((data && data.message) || 'Save failed.', 'error');
-                                            } catch (err) { addToast('Network error.', 'error'); }
-                                            setSavingPortfolio(false);
-                                        }}
-                                        className="px-5 py-2 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button"
+                                        onClick={() => persistPortfolioToDB(pfState)}
+                                        className="px-4 py-2 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 whitespace-nowrap win-button"
                                     >
                                         {savingPortfolio ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="save" className="w-3.5 h-3.5" />}
-                                        <span>{savingPortfolio ? 'Saving...' : 'Save Changes'}</span>
+                                        <span>{savingPortfolio ? 'Saving...' : 'Save All'}</span>
                                     </button>
                                 </div>
+                            </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Profile Tagline / Headline</label>
-                                        <input type="text" value={pfTagline} onChange={e => setPfTagline(e.target.value)} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-semibold" placeholder="e.g. Full-Stack WordPress & Digital Marketing Expert" />
+                            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    <div className="sm:col-span-2 lg:col-span-3">
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Professional Headline / Tagline</label>
+                                        <input type="text" value={pfState.tagline} onChange={e => setPfState(p => ({ ...p, tagline: e.target.value }))} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-semibold" placeholder="e.g. Senior WordPress Developer & Technical SEO Specialist" />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">About Me / Bio</label>
-                                        <textarea rows="2" value={pfBio} onChange={e => setPfBio(e.target.value)} className="w-full input-style px-3 py-2 text-xs sm:text-sm resize-none" placeholder="আপনার অভিজ্ঞতা ও কাজের ধরন সংক্ষেপে লিখুন..." />
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Location</label>
+                                        <input type="text" value={pfState.location} onChange={e => setPfState(p => ({ ...p, location: e.target.value }))} className="w-full input-style px-3 py-2 text-xs" placeholder="Faridpur, Bangladesh" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Availability</label>
+                                        <select value={pfState.availability} onChange={e => setPfState(p => ({ ...p, availability: e.target.value }))} className="w-full input-style px-3 py-2 text-xs font-semibold">
+                                            <option value="Available Now">Available Now</option>
+                                            <option value="Open to Projects">Open to Projects</option>
+                                            <option value="Limited Slots">Limited Slots</option>
+                                            <option value="Busy">Currently Busy</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Starting / Hourly Rate</label>
+                                        <input type="text" value={pfState.hourlyRate} onChange={e => setPfState(p => ({ ...p, hourlyRate: e.target.value }))} className="w-full input-style px-3 py-2 text-xs font-numbers font-bold" placeholder="e.g. ৳500/hr or $15/hr" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Languages</label>
+                                        <input type="text" value={pfState.languages} onChange={e => setPfState(p => ({ ...p, languages: e.target.value }))} className="w-full input-style px-3 py-2 text-xs" placeholder="Bengali, English" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Avg. Response Time</label>
+                                        <select value={pfState.responseTime} onChange={e => setPfState(p => ({ ...p, responseTime: e.target.value }))} className="w-full input-style px-3 py-2 text-xs font-semibold">
+                                            <option value="Within 1 hour">Within 1 hour</option>
+                                            <option value="Within 2 hours">Within 2 hours</option>
+                                            <option value="Same day">Same day</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Experience Level</label>
+                                        <input type="text" value={pfState.experience} onChange={e => setPfState(p => ({ ...p, experience: e.target.value }))} className="w-full input-style px-3 py-2 text-xs" placeholder="e.g. 2+ Years Experience" />
+                                    </div>
+                                    <div className="sm:col-span-2 lg:col-span-3">
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">About Me / Detailed Bio (Builds Client Trust)</label>
+                                        <textarea rows="3" value={pfState.bio} onChange={e => setPfState(p => ({ ...p, bio: e.target.value }))} className="w-full input-style px-3 py-2 text-xs sm:text-sm leading-relaxed" placeholder="আপনার কাজের অভিজ্ঞতা, দক্ষতা এবং কেন ক্লায়েন্ট আপনাকে হায়ার করবে তা সুন্দরভাবে লিখুন..." />
                                     </div>
                                 </div>
 
                                 {/* Detailed Skills Builder */}
-                                <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-white/10">
+                                <div className="space-y-2 pt-3 border-t border-gray-100 dark:border-white/10">
                                     <div className="flex items-center justify-between">
                                         <span className="text-xs font-bold text-gray-800 dark:text-gray-200">Skills &amp; Proficiency (%)</span>
-                                        <button type="button" onClick={() => setPfSkills(prev => [...prev, { name: '', level: 85 }])} className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold">
+                                        <button type="button" onClick={() => setPfState(p => ({ ...p, skills: [...p.skills, { name: '', level: 85 }] }))} className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold">
                                             + Add Skill
                                         </button>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {pfSkills.map((sk, idx) => (
+                                        {pfState.skills.map((sk, idx) => (
                                             <div key={idx} className="flex items-center gap-2 bg-gray-50 dark:bg-dark-800 p-2 rounded-xl border border-gray-200/70 dark:border-white/10">
-                                                <input type="text" value={sk.name} onChange={e => setPfSkills(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} className="flex-1 min-w-0 input-style px-2.5 py-1.5 text-xs font-semibold" placeholder="Skill name (e.g. SEO)" />
-                                                <input type="number" min="10" max="100" value={sk.level} onChange={e => setPfSkills(prev => prev.map((x, i) => i === idx ? { ...x, level: e.target.value } : x))} className="w-16 input-style px-2 py-1.5 text-xs font-numbers font-bold text-center" />
-                                                <button type="button" onClick={() => setPfSkills(prev => prev.filter((_, i) => i !== idx))} className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg"><Icon name="x" className="w-3.5 h-3.5" /></button>
+                                                <input type="text" value={sk.name} onChange={e => setPfState(p => ({ ...p, skills: p.skills.map((x, i) => i === idx ? { ...x, name: e.target.value } : x) }))} className="flex-1 min-w-0 input-style px-2.5 py-1.5 text-xs font-semibold" placeholder="Skill name (e.g. React, SEO)" />
+                                                <input type="number" min="10" max="100" value={sk.level} onChange={e => setPfState(p => ({ ...p, skills: p.skills.map((x, i) => i === idx ? { ...x, level: e.target.value } : x) }))} className="w-16 input-style px-2 py-1.5 text-xs font-numbers font-bold text-center" />
+                                                <button type="button" onClick={() => setPfState(p => ({ ...p, skills: p.skills.filter((_, i) => i !== idx) }))} className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg"><Icon name="x" className="w-3.5 h-3.5" /></button>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
 
-                                {/* Portfolio Image + Case Study Builder */}
+                                {/* Portfolio Image + Case Study Builder (INSTANT AUTO-SAVE TO GOOGLE SHEETS!) */}
                                 <div className="space-y-3 pt-3 border-t border-gray-100 dark:border-white/10">
-                                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">Portfolio Projects (Image &amp; Case Study)</span>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200">Portfolio &amp; Case Studies ({pfState.portfolioItems.length})</span>
+                                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">Auto-saves immediately to database</span>
+                                    </div>
 
                                     <div className="p-3 rounded-xl bg-gray-50/90 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 space-y-2.5">
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                             <input type="text" value={newCaseStudy.title} onChange={e => setNewCaseStudy(p => ({ ...p, title: e.target.value }))} className="w-full input-style px-3 py-2 text-xs font-semibold" placeholder="Project / Case Study Title *" />
                                             <div className="flex gap-1.5">
-                                                <input type="url" value={newCaseStudy.imageUrl} onChange={e => setNewCaseStudy(p => ({ ...p, imageUrl: e.target.value }))} className="flex-1 min-w-0 input-style px-2.5 py-2 text-xs" placeholder="Image URL or Upload →" />
+                                                <input type="url" value={newCaseStudy.imageUrl} onChange={e => setNewCaseStudy(p => ({ ...p, imageUrl: e.target.value }))} className="flex-1 min-w-0 input-style px-2.5 py-2 text-xs" placeholder="Upload Photo or paste URL →" />
                                                 <label className="px-3 py-2 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 shrink-0">
                                                     <Icon name={newCaseStudy.uploading ? 'loader' : 'upload'} className={`w-3.5 h-3.5 ${newCaseStudy.uploading ? 'animate-spin' : ''}`} />
                                                     <span>Photo</span>
@@ -24239,7 +24285,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                                     const data = await res.json();
                                                                     if (data && data.success && data.fileId) {
                                                                         setNewCaseStudy(p => ({ ...p, imageUrl: `https://lh3.googleusercontent.com/d/${data.fileId}=w1000`, uploading: false }));
-                                                                        addToast('পোর্টফোলিও ছবি আপলোড হয়েছে!', 'success');
+                                                                        addToast('ছবি আপলোড হয়েছে!', 'success');
                                                                     } else setNewCaseStudy(p => ({ ...p, uploading: false }));
                                                                 } catch (err) { setNewCaseStudy(p => ({ ...p, uploading: false })); }
                                                                 URL.revokeObjectURL(u);
@@ -24251,30 +24297,45 @@ const SmartPhoneAction = ({ phone }) => {
                                                 </label>
                                             </div>
                                         </div>
-                                        <textarea rows="3" value={newCaseStudy.caseStudy} onChange={e => setNewCaseStudy(p => ({ ...p, caseStudy: e.target.value }))} className="w-full input-style px-3 py-2 text-xs resize-none" placeholder="Case Study Details (ক্লায়েন্টের সমস্যা কী ছিল, আপনি কীভাবে সমাধান করেছেন এবং কী রেজাল্ট এসেছে)..." />
+                                        <textarea rows="3" value={newCaseStudy.caseStudy} onChange={e => setNewCaseStudy(p => ({ ...p, caseStudy: e.target.value }))} className="w-full input-style px-3 py-2 text-xs resize-none" placeholder="Case Study Details (ক্লায়েন্টের চাহিদা, আপনার সমাধান ও ফলাফল)..." />
                                         <div className="flex justify-end">
                                             <button
                                                 type="button"
+                                                disabled={savingPortfolio || newCaseStudy.uploading}
                                                 onClick={() => {
                                                     if (!newCaseStudy.title.trim() || !newCaseStudy.imageUrl.trim()) return addToast('ছবি এবং টাইটেল দিন।', 'error');
-                                                    setPfItems(prev => [{ id: `PF-${Date.now()}`, title: newCaseStudy.title.trim(), imageUrl: newCaseStudy.imageUrl.trim(), caseStudy: newCaseStudy.caseStudy.trim() }, ...prev]);
+                                                    const newItem = { id: `PF-${Date.now()}`, title: newCaseStudy.title.trim(), imageUrl: newCaseStudy.imageUrl.trim(), caseStudy: newCaseStudy.caseStudy.trim() };
+                                                    const nextState = { ...pfState, portfolioItems: [newItem, ...(pfState.portfolioItems || [])] };
+                                                    setPfState(nextState);
                                                     setNewCaseStudy({ title: '', imageUrl: '', caseStudy: '', uploading: false });
-                                                    addToast('লিস্টে যোগ হয়েছে — উপরের Save Changes বাটনে ক্লিক করে সেভ করুন!', 'info');
+                                                    persistPortfolioToDB(nextState, 'পোর্টফোলিও আইটেম ডাটাবেসে সেভ হয়েছে!');
                                                 }}
-                                                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold win-button"
+                                                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button"
                                             >
-                                                + Add to Portfolio
+                                                {savingPortfolio ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="plus" className="w-3.5 h-3.5" />}
+                                                <span>Add &amp; Save Portfolio</span>
                                             </button>
                                         </div>
                                     </div>
 
-                                    {pfItems.length > 0 && (
+                                    {pfState.portfolioItems.length > 0 && (
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                            {pfItems.map(item => (
+                                            {pfState.portfolioItems.map(item => (
                                                 <div key={item.id} className="rounded-xl border border-gray-200/80 dark:border-white/10 overflow-hidden bg-white dark:bg-dark-800 flex flex-col">
                                                     <div className="aspect-video bg-gray-100 dark:bg-dark-900 overflow-hidden relative">
                                                         <img src={item.imageUrl} alt={item.title} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                                                        <button type="button" onClick={() => setPfItems(prev => prev.filter(x => x.id !== item.id))} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-md"><Icon name="trash-2" className="w-3.5 h-3.5" /></button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (!window.confirm('এই পোর্টফোলিও আইটেম ডিলিট করবেন?')) return;
+                                                                const nextState = { ...pfState, portfolioItems: pfState.portfolioItems.filter(x => x.id !== item.id) };
+                                                                setPfState(nextState);
+                                                                persistPortfolioToDB(nextState, 'পোর্টফোলিও আইটেম ডিলিট হয়েছে।');
+                                                            }}
+                                                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-md"
+                                                        >
+                                                            <Icon name="trash-2" className="w-3.5 h-3.5" />
+                                                        </button>
                                                     </div>
                                                     <div className="p-2.5">
                                                         <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{item.title}</p>
@@ -24289,8 +24350,58 @@ const SmartPhoneAction = ({ phone }) => {
                         </div>
                     )}
 
-                    {/* Create / Edit Gig & 3-Package Builder Modal */}
-                    <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={gigForm.id ? 'Edit Service Gig' : 'Create New Service Gig'} maxWidth="max-w-2xl" compact={true}>
+                    {/* TAB 3: EXPLORE MARKETPLACE */}
+                    {activeTab === 'explore' && (
+                        <div className="space-y-3.5">
+                            <div className="glass-panel p-3 rounded-xl border border-gray-200/70 dark:border-white/10 flex flex-col sm:flex-row gap-2.5">
+                                <div className="flex items-center bg-white dark:bg-dark-800 px-3 py-1.5 rounded-lg border border-gray-200/80 dark:border-white/10 flex-1">
+                                    <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
+                                    <input type="text" value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="গিগ, ক্যাটাগরি বা ফ্রিল্যান্সারের নাম খুঁজুন..." className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium text-gray-800 dark:text-white" />
+                                </div>
+                                <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                                    {['All', ...serviceList].map(c => (
+                                        <button key={c} type="button" onClick={() => setCatFilter(c)} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap shrink-0 ${catFilter === c ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300'}`}>{c}</button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {exploreGigs.length === 0 ? (
+                                <div className="glass-panel py-10 text-center text-xs text-gray-500 rounded-2xl border border-dashed">কোনো গিগ পাওয়া যায়নি।</div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                    {exploreGigs.map(g => renderGigCard(g, isAdminMgr || normId(g.ownerId) === normId(myId)))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* TAB 4: INCOMING ORDERS */}
+                    {activeTab === 'orders' && (
+                        <div className="glass-panel rounded-2xl border border-gray-200/70 dark:border-white/10 overflow-hidden divide-y divide-gray-100 dark:divide-white/10">
+                            {incomingOrders.length === 0 ? (
+                                <div className="py-12 px-4 text-center text-xs text-gray-500">এখনো কোনো মার্কেটপ্লেস অর্ডার আসেনি।</div>
+                            ) : incomingOrders.map(p => (
+                                <div key={p.id} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="px-2 py-0.5 rounded bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-mono-code font-bold">{p.id}</span>
+                                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">{p.status}</span>
+                                            <span className="text-[10px] text-gray-400 font-numbers">Deadline: {moment(parseCustomDate(p.deadline)).format('DD MMM YYYY')}</span>
+                                        </div>
+                                        <h4 className="text-sm font-bold text-gray-900 dark:text-white mt-1 break-words">{p.name}</h4>
+                                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">Client: <strong>{p.client}</strong> {p.clientPhone ? `• ${p.clientPhone}` : ''}</p>
+                                    </div>
+                                    <div className="flex items-center justify-between sm:flex-col sm:items-end gap-1.5 shrink-0">
+                                        <span className="text-base font-numbers font-bold text-emerald-600 dark:text-emerald-400">{CURRENCY_SYMBOL}{Number(p.revenue || 0).toLocaleString()}</span>
+                                        <a href="#projects" onClick={() => playAudio('click')} className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">Open in Projects →</a>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Create / Edit Gig Modal (Individual Input Boxes for Every Package Feature!) */}
+                    <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={gigForm.id ? 'Edit Service Gig' : 'Create New Service Gig'} maxWidth="max-w-3xl" compact={true}>
                         <form onSubmit={handleSaveGig} className="space-y-3.5 w-full min-w-0">
                             <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5">
                                 <div className="text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">1. Gig Overview</div>
@@ -24319,7 +24430,7 @@ const SmartPhoneAction = ({ phone }) => {
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Banner Image (Upload or URL)</label>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Banner Image (16:9 Recommended)</label>
                                         <div className="flex gap-1.5">
                                             <input type="url" value={gigForm.bannerUrl} onChange={e => setGigForm({ ...gigForm, bannerUrl: e.target.value })} className="flex-1 min-w-0 input-style px-2.5 py-1.5 text-xs" placeholder="https://..." />
                                             <label className="px-2.5 py-1.5 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 shrink-0">
@@ -24336,12 +24447,12 @@ const SmartPhoneAction = ({ phone }) => {
                                 </div>
                             </div>
 
-                            {/* 3 Pricing Packages (Basic, Standard, Premium) */}
+                            {/* 3 Packages with Individual Feature Boxes */}
                             <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">2. Pricing Packages (Basic / Standard / Premium)</div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">2. Pricing Packages &amp; Features</div>
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
                                     {gigForm.packages.map((pk, idx) => (
-                                        <div key={pk.tier} className="p-2.5 rounded-xl bg-white dark:bg-dark-800 border border-gray-200/70 dark:border-white/10 space-y-2">
+                                        <div key={pk.tier} className="p-2.5 rounded-xl bg-white dark:bg-dark-800 border border-gray-200/70 dark:border-white/10 space-y-2 flex flex-col">
                                             <div className="text-xs font-bold text-center py-1 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] uppercase">
                                                 {pk.tier}
                                             </div>
@@ -24355,9 +24466,35 @@ const SmartPhoneAction = ({ phone }) => {
                                                     <input type="number" min="1" value={pk.deliveryDays} onChange={e => updatePackageField(idx, 'deliveryDays', e.target.value)} className="w-full input-style px-2 py-1 text-xs font-numbers font-bold" placeholder="3" />
                                                 </div>
                                             </div>
-                                            <div>
-                                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-0.5">Features (1 per line)</label>
-                                                <textarea rows="3" value={pk.features} onChange={e => updatePackageField(idx, 'features', e.target.value)} className="w-full input-style px-2 py-1 text-[11px] leading-snug resize-none" placeholder="Feature 1&#10;Feature 2" />
+
+                                            <div className="space-y-1.5 pt-1 border-t border-gray-100 dark:border-white/10 flex-1">
+                                                <label className="block text-[9px] font-bold text-gray-400 uppercase">Included Features</label>
+                                                {(Array.isArray(pk.features) ? pk.features : ['']).map((ft, fIdx) => (
+                                                    <div key={fIdx} className="flex items-center gap-1 min-w-0">
+                                                        <input
+                                                            type="text"
+                                                            value={ft}
+                                                            onChange={e => updatePackageFeature(idx, fIdx, e.target.value)}
+                                                            className="flex-1 min-w-0 input-style px-2 py-1 text-[11px]"
+                                                            placeholder={`Feature #${fIdx + 1}`}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removePackageFeature(idx, fIdx)}
+                                                            className="w-6 h-6 rounded bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white flex items-center justify-center shrink-0"
+                                                            title="Remove"
+                                                        >
+                                                            <Icon name="x" className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => addPackageFeature(idx)}
+                                                    className="w-full py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold flex items-center justify-center gap-1"
+                                                >
+                                                    <Icon name="plus" className="w-3 h-3" /> Add Feature
+                                                </button>
                                             </div>
                                         </div>
                                     ))}
@@ -24377,45 +24514,108 @@ const SmartPhoneAction = ({ phone }) => {
             );
         };
 
-       // ==========================================
-        // 🎯 REUSABLE BALANCED 16:9 GIG DETAIL & ORDER MODAL (RESPONSIVE ON MOBILE & PC)
+      // ==========================================
+        // 🎯 DEDICATED FULL-WIDTH PUBLIC GIG PAGE (FIVERR-STYLE 16:9 + STICKY PACKAGES + SEO)
         // ==========================================
-        const GigDetailOrderModal = ({ gig, onClose, addToast, onOpenOwnerPortfolio }) => {
+        const PublicGigDetailView = ({ gigId, initialGig = null, isDarkMode, setIsDarkMode, addToast, onOpenPortfolio, onOpenMarketplace, onClose }) => {
+            const [loading, setLoading] = useState(!initialGig);
+            const [gig, setGig] = useState(initialGig);
+            const [errorMsg, setErrorMsg] = useState('');
             const [selectedPkgIdx, setSelectedPkgIdx] = useState(0);
             const [orderForm, setOrderForm] = useState({ clientName: '', clientPhone: '', clientEmail: '', brief: '', submitting: false });
             const [orderSuccess, setOrderSuccess] = useState(null);
 
             useEffect(() => {
                 setSelectedPkgIdx(0);
-                if (gig) {
-                    const pkgs = Array.isArray(gig.packages) ? gig.packages : [];
-                    const prices = pkgs.map(p => Number(p.price) || 0).filter(v => v > 0);
-                    const minP = prices.length ? Math.min(...prices) : 0;
-                    updateDynamicSEO({
-                        title: `${gig.title} by ${gig.ownerName} | Faridpur IT Institute`,
-                        description: String(gig.description || gig.title).slice(0, 155),
-                        url: `${window.location.origin}/?p=${encodeURIComponent(gig.ownerShortId || gig.ownerName)}`,
-                        image: gig.bannerUrl || '',
-                        schemaObj: {
-                            '@context': 'https://schema.org',
-                            '@type': 'Service',
-                            name: gig.title,
-                            description: gig.description,
-                            serviceType: gig.category,
-                            provider: { '@type': 'Person', name: gig.ownerName },
-                            offers: { '@type': 'Offer', priceCurrency: 'BDT', price: String(minP), availability: 'https://schema.org/InStock' }
+                if (initialGig && String(initialGig.id) === String(gigId)) {
+                    setGig(initialGig);
+                    setLoading(false);
+                }
+                if (!gigId) return;
+                let cancelled = false;
+                if (!initialGig) setLoading(true);
+                setErrorMsg('');
+
+                fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'get_public_gig', gigId })
+                })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (cancelled) return;
+                        if (data && data.success && data.gig) {
+                            setGig(data.gig);
+                        } else if (!initialGig) {
+                            setErrorMsg((data && data.message) || 'Gig not found.');
+                        }
+                        setLoading(false);
+                    })
+                    .catch(() => {
+                        if (!cancelled) {
+                            if (!initialGig) setErrorMsg('Network error loading service.');
+                            setLoading(false);
                         }
                     });
-                }
+                return () => { cancelled = true; };
+            }, [gigId]);
+
+            // Google Search & Social Crawler Dynamic SEO + JSON-LD
+            useEffect(() => {
+                if (!gig) return;
+                const pkgs = Array.isArray(gig.packages) ? gig.packages : [];
+                const prices = pkgs.map(p => Number(p.price) || 0).filter(v => v > 0);
+                const minPrice = prices.length ? Math.min(...prices) : 0;
+                const gigUrl = `${window.location.origin}/?g=${encodeURIComponent(gig.id)}`;
+                if (typeof updateDynamicSEO === 'function') updateDynamicSEO({
+                    title: `${gig.title} | ${gig.ownerName} — Faridpur IT Institute`,
+                    description: String(gig.description || gig.title).slice(0, 155),
+                    url: gigUrl,
+                    image: gig.bannerUrl || '',
+                    schemaObj: {
+                        '@context': 'https://schema.org',
+                        '@type': 'Service',
+                        name: gig.title,
+                        description: gig.description,
+                        serviceType: gig.category,
+                        url: gigUrl,
+                        image: gig.bannerUrl || undefined,
+                        provider: {
+                            '@type': 'Person',
+                            name: gig.ownerName,
+                            url: `${window.location.origin}/?p=${encodeURIComponent(gig.ownerShortId || gig.ownerName)}`
+                        },
+                        offers: {
+                            '@type': 'Offer',
+                            priceCurrency: 'BDT',
+                            price: String(minPrice),
+                            availability: 'https://schema.org/InStock'
+                        }
+                    }
+                });
             }, [gig]);
+
+            const shareGigUrl = `${window.location.origin}/?g=${encodeURIComponent(gig?.id || gigId || '')}`;
+            const handleShareGig = async () => {
+                if (typeof window.playSound === 'function') window.playSound('click');
+                if (navigator.share) {
+                    try {
+                        await navigator.share({ title: gig?.title || 'Service', url: shareGigUrl });
+                        return;
+                    } catch (e) {}
+                }
+                if (navigator.clipboard) navigator.clipboard.writeText(shareGigUrl);
+                if (typeof addToast === 'function') addToast('গিগ লিংক কপি হয়েছে!', 'success');
+            };
+
+            const pkgs = (gig && Array.isArray(gig.packages) && gig.packages.length > 0)
+                ? gig.packages
+                : [{ tier: 'Basic', price: 1500, deliveryDays: 3, features: ['Professional delivery'] }];
+            const activePkg = pkgs[selectedPkgIdx] || pkgs[0];
 
             const handlePlaceOrder = async (e) => {
                 e.preventDefault();
                 if (!gig) return;
-                const pkgs = Array.isArray(gig.packages) && gig.packages.length > 0
-                    ? gig.packages
-                    : [{ tier: 'Basic', price: 1500, deliveryDays: 3, features: [] }];
-                const activePkg = pkgs[selectedPkgIdx] || pkgs[0];
                 setOrderForm(prev => ({ ...prev, submitting: true }));
                 try {
                     const res = await fetch(API_URL, {
@@ -24443,7 +24643,6 @@ const SmartPhoneAction = ({ phone }) => {
                         if (typeof window.playSound === 'function') window.playSound('success');
                         setOrderSuccess({ orderId: data.orderId, message: data.message, gigTitle: gig.title, pkg: activePkg });
                         setOrderForm({ clientName: '', clientPhone: '', clientEmail: '', brief: '', submitting: false });
-                        onClose();
                     } else {
                         if (typeof addToast === 'function') addToast((data && data.message) || 'Order could not be placed.', 'error');
                         setOrderForm(prev => ({ ...prev, submitting: false }));
@@ -24454,92 +24653,163 @@ const SmartPhoneAction = ({ phone }) => {
                 }
             };
 
-            const pkgs = (gig && Array.isArray(gig.packages) && gig.packages.length > 0)
-                ? gig.packages
-                : [{ tier: 'Basic', price: 1500, deliveryDays: 3, features: ['Professional delivery'] }];
-            const activePkg = pkgs[selectedPkgIdx] || pkgs[0];
-
             return (
-                <>
-                    <Modal isOpen={!!gig} onClose={onClose} title={gig?.category || 'Service Details'} maxWidth="max-w-4xl" compact={true}>
-                        {gig && (
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start w-full min-w-0">
-                                {/* Left Column (7/12 on PC): Proper 16:9 Image + Title + Description */}
-                                <div className="lg:col-span-7 space-y-3.5 min-w-0">
-                                    <div className="w-full aspect-video rounded-xl overflow-hidden bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] border border-gray-200/80 dark:border-white/10 relative">
+                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-white dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100 flex flex-col">
+                    {/* Full-Width Top Bar */}
+                    <header className="sticky top-0 z-40 w-full bg-white/95 dark:bg-[#141416]/95 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/10 px-3 sm:px-6 lg:px-8 py-3">
+                        <div className="w-full flex items-center justify-between gap-2 flex-nowrap">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <button
+                                    type="button"
+                                    onClick={onOpenMarketplace}
+                                    className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 flex items-center justify-center shrink-0"
+                                    title="Back to Marketplace"
+                                >
+                                    <Icon name="arrow-left" className="w-4 h-4" />
+                                </button>
+                                <span className="text-xs sm:text-sm font-bold whitespace-nowrap truncate">Faridpur IT Institute</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-nowrap">
+                                <button type="button" onClick={handleShareGig} className="h-8 px-2.5 sm:px-3 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold flex items-center gap-1 whitespace-nowrap shrink-0">
+                                    <Icon name="share-2" className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="hidden sm:inline">Share Gig</span>
+                                </button>
+                                <button type="button" onClick={() => setIsDarkMode(prev => !prev)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0">
+                                    <Icon name={isDarkMode ? 'sun' : 'moon'} className="w-4 h-4" />
+                                </button>
+                                <button type="button" onClick={onOpenMarketplace} className="h-8 px-2.5 sm:px-3 rounded-lg bg-gray-100 dark:bg-white/10 text-xs font-bold whitespace-nowrap shrink-0">
+                                    Marketplace
+                                </button>
+                                <button type="button" onClick={onClose} className="h-8 px-2.5 sm:px-3 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap shrink-0">
+                                    Portal Home
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Full-Width Responsive Body */}
+                    <main className="flex-1 w-full px-3 sm:px-6 lg:px-8 py-5 sm:py-8">
+                        {loading ? (
+                            <div className="py-24 text-center space-y-3">
+                                <Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" />
+                                <p className="text-xs font-semibold text-gray-500">Loading service...</p>
+                            </div>
+                        ) : errorMsg || !gig ? (
+                            <div className="py-16 text-center space-y-3 bg-gray-50 dark:bg-[#161618] rounded-2xl border border-gray-200 dark:border-white/10 p-6 max-w-lg mx-auto">
+                                <Icon name="alert-circle" className="w-10 h-10 text-gray-400 mx-auto" />
+                                <h2 className="text-base font-bold">{errorMsg || 'Gig Not Found'}</h2>
+                                <button type="button" onClick={onOpenMarketplace} className="px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">Browse Marketplace</button>
+                            </div>
+                        ) : (
+                            <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+                                {/* Left Column (7/12): Title + Seller Bar + 16:9 Banner + Full Description */}
+                                <div className="lg:col-span-7 space-y-5 min-w-0">
+                                    <div className="space-y-3">
+                                        <span className="inline-block px-2.5 py-1 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold whitespace-nowrap">
+                                            {gig.category}
+                                        </span>
+
+                                        <h1 className="text-xl sm:text-2xl lg:text-[28px] font-bold text-gray-900 dark:text-white leading-snug tracking-tight break-words">
+                                            {gig.title}
+                                        </h1>
+
+                                        {/* Seller Strip with Circular Active Dot & Icon-Only Verified Badge */}
+                                        <div className="flex items-center justify-between gap-2 flex-nowrap py-2.5 border-y border-gray-200/80 dark:border-white/10">
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenPortfolio(gig.ownerShortId || gig.ownerName)}
+                                                className="flex items-center gap-2.5 min-w-0 text-left group"
+                                            >
+                                                <div className="relative shrink-0">
+                                                    <img
+                                                        src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(gig.ownerName)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
+                                                        alt={gig.ownerName}
+                                                        className="w-10 h-10 object-cover border border-gray-200 dark:border-white/10 bg-gray-100"
+                                                        style={{ borderRadius: '9999px' }}
+                                                    />
+                                                    <span
+                                                        className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-[#0d0d0f]"
+                                                        style={{ borderRadius: '9999px' }}
+                                                    />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-1.5 flex-nowrap">
+                                                        <span className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-[#005fb8] truncate">{gig.ownerName}</span>
+                                                        {gig.isVerified !== false && (
+                                                            <svg className="w-4 h-4 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none" aria-label="Verified">
+                                                                <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                                <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                                            </svg>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[11px] text-[#005fb8] dark:text-[#60cdff] font-semibold">View Full Profile →</span>
+                                                </div>
+                                            </button>
+
+                                            <span className="text-xs font-numbers font-bold text-gray-500 whitespace-nowrap shrink-0">
+                                                {gig.ordersCount || 0} orders
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Strict 16:9 Aspect Ratio Hero Banner */}
+                                    <div className="w-full aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] border border-gray-200/80 dark:border-white/10">
                                         {gig.bannerUrl ? (
                                             <img src={gig.bannerUrl} alt={gig.title} referrerPolicy="no-referrer" className="w-full h-full object-cover block" />
                                         ) : (
-                                            <div className="w-full h-full flex flex-col items-center justify-center text-white/85 p-4 text-center">
-                                                <Icon name="briefcase" className="w-10 h-10 text-[#facc15] mb-1.5" />
-                                                <span className="text-xs font-bold uppercase tracking-wider">{gig.category}</span>
+                                            <div className="w-full h-full flex flex-col items-center justify-center text-white/85 p-6 text-center">
+                                                <Icon name="briefcase" className="w-12 h-12 text-[#facc15] mb-2" />
+                                                <span className="text-sm font-bold uppercase tracking-wider">{gig.category}</span>
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="flex items-center justify-between gap-2 flex-nowrap">
-                                        <button
-                                            type="button"
-                                            onClick={() => { if (typeof onOpenOwnerPortfolio === 'function') onOpenOwnerPortfolio(gig.ownerShortId || gig.ownerName); }}
-                                            className="flex items-center gap-2 min-w-0 hover:opacity-80 text-left"
-                                        >
-                                            <UserAvatar name={gig.ownerName} size="sm" showOnline={true} />
-                                            <span className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white truncate">{gig.ownerName}</span>
-                                            <svg className="w-3.5 h-3.5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none">
-                                                <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
-                                                <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
-                                            </svg>
-                                        </button>
-                                        <span className="text-[11px] font-numbers font-bold text-gray-500 whitespace-nowrap shrink-0">
-                                            {gig.ordersCount || 0} orders
-                                        </span>
-                                    </div>
-
-                                    <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white leading-snug break-words">
-                                        {gig.title}
-                                    </h2>
-
-                                    <div className="p-3.5 rounded-xl bg-gray-50/90 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
-                                        {gig.description}
+                                    {/* Service Details */}
+                                    <div className="space-y-2.5">
+                                        <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white whitespace-nowrap">About This Service</h2>
+                                        <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
+                                            {gig.description}
+                                        </div>
                                     </div>
 
                                     {gig.demoUrl && (
-                                        <a href={gig.demoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold hover:underline whitespace-nowrap">
-                                            <Icon name="external-link" className="w-3.5 h-3.5 shrink-0" /> Live Sample / Demo
+                                        <a href={gig.demoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-500/10 hover:bg-[#005fb8] text-[#005fb8] hover:text-white dark:text-[#60cdff] text-xs font-bold transition-colors whitespace-nowrap">
+                                            <Icon name="external-link" className="w-4 h-4 shrink-0" /> Open Live Sample / Demo
                                         </a>
                                     )}
                                 </div>
 
-                                {/* Right Column (5/12 on PC): Compact Package Selector + Order Form */}
-                                <div className="lg:col-span-5 space-y-3 min-w-0">
-                                    <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden">
+                                {/* Right Column (5/12): Sticky Packages + Direct Order Box */}
+                                <div className="lg:col-span-5 lg:sticky lg:top-20 space-y-4 min-w-0">
+                                    <div className="rounded-2xl border border-gray-200/90 dark:border-white/10 overflow-hidden bg-white dark:bg-[#161618] shadow-sm">
                                         <div className="grid grid-cols-3 bg-gray-100 dark:bg-dark-900 p-1 gap-1">
                                             {pkgs.map((pk, idx) => (
                                                 <button
                                                     key={pk.tier || idx}
                                                     type="button"
                                                     onClick={() => setSelectedPkgIdx(idx)}
-                                                    className={`py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors ${selectedPkgIdx === idx ? 'bg-[#005fb8] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}
+                                                    className={`py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${selectedPkgIdx === idx ? 'bg-[#005fb8] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}
                                                 >
                                                     {pk.tier}
                                                 </button>
                                             ))}
                                         </div>
 
-                                        <div className="p-3 bg-white dark:bg-dark-800 space-y-2">
+                                        <div className="p-4 space-y-3">
                                             <div className="flex items-center justify-between gap-2 whitespace-nowrap">
-                                                <span className="text-[11px] font-bold text-gray-500 uppercase">{activePkg.tier}</span>
-                                                <span className="text-lg font-numbers font-bold text-emerald-600 dark:text-emerald-400">
+                                                <span className="text-xs font-bold text-gray-500 uppercase">{activePkg.tier} Package</span>
+                                                <span className="text-2xl font-numbers font-bold text-emerald-600 dark:text-emerald-400">
                                                     {CURRENCY_SYMBOL}{Number(activePkg.price || 0).toLocaleString()}
                                                 </span>
                                             </div>
-                                            <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1.5 whitespace-nowrap">
-                                                <Icon name="clock" className="w-3.5 h-3.5 text-[#005fb8] shrink-0" /> {activePkg.deliveryDays || 3} Days Delivery
+                                            <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1.5 whitespace-nowrap">
+                                                <Icon name="clock" className="w-4 h-4 text-[#005fb8] shrink-0" /> {activePkg.deliveryDays || 3} Days Delivery
                                             </p>
-                                            <ul className="space-y-1 pt-2 border-t border-gray-100 dark:border-white/10">
+                                            <ul className="space-y-1.5 pt-2.5 border-t border-gray-100 dark:border-white/10">
                                                 {(Array.isArray(activePkg.features) ? activePkg.features : []).map((ft, fi) => (
-                                                    <li key={fi} className="text-[11.5px] text-gray-700 dark:text-gray-200 flex items-start gap-1.5">
-                                                        <Icon name="check" className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                                                    <li key={fi} className="text-xs sm:text-[13px] text-gray-700 dark:text-gray-200 flex items-start gap-2">
+                                                        <Icon name="check" className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                                                         <span className="break-words">{ft}</span>
                                                     </li>
                                                 ))}
@@ -24547,15 +24817,15 @@ const SmartPhoneAction = ({ phone }) => {
                                         </div>
                                     </div>
 
-                                    <form onSubmit={handlePlaceOrder} className="p-3 rounded-xl bg-blue-500/[0.06] border border-blue-200/70 dark:border-blue-500/25 space-y-2">
-                                        <p className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] whitespace-nowrap">
-                                            Order {activePkg.tier} ({CURRENCY_SYMBOL}{Number(activePkg.price || 0).toLocaleString()})
+                                    <form onSubmit={handlePlaceOrder} className="p-4 rounded-2xl bg-blue-500/[0.06] border border-blue-200/70 dark:border-blue-500/25 space-y-2.5">
+                                        <p className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] whitespace-nowrap">
+                                            Place Order — {activePkg.tier} ({CURRENCY_SYMBOL}{Number(activePkg.price || 0).toLocaleString()})
                                         </p>
-                                        <input type="text" required value={orderForm.clientName} onChange={e => setOrderForm({ ...orderForm, clientName: e.target.value })} className="w-full input-style px-3 py-2 text-xs" placeholder="আপনার নাম *" />
-                                        <input type="tel" required minLength={10} value={orderForm.clientPhone} onChange={e => setOrderForm({ ...orderForm, clientPhone: e.target.value })} className="w-full input-style px-3 py-2 text-xs font-mono-code" placeholder="হোয়াটসঅ্যাপ / ফোন নাম্বার *" />
-                                        <input type="email" value={orderForm.clientEmail} onChange={e => setOrderForm({ ...orderForm, clientEmail: e.target.value })} className="w-full input-style px-3 py-2 text-xs" placeholder="ইমেইল (Optional)" />
-                                        <textarea rows="2" value={orderForm.brief} onChange={e => setOrderForm({ ...orderForm, brief: e.target.value })} className="w-full input-style px-3 py-2 text-xs resize-none" placeholder="প্রজেক্টের বিবরণ লিখুন..." />
-                                        <button type="submit" disabled={orderForm.submitting} className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 whitespace-nowrap win-button">
+                                        <input type="text" required value={orderForm.clientName} onChange={e => setOrderForm({ ...orderForm, clientName: e.target.value })} className="w-full input-style px-3 py-2 text-sm" placeholder="আপনার নাম *" />
+                                        <input type="tel" required minLength={10} value={orderForm.clientPhone} onChange={e => setOrderForm({ ...orderForm, clientPhone: e.target.value })} className="w-full input-style px-3 py-2 text-sm font-mono-code" placeholder="হোয়াটসঅ্যাপ / ফোন নাম্বার *" />
+                                        <input type="email" value={orderForm.clientEmail} onChange={e => setOrderForm({ ...orderForm, clientEmail: e.target.value })} className="w-full input-style px-3 py-2 text-sm" placeholder="ইমেইল (Optional)" />
+                                        <textarea rows="3" value={orderForm.brief} onChange={e => setOrderForm({ ...orderForm, brief: e.target.value })} className="w-full input-style px-3 py-2 text-sm resize-none" placeholder="আপনার প্রজেক্ট সম্পর্কে সংক্ষেপে লিখুন..." />
+                                        <button type="submit" disabled={orderForm.submitting} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 whitespace-nowrap win-button shadow-sm">
                                             {orderForm.submitting ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="check-circle" className="w-4 h-4" />}
                                             <span>{orderForm.submitting ? 'Submitting...' : `Confirm Order (${CURRENCY_SYMBOL}${Number(activePkg.price || 0).toLocaleString()})`}</span>
                                         </button>
@@ -24563,7 +24833,11 @@ const SmartPhoneAction = ({ phone }) => {
                                 </div>
                             </div>
                         )}
-                    </Modal>
+                    </main>
+
+                    <footer className="py-5 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs font-semibold text-gray-500">
+                        Faridpur IT Institute
+                    </footer>
 
                     <Modal isOpen={!!orderSuccess} onClose={() => setOrderSuccess(null)} title="Order Confirmed!" maxWidth="max-w-sm" compact={true}>
                         {orderSuccess && (
@@ -24580,25 +24854,30 @@ const SmartPhoneAction = ({ phone }) => {
                             </div>
                         )}
                     </Modal>
-                </>
+                </div>
             );
         };
 
+        
+
         // ==========================================
-        // 🛍️ FULL PUBLIC MARKETPLACE PAGE (ALL GIGS + PRICE / ORDER / DELIVERY FILTERS + SEO)
+        // 🌐 PUBLIC MARKETPLACE VIEW (FULL-WIDTH + SEARCH + CATEGORY FILTER)
         // ==========================================
-        const PublicMarketplaceView = ({ initialGigs = [], isDarkMode, setIsDarkMode, addToast, onOpenPortfolio, onClose }) => {
+        const PublicMarketplaceView = ({ initialGigs = [], isDarkMode, setIsDarkMode, addToast, onOpenPortfolio, onOpenGig, onClose }) => {
+            const [loading, setLoading] = useState(initialGigs.length === 0);
             const [gigs, setGigs] = useState(initialGigs);
-            const [services, setServices] = useState(getStoredServices);
-            const [loading, setLoading] = useState(!(initialGigs && initialGigs.length > 0));
+            const [categories, setCategories] = useState(['Web Development', 'SEO', 'Digital Marketing', 'UI/UX Design', 'Software']);
             const [searchQ, setSearchQ] = useState('');
             const [catFilter, setCatFilter] = useState('All');
-            const [priceFilter, setPriceFilter] = useState('All'); // 'All' | 'under2k' | '2k5k' | 'above5k'
-            const [deliveryFilter, setDeliveryFilter] = useState('All'); // 'All' | '3' | '5' | '7'
-            const [sortBy, setSortBy] = useState('popular'); // 'popular' | 'newest' | 'price_asc' | 'price_desc'
-            const [selectedGig, setSelectedGig] = useState(null);
 
             useEffect(() => {
+                if (typeof updateDynamicSEO === 'function') {
+                    updateDynamicSEO({
+                        title: 'Freelance Marketplace | Faridpur IT Institute',
+                        description: 'Hire verified freelance students & digital experts from Faridpur IT Institute for Web Development, SEO, Digital Marketing & Design.',
+                        url: `${window.location.origin}/?market=1`
+                    });
+                }
                 let cancelled = false;
                 fetch(API_URL, {
                     method: 'POST',
@@ -24609,8 +24888,8 @@ const SmartPhoneAction = ({ phone }) => {
                     .then(data => {
                         if (cancelled) return;
                         if (data && data.success) {
-                            setGigs(data.gigs || []);
-                            if (Array.isArray(data.services) && data.services.length > 0) setServices(data.services);
+                            if (Array.isArray(data.gigs)) setGigs(data.gigs);
+                            if (Array.isArray(data.services) && data.services.length > 0) setCategories(data.services);
                         }
                         setLoading(false);
                     })
@@ -24618,227 +24897,183 @@ const SmartPhoneAction = ({ phone }) => {
                 return () => { cancelled = true; };
             }, []);
 
-            // SEO & Structured Data for Google Indexing
-            useEffect(() => {
-                updateDynamicSEO({
-                    title: 'Marketplace — Hire Verified Freelancers | Faridpur IT Institute',
-                    description: 'Explore Web Development, SEO, Digital Marketing, Graphic Design & AI services by verified talents at Faridpur IT Institute.',
-                    url: `${window.location.origin}/?market=1`,
-                    schemaObj: {
-                        '@context': 'https://schema.org',
-                        '@type': 'ItemList',
-                        name: 'Faridpur IT Institute Freelance Marketplace',
-                        numberOfItems: gigs.length,
-                        itemListElement: gigs.slice(0, 20).map((g, idx) => {
-                            const ps = (g.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
-                            return {
-                                '@type': 'ListItem',
-                                position: idx + 1,
-                                item: {
-                                    '@type': 'Service',
-                                    name: g.title,
-                                    serviceType: g.category,
-                                    provider: { '@type': 'Person', name: g.ownerName },
-                                    offers: { '@type': 'Offer', priceCurrency: 'BDT', price: String(ps.length ? Math.min(...ps) : 0) }
-                                }
-                            };
-                        })
-                    }
-                });
-            }, [gigs]);
-
-            const getMinPrice = (g) => {
-                const ps = (g.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
-                return ps.length ? Math.min(...ps) : 0;
-            };
-            const getMinDays = (g) => {
-                const ds = (g.packages || []).map(p => Number(p.deliveryDays) || 3).filter(v => v > 0);
-                return ds.length ? Math.min(...ds) : 3;
-            };
-
             const filteredGigs = useMemo(() => {
                 const q = searchQ.trim().toLowerCase();
-                return gigs.filter(g => {
+                return (gigs || []).filter(g => {
                     if (catFilter !== 'All' && String(g.category || '').toLowerCase() !== catFilter.toLowerCase()) return false;
-                    const p = getMinPrice(g);
-                    if (priceFilter === 'under2k' && p >= 2000) return false;
-                    if (priceFilter === '2k5k' && (p < 2000 || p > 5000)) return false;
-                    if (priceFilter === 'above5k' && p <= 5000) return false;
-                    if (deliveryFilter !== 'All' && getMinDays(g) > Number(deliveryFilter)) return false;
                     if (q && !(`${g.title} ${g.ownerName} ${g.category} ${g.tags} ${g.description}`.toLowerCase().includes(q))) return false;
                     return true;
-                }).sort((a, b) => {
-                    if (sortBy === 'popular') return (Number(b.ordersCount) || 0) - (Number(a.ordersCount) || 0);
-                    if (sortBy === 'price_asc') return getMinPrice(a) - getMinPrice(b);
-                    if (sortBy === 'price_desc') return getMinPrice(b) - getMinPrice(a);
-                    return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
                 });
-            }, [gigs, searchQ, catFilter, priceFilter, deliveryFilter, sortBy]);
+            }, [gigs, searchQ, catFilter]);
+
+            const getStartPrice = (g) => {
+                const prices = (g.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
+                return prices.length > 0 ? Math.min(...prices) : 0;
+            };
+
+            const shareGig = async (e, g) => {
+                e.stopPropagation();
+                if (typeof window.playSound === 'function') window.playSound('click');
+                const url = `${window.location.origin}/?g=${encodeURIComponent(g.id)}`;
+                if (navigator.share) {
+                    try { await navigator.share({ title: g.title, url }); return; } catch (err) {}
+                }
+                if (navigator.clipboard) navigator.clipboard.writeText(url);
+                if (typeof addToast === 'function') addToast('গিগ লিংক কপি হয়েছে!', 'success');
+            };
 
             return (
-                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-slate-50 dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100 flex flex-col">
-                    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#141416]/90 backdrop-blur-xl border-b border-gray-200/70 dark:border-white/10 px-4 py-3">
-                        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 flex-nowrap">
+                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-white dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100 flex flex-col">
+                    <header className="sticky top-0 z-40 w-full bg-white/95 dark:bg-[#141416]/95 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/10 px-3 sm:px-6 lg:px-8 py-3">
+                        <div className="w-full flex items-center justify-between gap-2 flex-nowrap">
                             <div className="flex items-center gap-2 min-w-0">
-                                <div className="w-8 h-8 rounded-lg bg-[#005fb8] text-white flex items-center justify-center shrink-0">
-                                    <Icon name="store" className="w-4 h-4" />
-                                </div>
-                                <h1 className="text-sm sm:text-base font-bold whitespace-nowrap truncate">Marketplace</h1>
+                                <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 flex items-center justify-center shrink-0" title="Back">
+                                    <Icon name="arrow-left" className="w-4 h-4" />
+                                </button>
+                                <span className="text-xs sm:text-sm font-bold whitespace-nowrap truncate">Faridpur IT Marketplace</span>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0 flex-nowrap">
+                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-nowrap">
                                 <button type="button" onClick={() => setIsDarkMode(prev => !prev)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0">
                                     <Icon name={isDarkMode ? 'sun' : 'moon'} className="w-4 h-4" />
                                 </button>
-                                <button type="button" onClick={onClose} className="px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap shrink-0">
+                                <button type="button" onClick={onClose} className="h-8 px-3 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap shrink-0">
                                     Portal Home
                                 </button>
                             </div>
                         </div>
                     </header>
 
-                    <main className="flex-1 w-full max-w-7xl mx-auto px-3.5 sm:px-6 py-5 sm:py-8 space-y-5">
-                        {/* Filter Controls Bar */}
-                        <div className="bg-white dark:bg-[#161618] p-3.5 sm:p-4 rounded-2xl border border-gray-200/80 dark:border-white/10 space-y-3">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5">
-                                <div className="lg:col-span-5 flex items-center bg-gray-50 dark:bg-dark-800 px-3 py-2 rounded-xl border border-gray-200/80 dark:border-white/10">
-                                    <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
-                                    <input
-                                        type="text"
-                                        value={searchQ}
-                                        onChange={e => setSearchQ(e.target.value)}
-                                        placeholder="সার্ভিস, ট্যাগ বা ফ্রিল্যান্সার খুঁজুন..."
-                                        className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium text-gray-800 dark:text-white"
-                                    />
+                    <main className="flex-1 w-full px-3 sm:px-6 lg:px-8 py-5 sm:py-7 space-y-5">
+                        <div className="w-full max-w-7xl mx-auto space-y-5">
+                            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-500/[0.07] via-transparent to-emerald-500/[0.07] border border-gray-200/80 dark:border-white/10 space-y-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div>
+                                        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Verified Freelance Services</h1>
+                                        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">সরাসরি আমাদের ভেরিফায়েড স্টুডেন্ট ও এক্সপার্টদের সার্ভিস অর্ডার করুন।</p>
+                                    </div>
+                                    <span className="self-start sm:self-auto px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-numbers font-bold whitespace-nowrap">
+                                        {filteredGigs.length} Active Services
+                                    </span>
                                 </div>
 
-                                <select value={priceFilter} onChange={e => setPriceFilter(e.target.value)} className="lg:col-span-2 input-style px-3 py-2 text-xs font-bold">
-                                    <option value="All">All Prices</option>
-                                    <option value="under2k">Under ৳2,000</option>
-                                    <option value="2k5k">৳2,000 – ৳5,000</option>
-                                    <option value="above5k">৳5,000+</option>
-                                </select>
-
-                                <select value={deliveryFilter} onChange={e => setDeliveryFilter(e.target.value)} className="lg:col-span-2 input-style px-3 py-2 text-xs font-bold">
-                                    <option value="All">Any Delivery</option>
-                                    <option value="3">Up to 3 Days</option>
-                                    <option value="5">Up to 5 Days</option>
-                                    <option value="7">Up to 7 Days</option>
-                                </select>
-
-                                <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="lg:col-span-3 input-style px-3 py-2 text-xs font-bold">
-                                    <option value="popular">Sort: Most Orders</option>
-                                    <option value="newest">Sort: Newest</option>
-                                    <option value="price_asc">Price: Low to High</option>
-                                    <option value="price_desc">Price: High to Low</option>
-                                </select>
+                                <div className="flex flex-col md:flex-row gap-2.5">
+                                    <div className="flex items-center bg-white dark:bg-[#18181b] px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 flex-1">
+                                        <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
+                                        <input type="text" value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="সার্ভিস, স্কিল বা ফ্রিল্যান্সারের নাম খুঁজুন..." className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium" />
+                                    </div>
+                                    <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                                        {['All', ...categories].map(c => (
+                                            <button key={c} type="button" onClick={() => setCatFilter(c)} className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${catFilter === c ? 'bg-[#005fb8] text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300'}`}>
+                                                {c}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
 
-                            <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap pt-1">
-                                {['All', ...services].map(c => (
-                                    <button
-                                        key={c}
-                                        type="button"
-                                        onClick={() => setCatFilter(c)}
-                                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap shrink-0 border transition-colors ${
-                                            catFilter === c
-                                                ? 'bg-[#005fb8] text-white border-[#005fb8]'
-                                                : 'bg-gray-50 dark:bg-dark-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10'
-                                        }`}
-                                    >
-                                        {c}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {loading ? (
-                            <div className="py-20 text-center"><Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" /></div>
-                        ) : filteredGigs.length === 0 ? (
-                            <div className="py-16 text-center bg-white dark:bg-[#161618] rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
-                                এই ফিল্টারে কোনো গিগ পাওয়া যায়নি।
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                                {filteredGigs.map(gig => {
-                                    const startPrice = getMinPrice(gig);
-                                    return (
-                                        <article
-                                            key={gig.id}
-                                            onClick={() => setSelectedGig(gig)}
-                                            className="bg-white dark:bg-[#161618] rounded-2xl border border-gray-200/80 dark:border-white/10 overflow-hidden cursor-pointer hover:border-[#005fb8] transition-all flex flex-col group shadow-sm"
-                                        >
-                                            <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden shrink-0">
-                                                {gig.bannerUrl ? (
-                                                    <img src={gig.bannerUrl} alt={gig.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                                                ) : (
-                                                    <div className="w-full h-full flex flex-col items-center justify-center text-white/80 p-3 text-center">
-                                                        <Icon name="briefcase" className="w-7 h-7 text-[#facc15] mb-1" />
-                                                        <span className="text-[10px] font-bold uppercase">{gig.category}</span>
-                                                    </div>
-                                                )}
-                                                <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/75 text-white text-[9px] font-bold whitespace-nowrap">
-                                                    {gig.category}
-                                                </span>
-                                            </div>
-                                            <div className="p-3 flex-1 flex flex-col gap-2">
-                                                <div
-                                                    onClick={(e) => { e.stopPropagation(); onOpenPortfolio(gig.ownerShortId || gig.ownerName); }}
-                                                    className="flex items-center gap-1.5 min-w-0 hover:opacity-80"
-                                                >
-                                                    <UserAvatar name={gig.ownerName} size="xs" showOnline={true} />
-                                                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{gig.ownerName}</span>
-                                                    {gig.isVerified !== false && (
-                                                        <svg className="w-3.5 h-3.5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none">
-                                                            <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
-                                                            <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
-                                                        </svg>
+                            {loading ? (
+                                <div className="py-20 text-center space-y-2">
+                                    <Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" />
+                                    <p className="text-xs font-semibold text-gray-500">Loading services...</p>
+                                </div>
+                            ) : filteredGigs.length === 0 ? (
+                                <div className="py-16 text-center rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
+                                    কোনো সার্ভিস পাওয়া যায়নি।
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                    {filteredGigs.map(g => {
+                                        const startPrice = getStartPrice(g);
+                                        return (
+                                            <div key={g.id} onClick={() => onOpenGig && onOpenGig(g)} className="cursor-pointer rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#161618] overflow-hidden flex flex-col hover:border-[#005fb8]/60 hover:shadow-md transition-all group">
+                                                <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden">
+                                                    {g.bannerUrl ? (
+                                                        <img src={g.bannerUrl} alt={g.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex flex-col items-center justify-center text-white/80 p-4 text-center">
+                                                            <Icon name="briefcase" className="w-8 h-8 mb-1.5 text-[#facc15]" />
+                                                            <span className="text-[11px] font-bold uppercase tracking-wider">{g.category}</span>
+                                                        </div>
                                                     )}
-                                                </div>
-                                                <h3 className="text-[15px] sm:text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] tracking-tight flex-1">
-                                                    {gig.title}
-                                                </h3>
-                                                <div className="pt-2 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2 whitespace-nowrap">
-                                                    <span className="text-[10px] font-semibold text-gray-400 font-numbers">{gig.ordersCount || 0} orders</span>
-                                                    <span className="text-sm font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">
-                                                        {CURRENCY_SYMBOL}{startPrice.toLocaleString()}
+                                                    <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/75 text-white text-[10px] font-bold backdrop-blur-sm">
+                                                        {g.category}
                                                     </span>
                                                 </div>
+
+                                                <div className="p-3.5 flex-1 flex flex-col gap-2">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); onOpenPortfolio && onOpenPortfolio(g.ownerShortId || g.ownerName); }}
+                                                            className="flex items-center gap-2 min-w-0 text-left hover:text-[#005fb8]"
+                                                        >
+                                                            <UserAvatar name={g.ownerName} size="xs" showOnline={true} />
+                                                            <span className="text-xs font-bold truncate">{g.ownerName}</span>
+                                                            {g.isVerified !== false && (
+                                                                <svg className="w-3.5 h-3.5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none">
+                                                                    <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                                    <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                                                </svg>
+                                                            )}
+                                                        </button>
+                                                        <span className="text-[10px] font-numbers font-bold text-gray-400 shrink-0">{g.ordersCount || 0} orders</span>
+                                                    </div>
+
+                                                    <h3 className="text-sm sm:text-[15px] font-bold leading-snug line-clamp-2 group-hover:text-[#005fb8]">{g.title}</h3>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 flex-1">{g.description}</p>
+
+                                                    <div className="pt-2.5 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2">
+                                                        <div>
+                                                            <span className="text-[9px] uppercase font-bold text-gray-400 block leading-none">Starting at</span>
+                                                            <span className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{CURRENCY_SYMBOL}{startPrice.toLocaleString()}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <button type="button" onClick={(e) => shareGig(e, g)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white" title="Share">
+                                                                <Icon name="share-2" className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <span className="px-3 py-1.5 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold whitespace-nowrap">View &amp; Order</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </article>
-                                    );
-                                })}
-                            </div>
-                        )}
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </main>
 
                     <footer className="py-5 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs font-semibold text-gray-500">
-                        Faridpur IT Institute
+                        Faridpur IT Institute • Verified Freelance Marketplace
                     </footer>
-
-                    <GigDetailOrderModal
-                        gig={selectedGig}
-                        onClose={() => setSelectedGig(null)}
-                        addToast={addToast}
-                        onOpenOwnerPortfolio={(slug) => { setSelectedGig(null); onOpenPortfolio(slug); }}
-                    />
                 </div>
             );
         };
 
-       // ==========================================
-        // 🌍 FULL-WIDTH DEDICATED PUBLIC PORTFOLIO (PURE WHITE + SHARE + SKILLS + CASE STUDIES + SEO)
         // ==========================================
-        const PublicPortfolioView = ({ slug, isDarkMode, setIsDarkMode, addToast, onClose, onOpenMarketplace }) => {
-            const [loading, setLoading] = useState(true);
-            const [portfolio, setPortfolio] = useState(null);
+        // 👤 PUBLIC PORTFOLIO VIEW (UPWORK + FIVERR HYBRID PROFILE + CASE STUDIES + GIGS)
+        // ==========================================
+        const PublicPortfolioView = ({ slug, isDarkMode, setIsDarkMode, addToast, onOpenMarketplace, onOpenGig, onClose }) => {
+            const normSlug = String(slug || '').trim().toLowerCase().replace(/[^a-z0-9\u0980-\u09ff]/g, '');
+            const cacheKey = `fit_pf_cache_${normSlug}`;
+
+            const [profile, setProfile] = useState(() => {
+                try {
+                    const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+                    if (cached && cached.data && (Date.now() - cached.ts < 120000)) return cached.data;
+                } catch (e) {}
+                return null;
+            });
+            const [loading, setLoading] = useState(!profile);
             const [errorMsg, setErrorMsg] = useState('');
-            const [selectedGig, setSelectedGig] = useState(null);
             const [activeCaseStudy, setActiveCaseStudy] = useState(null);
 
             useEffect(() => {
+                if (!slug) return;
                 let cancelled = false;
-                setLoading(true);
+                if (!profile) setLoading(true);
                 setErrorMsg('');
+
                 fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -24848,337 +25083,266 @@ const SmartPhoneAction = ({ phone }) => {
                     .then(data => {
                         if (cancelled) return;
                         if (data && data.success && data.portfolio) {
-                            const pf = data.portfolio;
-                            setPortfolio(pf);
-                            const shortUrl = `${window.location.origin}/?p=${encodeURIComponent(pf.shortId || slug)}`;
-                            const desc = pf.tagline || `${pf.name} — ${(pf.courses || []).join(', ')} specialist offering ${(pf.gigs || []).length} services at Faridpur IT Institute.`;
-                            updateDynamicSEO({
-                                title: `${pf.name} | Faridpur IT Institute`,
-                                description: desc,
-                                url: shortUrl,
-                                image: (pf.gigs && pf.gigs[0] && pf.gigs[0].bannerUrl) || '',
-                                schemaObj: {
-                                    '@context': 'https://schema.org',
-                                    '@type': 'ProfilePage',
-                                    mainEntity: {
-                                        '@type': 'Person',
-                                        name: pf.name,
-                                        description: pf.bio || desc,
-                                        url: shortUrl,
-                                        knowsAbout: [...(pf.courses || []), ...((pf.customSkills || []).map(s => s.name))].filter(Boolean),
-                                        sameAs: [pf.linkedin, pf.fbProfile, pf.website].filter(Boolean)
-                                    },
-                                    hasPart: (pf.gigs || []).map(g => {
-                                        const ps = (g.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
-                                        return {
-                                            '@type': 'Service',
-                                            name: g.title,
-                                            description: g.description,
-                                            serviceType: g.category,
-                                            offers: { '@type': 'Offer', priceCurrency: 'BDT', price: String(ps.length ? Math.min(...ps) : 0) }
-                                        };
-                                    })
-                                }
-                            });
-                        } else {
+                            setProfile(data.portfolio);
+                            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: data.portfolio })); } catch (e) {}
+                        } else if (!profile) {
                             setErrorMsg((data && data.message) || 'Portfolio not found.');
                         }
                         setLoading(false);
                     })
                     .catch(() => {
-                        if (!cancelled) { setErrorMsg('Network error loading portfolio.'); setLoading(false); }
+                        if (!cancelled) {
+                            if (!profile) setErrorMsg('Network error loading portfolio.');
+                            setLoading(false);
+                        }
                     });
                 return () => { cancelled = true; };
             }, [slug]);
 
-            const shareUrl = `${window.location.origin}/?p=${encodeURIComponent(portfolio?.shortId || slug)}`;
+            useEffect(() => {
+                if (!profile) return;
+                const pfUrl = `${window.location.origin}/?p=${encodeURIComponent(profile.shortId || slug)}`;
+                if (typeof updateDynamicSEO === 'function') {
+                    updateDynamicSEO({
+                        title: `${profile.name} | Verified Freelancer — Faridpur IT Institute`,
+                        description: profile.tagline || profile.bio || `Verified portfolio and freelance services of ${profile.name} at Faridpur IT Institute.`,
+                        url: pfUrl
+                    });
+                }
+            }, [profile, slug]);
+
+            const shareProfileUrl = `${window.location.origin}/?p=${encodeURIComponent(profile?.shortId || slug || '')}`;
             const handleShareProfile = async () => {
                 if (typeof window.playSound === 'function') window.playSound('click');
                 if (navigator.share) {
-                    try {
-                        await navigator.share({ title: `${portfolio?.name || 'Talent'} — Portfolio`, url: shareUrl });
-                        return;
-                    } catch (e) {}
+                    try { await navigator.share({ title: `${profile?.name || 'Portfolio'} — Faridpur IT`, url: shareProfileUrl }); return; } catch (e) {}
                 }
-                if (navigator.clipboard) navigator.clipboard.writeText(shareUrl);
-                if (typeof addToast === 'function') addToast('প্রোফাইল লিংক কপি করা হয়েছে!', 'success');
+                if (navigator.clipboard) navigator.clipboard.writeText(shareProfileUrl);
+                if (typeof addToast === 'function') addToast('পোর্টফোলিও লিংক কপি হয়েছে!', 'success');
             };
 
-            const resolvedSkills = useMemo(() => {
-                if (!portfolio) return [];
-                if (Array.isArray(portfolio.customSkills) && portfolio.customSkills.length > 0) return portfolio.customSkills;
-                return (portfolio.courses || []).map(c => ({ name: c, level: Math.max(70, Number(portfolio.skillProgress) || 85) }));
-            }, [portfolio]);
+            const getStartPrice = (g) => {
+                const prices = (g.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
+                return prices.length > 0 ? Math.min(...prices) : 0;
+            };
 
             return (
                 <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-white dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100 flex flex-col">
-                    {/* Full-Width Top Navigation */}
                     <header className="sticky top-0 z-40 w-full bg-white/95 dark:bg-[#141416]/95 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/10 px-3 sm:px-6 lg:px-8 py-3">
                         <div className="w-full flex items-center justify-between gap-2 flex-nowrap">
                             <div className="flex items-center gap-2 min-w-0">
-                                <div className="w-8 h-8 rounded-lg bg-[#005fb8] text-white flex items-center justify-center shrink-0">
-                                    <Icon name="award" className="w-4 h-4" />
-                                </div>
-                                <span className="text-xs sm:text-sm font-bold whitespace-nowrap truncate">Faridpur IT Institute</span>
+                                <button type="button" onClick={onOpenMarketplace} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 flex items-center justify-center shrink-0" title="Marketplace">
+                                    <Icon name="arrow-left" className="w-4 h-4" />
+                                </button>
+                                <span className="text-xs sm:text-sm font-bold whitespace-nowrap truncate">Faridpur IT Portfolio</span>
                             </div>
-
                             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-nowrap">
+                                <button type="button" onClick={handleShareProfile} className="h-8 px-2.5 sm:px-3 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold flex items-center gap-1 whitespace-nowrap shrink-0">
+                                    <Icon name="share-2" className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="hidden sm:inline">Share</span>
+                                </button>
                                 <button type="button" onClick={() => setIsDarkMode(prev => !prev)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0">
                                     <Icon name={isDarkMode ? 'sun' : 'moon'} className="w-4 h-4" />
                                 </button>
-                                {typeof onOpenMarketplace === 'function' && (
-                                    <button type="button" onClick={onOpenMarketplace} className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold whitespace-nowrap shrink-0">
-                                        Marketplace
-                                    </button>
-                                )}
-                                <button type="button" onClick={onClose} className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap shrink-0">
+                                <button type="button" onClick={onOpenMarketplace} className="h-8 px-2.5 sm:px-3 rounded-lg bg-gray-100 dark:bg-white/10 text-xs font-bold whitespace-nowrap shrink-0">
+                                    Marketplace
+                                </button>
+                                <button type="button" onClick={onClose} className="h-8 px-2.5 sm:px-3 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap shrink-0">
                                     Portal Home
                                 </button>
                             </div>
                         </div>
                     </header>
 
-                    {/* Full-Width Seamless Main Content (No Excess Side Padding) */}
-                    <main className="flex-1 w-full px-3 sm:px-6 lg:px-8 py-5 sm:py-7 space-y-7">
+                    <main className="flex-1 w-full px-3 sm:px-6 lg:px-8 py-5 sm:py-8">
                         {loading ? (
                             <div className="py-24 text-center space-y-3">
                                 <Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" />
                                 <p className="text-xs font-semibold text-gray-500">Loading portfolio...</p>
                             </div>
-                        ) : errorMsg || !portfolio ? (
-                            <div className="py-16 text-center space-y-3 bg-gray-50 dark:bg-[#161618] rounded-2xl border border-gray-200 dark:border-white/10 p-6">
+                        ) : errorMsg || !profile ? (
+                            <div className="py-16 text-center space-y-3 bg-gray-50 dark:bg-[#161618] rounded-2xl border border-gray-200 dark:border-white/10 p-6 max-w-lg mx-auto">
                                 <Icon name="user-x" className="w-10 h-10 text-gray-400 mx-auto" />
-                                <h2 className="text-base font-bold">{errorMsg || 'Portfolio Not Found'}</h2>
-                                <button type="button" onClick={onClose} className="px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">Back to Home</button>
+                                <h2 className="text-base font-bold">{errorMsg || 'Profile Not Found'}</h2>
+                                <button type="button" onClick={onOpenMarketplace} className="px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">Browse Marketplace</button>
                             </div>
                         ) : (
-                            <>
-                                {/* 1. Seamless Blended Profile Hero Section with Share Button & Circular Active Dot */}
-                                <section className="w-full pb-6 border-b border-gray-200/80 dark:border-white/10 space-y-4">
-                                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            <div className="w-full max-w-6xl mx-auto space-y-6">
+                                {/* Top Hero Card */}
+                                <div className="p-5 sm:p-6 rounded-2xl border border-gray-200/80 dark:border-white/10 bg-gradient-to-br from-blue-500/[0.05] via-transparent to-emerald-500/[0.05] space-y-4">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                         <div className="flex items-center gap-4 min-w-0">
                                             <div className="relative shrink-0">
                                                 <img
-                                                    src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(portfolio.name)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
-                                                    alt={portfolio.name}
-                                                    className="w-16 h-16 sm:w-20 sm:h-20 object-cover border-[3px] border-white dark:border-[#242428] shadow-sm bg-gray-100"
+                                                    src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(profile.name)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
+                                                    alt={profile.name}
+                                                    className="w-16 h-16 sm:w-20 sm:h-20 object-cover border-2 border-white dark:border-[#18181b] shadow-sm bg-gray-100"
                                                     style={{ borderRadius: '9999px' }}
                                                 />
-                                                <span
-                                                    className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#0d0d0f] shadow-[0_0_8px_rgba(16,185,129,0.7)]"
-                                                    style={{ borderRadius: '9999px' }}
-                                                    title="Active"
-                                                />
+                                                <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#0d0d0f]" style={{ borderRadius: '9999px' }} />
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-1.5 flex-nowrap">
-                                                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight truncate">{portfolio.name}</h1>
-                                                    {portfolio.isVerified && (
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <h1 className="text-xl sm:text-2xl font-bold truncate">{profile.name}</h1>
+                                                    {profile.isVerified !== false && (
                                                         <svg className="w-4 h-4 sm:w-5 sm:h-5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none" aria-label="Verified">
                                                             <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
                                                             <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
                                                         </svg>
                                                     )}
+                                                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
+                                                        {profile.availability || 'Available Now'}
+                                                    </span>
                                                 </div>
-                                                {portfolio.tagline && (
-                                                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 font-medium mt-0.5 line-clamp-1">{portfolio.tagline}</p>
-                                                )}
-                                                <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap mt-2">
-                                                    {(portfolio.courses || []).map(c => (
-                                                        <span key={c} className="px-2.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.07] text-[10.5px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap shrink-0">
-                                                            {c}
-                                                        </span>
-                                                    ))}
+                                                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300 mt-0.5">
+                                                    {profile.tagline || `${(profile.courses || [])[0] || 'IT'} Specialist at Faridpur IT Institute`}
+                                                </p>
+                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+                                                    <span className="flex items-center gap-1"><Icon name="map-pin" className="w-3 h-3" /> {profile.location || 'Faridpur, Bangladesh'}</span>
+                                                    <span className="flex items-center gap-1"><Icon name="clock" className="w-3 h-3" /> {profile.responseTime || 'Within 1 hour'}</span>
+                                                    {profile.hourlyRate && <span className="font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{profile.hourlyRate}</span>}
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* Right Stats + Share Profile Button */}
-                                        <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2.5 shrink-0">
-                                            <div className="flex items-center gap-2 text-center">
-                                                <div className="px-3 py-1.5 rounded-xl bg-blue-500/[0.07] border border-blue-200/60 dark:border-blue-500/20 whitespace-nowrap">
-                                                    <span className="block text-sm font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{portfolio.skillProgress}%</span>
-                                                    <span className="text-[9px] font-bold uppercase text-gray-500">Skill</span>
-                                                </div>
-                                                <div className="px-3 py-1.5 rounded-xl bg-emerald-500/[0.07] border border-emerald-200/60 dark:border-emerald-500/20 whitespace-nowrap">
-                                                    <span className="block text-sm font-numbers font-bold text-emerald-600 dark:text-emerald-400">{(portfolio.gigs || []).length}</span>
-                                                    <span className="text-[9px] font-bold uppercase text-gray-500">Gigs</span>
-                                                </div>
-                                                <div className="px-3 py-1.5 rounded-xl bg-amber-500/[0.07] border border-amber-200/60 dark:border-amber-500/20 whitespace-nowrap">
-                                                    <span className="block text-sm font-numbers font-bold text-amber-600 dark:text-amber-400">{portfolio.totalOrders || 0}</span>
-                                                    <span className="text-[9px] font-bold uppercase text-gray-500">Orders</span>
-                                                </div>
+                                        <div className="grid grid-cols-3 gap-2 shrink-0">
+                                            <div className="px-3 py-2 rounded-xl bg-white dark:bg-[#161618] border border-gray-200/80 dark:border-white/10 text-center">
+                                                <p className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{(profile.gigs || []).length}</p>
+                                                <p className="text-[9px] font-bold uppercase text-gray-500">Services</p>
                                             </div>
-
-                                            <div className="flex items-center gap-1.5 flex-nowrap">
-                                                <button
-                                                    type="button"
-                                                    onClick={handleShareProfile}
-                                                    className="h-9 px-3.5 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 whitespace-nowrap win-button shadow-sm"
-                                                >
-                                                    <Icon name="share-2" className="w-3.5 h-3.5 shrink-0" />
-                                                    <span>Share Profile</span>
-                                                </button>
-                                                {portfolio.linkedin && <a href={portfolio.linkedin} target="_blank" rel="noreferrer" className="h-9 px-2.5 rounded-xl bg-[#0A66C2]/10 text-[#0A66C2] text-xs font-bold flex items-center whitespace-nowrap">in</a>}
-                                                {portfolio.fbProfile && <a href={portfolio.fbProfile} target="_blank" rel="noreferrer" className="h-9 px-2.5 rounded-xl bg-[#1877F2]/10 text-[#1877F2] text-xs font-bold flex items-center whitespace-nowrap">FB</a>}
-                                                {portfolio.website && <a href={portfolio.website} target="_blank" rel="noreferrer" className="h-9 px-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center whitespace-nowrap">Web</a>}
+                                            <div className="px-3 py-2 rounded-xl bg-white dark:bg-[#161618] border border-gray-200/80 dark:border-white/10 text-center">
+                                                <p className="text-base font-numbers font-bold text-emerald-600 dark:text-emerald-400">{profile.totalOrders || 0}</p>
+                                                <p className="text-[9px] font-bold uppercase text-gray-500">Orders</p>
+                                            </div>
+                                            <div className="px-3 py-2 rounded-xl bg-white dark:bg-[#161618] border border-gray-200/80 dark:border-white/10 text-center">
+                                                <p className="text-base font-numbers font-bold text-purple-600 dark:text-purple-400">{profile.skillProgress || 90}%</p>
+                                                <p className="text-[9px] font-bold uppercase text-gray-500">Skill</p>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {portfolio.bio && (
-                                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 leading-relaxed max-w-4xl">
-                                            {portfolio.bio}
+                                    {profile.bio && (
+                                        <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap pt-3 border-t border-gray-200/60 dark:border-white/10">
+                                            {profile.bio}
                                         </p>
                                     )}
-                                </section>
 
-                                {/* 2. Services & Packages Section (Fiverr-Style Large Readable Gig Titles) */}
-                                <section className="space-y-4">
-                                    <div className="flex items-center justify-between gap-2 flex-nowrap">
-                                        <h2 className="text-base sm:text-xl font-bold tracking-tight flex items-center gap-2 whitespace-nowrap truncate">
-                                            <Icon name="briefcase" className="w-5 h-5 text-[#005fb8] shrink-0" />
-                                            <span>Services &amp; Packages ({(portfolio.gigs || []).length})</span>
-                                        </h2>
+                                    {/* Social & Meta Pills */}
+                                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                                        {profile.languages && <span className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-[11px] font-semibold">🌐 {profile.languages}</span>}
+                                        {profile.experience && <span className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-[11px] font-semibold">💼 {profile.experience}</span>}
+                                        {profile.linkedin && <a href={profile.linkedin} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold">LinkedIn ↗</a>}
+                                        {profile.website && <a href={profile.website} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold">Website ↗</a>}
+                                        {profile.fbProfile && <a href={profile.fbProfile} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 text-[11px] font-bold">Facebook ↗</a>}
                                     </div>
+                                </div>
 
-                                    {(!portfolio.gigs || portfolio.gigs.length === 0) ? (
-                                        <div className="bg-gray-50 dark:bg-[#161618] rounded-2xl p-10 text-center border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
-                                            কোনো সার্ভিস পাওয়া যায়নি।
-                                        </div>
+                                {/* Services / Gigs Section */}
+                                <div className="space-y-3">
+                                    <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
+                                        <Icon name="briefcase" className="w-4 h-4 text-[#005fb8]" />
+                                        <span>Available Services ({(profile.gigs || []).length})</span>
+                                    </h2>
+                                    {(profile.gigs || []).length === 0 ? (
+                                        <p className="text-xs text-gray-500 p-6 rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-center">কোনো অ্যাক্টিভ সার্ভিস গিগ নেই।</p>
                                     ) : (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                                            {portfolio.gigs.map(gig => {
-                                                const prices = (gig.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
-                                                const startPrice = prices.length > 0 ? Math.min(...prices) : 0;
-                                                const fastDays = Math.min(...((gig.packages || []).map(p => Number(p.deliveryDays) || 3)));
-                                                return (
-                                                    <article
-                                                        key={gig.id}
-                                                        onClick={() => setSelectedGig({ ...gig, ownerName: portfolio.name, ownerShortId: portfolio.shortId })}
-                                                        className="bg-white dark:bg-[#161618] rounded-2xl border border-gray-200/80 dark:border-white/10 overflow-hidden cursor-pointer hover:border-[#005fb8] shadow-sm transition-all flex flex-col group"
-                                                    >
-                                                        <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden shrink-0">
-                                                            {gig.bannerUrl ? (
-                                                                <img src={gig.bannerUrl} alt={gig.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                                                            ) : (
-                                                                <div className="w-full h-full flex flex-col items-center justify-center text-white/80 p-4 text-center">
-                                                                    <Icon name="sparkles" className="w-8 h-8 text-[#facc15] mb-1.5" />
-                                                                    <span className="text-xs font-bold uppercase">{gig.category}</span>
-                                                                </div>
-                                                            )}
-                                                            <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/75 text-white text-[10px] font-bold whitespace-nowrap">
-                                                                {gig.category}
-                                                            </span>
-                                                        </div>
-
-                                                        <div className="p-3.5 flex-1 flex flex-col gap-2">
-                                                            <h3 className="text-[15px] sm:text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] transition-colors tracking-tight">
-                                                                {gig.title}
-                                                            </h3>
-                                                            <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed flex-1">
-                                                                {gig.description}
-                                                            </p>
-
-                                                            <div className="pt-2.5 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2 whitespace-nowrap">
-                                                                <span className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">
-                                                                    {CURRENCY_SYMBOL}{startPrice.toLocaleString()}
-                                                                </span>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-[10px] text-gray-400 font-semibold">{fastDays}d</span>
-                                                                    <span className="px-3 py-1 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold">
-                                                                        Order Now
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </article>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </section>
-
-                                {/* 3. Skills & Proficiency Breakdown + Verified Assessments */}
-                                {(resolvedSkills.length > 0 || (portfolio.passedExams && portfolio.passedExams.length > 0)) && (
-                                    <section className="pt-6 border-t border-gray-200/80 dark:border-white/10 space-y-4">
-                                        <h2 className="text-base sm:text-xl font-bold tracking-tight flex items-center gap-2 whitespace-nowrap">
-                                            <Icon name="zap" className="w-5 h-5 text-amber-500 shrink-0" />
-                                            <span>Skills &amp; Expertise</span>
-                                        </h2>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                            {resolvedSkills.map((sk, i) => (
-                                                <div key={i} className="p-3 rounded-xl bg-gray-50/80 dark:bg-white/[0.03] border border-gray-200/70 dark:border-white/10 space-y-1.5">
-                                                    <div className="flex items-center justify-between text-xs font-bold">
-                                                        <span className="text-gray-800 dark:text-gray-200 truncate">{sk.name}</span>
-                                                        <span className="font-numbers text-[#005fb8] dark:text-[#60cdff] shrink-0">{sk.level}%</span>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {(profile.gigs || []).map(g => (
+                                                <div key={g.id} onClick={() => onOpenGig && onOpenGig(g)} className="cursor-pointer rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#161618] overflow-hidden flex flex-col hover:border-[#005fb8]/60 hover:shadow-md transition-all group">
+                                                    <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden">
+                                                        {g.bannerUrl ? (
+                                                            <img src={g.bannerUrl} alt={g.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-white/80 font-bold text-xs uppercase">{g.category}</div>
+                                                        )}
+                                                        <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/75 text-white text-[10px] font-bold">{g.category}</span>
                                                     </div>
-                                                    <div className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
-                                                        <div className="h-full bg-[#005fb8] rounded-full" style={{ width: `${Math.min(100, Number(sk.level) || 80)}%` }} />
+                                                    <div className="p-3.5 flex-1 flex flex-col gap-2">
+                                                        <h3 className="text-sm font-bold line-clamp-2 group-hover:text-[#005fb8]">{g.title}</h3>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 flex-1">{g.description}</p>
+                                                        <div className="pt-2 border-t border-gray-100 dark:border-white/10 flex items-center justify-between">
+                                                            <span className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{CURRENCY_SYMBOL}{getStartPrice(g).toLocaleString()}</span>
+                                                            <span className="px-3 py-1 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold">Order Now →</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
+                                    )}
+                                </div>
 
-                                        {Array.isArray(portfolio.passedExams) && portfolio.passedExams.length > 0 && (
-                                            <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap pt-1">
-                                                {portfolio.passedExams.slice(0, 8).map((ex, idx) => (
-                                                    <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/[0.09] border border-emerald-300/50 dark:border-emerald-500/25 text-[11px] font-semibold text-emerald-800 dark:text-emerald-200 whitespace-nowrap shrink-0">
-                                                        <Icon name="check-circle" className="w-3 h-3 text-emerald-600 shrink-0" />
-                                                        <span>{ex.moduleTitle} ({ex.bestScore}%)</span>
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </section>
-                                )}
-
-                                {/* 4. Dedicated Portfolio & Case Studies Section (Bottom) */}
-                                {Array.isArray(portfolio.portfolioItems) && portfolio.portfolioItems.length > 0 && (
-                                    <section className="pt-6 border-t border-gray-200/80 dark:border-white/10 space-y-4">
-                                        <h2 className="text-base sm:text-xl font-bold tracking-tight flex items-center gap-2 whitespace-nowrap">
-                                            <Icon name="image" className="w-5 h-5 text-emerald-600 shrink-0" />
-                                            <span>Portfolio &amp; Case Studies ({portfolio.portfolioItems.length})</span>
+                                {/* Portfolio & Case Studies */}
+                                {Array.isArray(profile.portfolioItems) && profile.portfolioItems.length > 0 && (
+                                    <div className="space-y-3">
+                                        <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
+                                            <Icon name="layers" className="w-4 h-4 text-emerald-500" />
+                                            <span>Portfolio &amp; Case Studies ({profile.portfolioItems.length})</span>
                                         </h2>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                                            {portfolio.portfolioItems.map((item, idx) => (
-                                                <article
-                                                    key={item.id || idx}
-                                                    onClick={() => setActiveCaseStudy(item)}
-                                                    className="bg-white dark:bg-[#161618] rounded-2xl border border-gray-200/80 dark:border-white/10 overflow-hidden cursor-pointer hover:border-[#005fb8] transition-all flex flex-col group"
-                                                >
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {profile.portfolioItems.map(item => (
+                                                <div key={item.id} onClick={() => setActiveCaseStudy(item)} className="cursor-pointer rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#161618] overflow-hidden hover:border-emerald-500/60 transition-all group">
                                                     <div className="aspect-video bg-gray-100 dark:bg-dark-900 overflow-hidden">
                                                         <img src={item.imageUrl} alt={item.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                                     </div>
-                                                    <div className="p-3.5 space-y-1.5 flex-1">
-                                                        <h3 className="text-sm sm:text-[15px] font-bold text-gray-900 dark:text-white leading-snug line-clamp-1">{item.title}</h3>
-                                                        <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-3 leading-relaxed">{item.caseStudy}</p>
+                                                    <div className="p-3.5">
+                                                        <h3 className="text-sm font-bold truncate">{item.title}</h3>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">{item.caseStudy}</p>
                                                     </div>
-                                                </article>
+                                                </div>
                                             ))}
                                         </div>
-                                    </section>
+                                    </div>
                                 )}
-                            </>
+
+                                {/* Skills & Verified Exam Badges */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {Array.isArray(profile.customSkills) && profile.customSkills.length > 0 && (
+                                        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#161618] space-y-3">
+                                            <h3 className="text-sm font-bold flex items-center gap-2"><Icon name="zap" className="w-4 h-4 text-amber-500" /> Top Skills</h3>
+                                            <div className="space-y-2.5">
+                                                {profile.customSkills.map((sk, idx) => (
+                                                    <div key={idx} className="space-y-1">
+                                                        <div className="flex justify-between text-xs font-semibold">
+                                                            <span>{sk.name}</span>
+                                                            <span className="font-numbers text-[#005fb8] dark:text-[#60cdff]">{sk.level}%</span>
+                                                        </div>
+                                                        <div className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                                                            <div className="h-full bg-[#005fb8] rounded-full" style={{ width: `${Math.min(100, Number(sk.level) || 80)}%` }} />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {Array.isArray(profile.passedExams) && profile.passedExams.length > 0 && (
+                                        <div className="p-4 sm:p-5 rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#161618] space-y-3">
+                                            <h3 className="text-sm font-bold flex items-center gap-2"><Icon name="award" className="w-4 h-4 text-emerald-500" /> Verified Skill Assessments</h3>
+                                            <div className="flex flex-wrap gap-2">
+                                                {profile.passedExams.map((ex, idx) => (
+                                                    <span key={idx} className="px-2.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-300/50 dark:border-emerald-500/30 text-xs font-bold text-emerald-800 dark:text-emerald-200">
+                                                        ✓ {ex.moduleTitle} ({ex.bestScore}% • {ex.grade})
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         )}
                     </main>
 
                     <footer className="py-5 px-4 border-t border-gray-200/70 dark:border-white/10 text-center text-xs font-semibold text-gray-500">
-                        Faridpur IT Institute
+                        Faridpur IT Institute • Verified Student Portfolio
                     </footer>
-
-                    <GigDetailOrderModal gig={selectedGig} onClose={() => setSelectedGig(null)} addToast={addToast} />
 
                     <Modal isOpen={!!activeCaseStudy} onClose={() => setActiveCaseStudy(null)} title={activeCaseStudy?.title || 'Case Study'} maxWidth="max-w-2xl" compact={true}>
                         {activeCaseStudy && (
-                            <div className="space-y-4">
-                                <div className="w-full aspect-video rounded-xl overflow-hidden bg-gray-100 dark:bg-dark-900 border border-gray-200 dark:border-white/10">
+                            <div className="space-y-3.5">
+                                <div className="aspect-video rounded-xl overflow-hidden bg-gray-100 dark:bg-dark-900">
                                     <img src={activeCaseStudy.imageUrl} alt={activeCaseStudy.title} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                                 </div>
-                                <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">{activeCaseStudy.title}</h3>
-                                <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
-                                    {activeCaseStudy.caseStudy}
-                                </p>
+                                <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap break-words">{activeCaseStudy.caseStudy || 'No case study description added.'}</p>
                             </div>
                         )}
                     </Modal>
@@ -25193,19 +25357,20 @@ const SmartPhoneAction = ({ phone }) => {
             // 🟢 MISSING AUTH & CORE APP STATES RECOVERED
            const [auth, setAuth] = useState(() => { try { return JSON.parse(localStorage.getItem('faridpurit_auth')) || null; } catch(e) { return null; } });
             const [currentRoute, setCurrentRoute] = useState('dashboard');
-            // 🌐 Bulletproof URL Parser for Facebook / Instagram / Messenger / Blogger (?m=1, fbclid, igsh, #_=_)
+            // 🌐 Bulletproof URL Parser for Facebook / Instagram / Messenger / Blogger (?p=, ?g=, ?market=1)
             const extractPublicParams = () => {
                 const rawHref = String(window.location.href || '').replace(/&amp;/g, '&');
                 let pSlug = '';
+                let gId = '';
                 let isMkt = false;
 
                 try {
                     const sp = new URLSearchParams(window.location.search);
                     pSlug = sp.get('p') || sp.get('u') || sp.get('portfolio') || '';
+                    gId = sp.get('g') || sp.get('gig') || '';
                     if (sp.get('market') || sp.get('marketplace')) isMkt = true;
                 } catch (e) {}
 
-                // Fallback regex for malformed FB/IG links (e.g. ?p=1234?fbclid=... or hash links)
                 if (!pSlug) {
                     const qMatch = rawHref.match(/[?&](?:p|u|portfolio)=([^&#?]+)/i);
                     if (qMatch && qMatch[1]) pSlug = decodeURIComponent(qMatch[1]);
@@ -25214,41 +25379,55 @@ const SmartPhoneAction = ({ phone }) => {
                     const hMatch = String(window.location.hash || '').match(/^#\/?(?:p|u|portfolio)\/([^&#?]+)/i);
                     if (hMatch && hMatch[1]) pSlug = decodeURIComponent(hMatch[1]);
                 }
+                if (!gId) {
+                    const gMatch = rawHref.match(/[?&](?:g|gig)=([^&#?]+)/i);
+                    if (gMatch && gMatch[1]) gId = decodeURIComponent(gMatch[1]);
+                }
+                if (!gId) {
+                    const ghMatch = String(window.location.hash || '').match(/^#\/?(?:g|gig)\/([^&#?]+)/i);
+                    if (ghMatch && ghMatch[1]) gId = decodeURIComponent(ghMatch[1]);
+                }
                 if (!isMkt && (/[?&](?:market|marketplace)=1/i.test(rawHref) || /^#\/?market(?:place)?\b/i.test(String(window.location.hash || '')))) {
                     isMkt = true;
                 }
 
-                // Clean Facebook #_=_ or stray query fragments
                 pSlug = String(pSlug || '').split('?')[0].split('#')[0].trim();
+                gId = String(gId || '').split('?')[0].split('#')[0].trim();
 
-                // Blogger mobile ?m=1 redirect safety net (keeps param alive across instant redirect)
                 try {
-                    if (pSlug) sessionStorage.setItem('fit_pub_p_tmp', JSON.stringify({ slug: pSlug, ts: Date.now() }));
+                    if (gId) sessionStorage.setItem('fit_pub_g_tmp', JSON.stringify({ id: gId, ts: Date.now() }));
+                    else if (pSlug) sessionStorage.setItem('fit_pub_p_tmp', JSON.stringify({ slug: pSlug, ts: Date.now() }));
                     else if (!isMkt) {
-                        const saved = JSON.parse(sessionStorage.getItem('fit_pub_p_tmp') || 'null');
-                        if (saved && saved.slug && Date.now() - saved.ts < 4000) {
-                            pSlug = saved.slug;
+                        const savedG = JSON.parse(sessionStorage.getItem('fit_pub_g_tmp') || 'null');
+                        if (savedG && savedG.id && Date.now() - savedG.ts < 4000) gId = savedG.id;
+                        else {
+                            const savedP = JSON.parse(sessionStorage.getItem('fit_pub_p_tmp') || 'null');
+                            if (savedP && savedP.slug && Date.now() - savedP.ts < 4000) pSlug = savedP.slug;
                         }
                     }
                 } catch (e) {}
 
-                return { pSlug, isMkt };
+                return { pSlug, gId, isMkt };
             };
 
-            const [publicPortfolioSlug, setPublicPortfolioSlug] = useState(() => extractPublicParams().pSlug);
+            const [publicGigState, setPublicGigState] = useState(() => ({ id: extractPublicParams().gId, initialGig: null }));
+            const [publicPortfolioSlug, setPublicPortfolioSlug] = useState(() => {
+                const parsed = extractPublicParams();
+                return parsed.gId ? '' : parsed.pSlug;
+            });
             const [showPublicMarketplace, setShowPublicMarketplace] = useState(() => {
                 const parsed = extractPublicParams();
-                return !parsed.pSlug && parsed.isMkt;
+                return !parsed.gId && !parsed.pSlug && parsed.isMkt;
             });
             const [publicGigs, setPublicGigs] = useState([]);
             const [myPortfolioConfig, setMyPortfolioConfig] = useState({ tagline: '', bio: '', skills: [], portfolioItems: [] });
 
-            // Keep URL navigation synced with browser Back/Forward & FB/IG hash transitions
             useEffect(() => {
                 const syncPublicFromUrl = () => {
-                    const { pSlug, isMkt } = extractPublicParams();
-                    if (pSlug) { setPublicPortfolioSlug(pSlug); setShowPublicMarketplace(false); }
-                    else if (isMkt) { setPublicPortfolioSlug(''); setShowPublicMarketplace(true); }
+                    const { pSlug, gId, isMkt } = extractPublicParams();
+                    if (gId) { setPublicGigState({ id: gId, initialGig: null }); setPublicPortfolioSlug(''); setShowPublicMarketplace(false); }
+                    else if (pSlug) { setPublicGigState({ id: '', initialGig: null }); setPublicPortfolioSlug(pSlug); setShowPublicMarketplace(false); }
+                    else if (isMkt) { setPublicGigState({ id: '', initialGig: null }); setPublicPortfolioSlug(''); setShowPublicMarketplace(true); }
                 };
                 window.addEventListener('popstate', syncPublicFromUrl);
                 window.addEventListener('hashchange', syncPublicFromUrl);
@@ -27092,12 +27271,17 @@ const [courseModules, setCourseModules] = useState([]);
                 };
             }, [filteredOrders, myFilteredOrders, orders, filteredExpensesData, payouts, myPayouts, startDate, endDate, auth, networkList]);
 
-        const clearPublicParams = () => {
-             try { sessionStorage.removeItem('fit_pub_p_tmp'); } catch (e) {}
+       const clearPublicParams = () => {
+             try {
+                 sessionStorage.removeItem('fit_pub_p_tmp');
+                 sessionStorage.removeItem('fit_pub_g_tmp');
+             } catch (e) {}
              try {
                  const u = new URL(window.location.href);
                  u.searchParams.delete('p');
                  u.searchParams.delete('portfolio');
+                 u.searchParams.delete('g');
+                 u.searchParams.delete('gig');
                  u.searchParams.delete('market');
                  u.searchParams.delete('marketplace');
                  u.hash = '';
@@ -27105,14 +27289,35 @@ const [courseModules, setCourseModules] = useState([]);
              } catch (e) { window.location.hash = ''; }
          };
 
+         const openPublicGig = (gigOrId) => {
+             const id = typeof gigOrId === 'string' ? gigOrId.trim() : String(gigOrId?.id || '').trim();
+             if (!id) return;
+             setShowPublicMarketplace(false);
+             setPublicPortfolioSlug('');
+             setPublicGigState({ id, initialGig: typeof gigOrId === 'object' ? gigOrId : null });
+             try {
+                 const u = new URL(window.location.href);
+                 u.searchParams.delete('p');
+                 u.searchParams.delete('portfolio');
+                 u.searchParams.delete('market');
+                 u.searchParams.delete('marketplace');
+                 u.searchParams.set('g', id);
+                 u.hash = '';
+                 window.history.replaceState({}, '', u.toString());
+             } catch (e) {}
+         };
+
          const openShortPortfolio = (slug) => {
              const cleanSlug = String(slug || '').trim();
              if (!cleanSlug) return;
+             setPublicGigState({ id: '', initialGig: null });
              setShowPublicMarketplace(false);
              setPublicPortfolioSlug(cleanSlug);
              try {
                  const u = new URL(window.location.href);
                  u.searchParams.delete('portfolio');
+                 u.searchParams.delete('g');
+                 u.searchParams.delete('gig');
                  u.searchParams.delete('market');
                  u.searchParams.set('p', cleanSlug);
                  u.hash = '';
@@ -27121,17 +27326,38 @@ const [courseModules, setCourseModules] = useState([]);
          };
 
          const openFullPublicMarketplace = () => {
+             setPublicGigState({ id: '', initialGig: null });
              setPublicPortfolioSlug('');
              setShowPublicMarketplace(true);
              try {
                  const u = new URL(window.location.href);
                  u.searchParams.delete('p');
                  u.searchParams.delete('portfolio');
+                 u.searchParams.delete('g');
+                 u.searchParams.delete('gig');
                  u.searchParams.set('market', '1');
                  u.hash = '';
                  window.history.replaceState({}, '', u.toString());
              } catch (e) {}
          };
+
+         if (publicGigState.id) {
+             return (
+                 <>
+                     <ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
+                     <PublicGigDetailView
+                         gigId={publicGigState.id}
+                         initialGig={publicGigState.initialGig}
+                         isDarkMode={isDarkMode}
+                         setIsDarkMode={setIsDarkMode}
+                         addToast={addToast}
+                         onOpenPortfolio={openShortPortfolio}
+                         onOpenMarketplace={openFullPublicMarketplace}
+                         onClose={() => { setPublicGigState({ id: '', initialGig: null }); clearPublicParams(); }}
+                     />
+                 </>
+             );
+         }
 
          if (publicPortfolioSlug) {
              return (
@@ -27143,6 +27369,7 @@ const [courseModules, setCourseModules] = useState([]);
                          setIsDarkMode={setIsDarkMode}
                          addToast={addToast}
                          onOpenMarketplace={openFullPublicMarketplace}
+                         onOpenGig={openPublicGig}
                          onClose={() => { setPublicPortfolioSlug(''); clearPublicParams(); }}
                      />
                  </>
@@ -27159,6 +27386,7 @@ const [courseModules, setCourseModules] = useState([]);
                          setIsDarkMode={setIsDarkMode}
                          addToast={addToast}
                          onOpenPortfolio={openShortPortfolio}
+                         onOpenGig={openPublicGig}
                          onClose={() => { setShowPublicMarketplace(false); clearPublicParams(); }}
                      />
                  </>
@@ -27179,6 +27407,7 @@ const [courseModules, setCourseModules] = useState([]);
                          publicGigs={publicGigs}
                          onOpenPublicMarketplace={openFullPublicMarketplace}
                          onOpenPublicPortfolio={openShortPortfolio}
+                         onOpenPublicGig={openPublicGig}
                      />
                  </>
              );
@@ -27827,10 +28056,10 @@ const [courseModules, setCourseModules] = useState([]);
                                                         studentsPanel={studentsPanel}
                                                         studentLeads={studentLeads}
                                                         myPortfolioConfig={myPortfolioConfig}
+                                                        setMyPortfolioConfig={setMyPortfolioConfig}
                                                         executeAPI={executeAPI}
                                                         fetchOrders={fetchOrders}
                                                         addToast={addToast}
-                                                        onOpenPublicPortfolio={openShortPortfolio}
                                                     />
                                                 )}
                                                 {currentRoute === 'projects' && <ProjectsView addToast={addToast} executeAPI={executeAPI} projects={myProjects} orders={orders} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} />}
