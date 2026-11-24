@@ -1546,7 +1546,7 @@
                                                           )}
                                                       </div>
 
-                                                      <h3 className="text-xs sm:text-[13px] font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] transition-colors flex-1">
+                                                      <h3 className="text-[15px] sm:text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] transition-colors tracking-tight flex-1">
                                                           {gig.title}
                                                       </h3>
 
@@ -15175,6 +15175,7 @@ const ModulesView = ({ addToast, auth, modules, moduleProgress = [], executeAPI,
 
     const handleSaveModule = async (e) => {
         e.preventDefault();
+        if (isSaving) return;
         playSound('action');
         setIsSaving(true);
         const moduleData = { ...form, isNew: !form.id, confidence: 0 };
@@ -15401,7 +15402,7 @@ const ModulesView = ({ addToast, auth, modules, moduleProgress = [], executeAPI,
                         <button onClick={handleDownloadAllModulesPDF} className="bg-purple-50 hover:bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 dark:text-purple-400 border border-purple-200/50 dark:border-purple-800/50 px-3 md:px-4 py-2 md:py-2.5 rounded-full font-bold shadow-sm flex items-center gap-1.5 text-xs md:text-sm whitespace-nowrap transition-colors win-button">
                             <Icon name="printer" className="w-4 h-4 shrink-0" /> <span className="hidden sm:inline">Print Syllabus</span>
                         </button>
-                        <button onClick={() => { playSound('click'); setShowAddModal(true); }} className="bg-[#facc15] hover:bg-[#eab308] text-gray-900 px-3 md:px-5 py-2 md:py-2.5 rounded-full font-bold shadow-sm flex items-center gap-1.5 text-xs md:text-sm whitespace-nowrap transition-colors win-button shrink-0">
+                        <button onClick={() => { playSound('click'); setForm({ id: null, title: '', course: activeFilter !== 'All' ? activeFilter : courseList[0], topics: '', serial: filteredModules.length + 1 }); setShowAddModal(true); }} className="bg-[#facc15] hover:bg-[#eab308] text-gray-900 px-3 md:px-5 py-2 md:py-2.5 rounded-full font-bold shadow-sm flex items-center gap-1.5 text-xs md:text-sm whitespace-nowrap transition-colors win-button shrink-0">
                             <Icon name="plus" className="w-4 h-4 shrink-0" /> <span className="hidden sm:inline">Add Module</span>
                         </button>
                     </div>
@@ -15662,7 +15663,7 @@ if (!isAdmin) {
             </Modal>
 
             {/* Admin Add/Edit Module Modal */}
-            <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add New Module">
+            <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title={form.id ? "Edit Module" : "Add New Module"}>
                 <form onSubmit={handleSaveModule} className="space-y-4 px-2 py-2">
                     <div>
                         <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Module Title *</label>
@@ -19118,6 +19119,7 @@ const SmartPhoneAction = ({ phone }) => {
             const [newMessage, setNewMessage] = useState('');
             const [replyingTo, setReplyingTo] = useState(null);
             const [uploadingFile, setUploadingFile] = useState(false);
+            const [isDraggingFile, setIsDraggingFile] = useState(false);
             const [uploadProgress, setUploadProgress] = useState({ active: false, percent: 0, fileName: '', stage: '' });
             const [visibleLimit, setVisibleLimit] = useState(20); // মোবাইলে স্মুথ স্ক্রলের জন্য শুরুতে 20টি মেসেজ
             const [lightboxImg, setLightboxImg] = useState(null);
@@ -19450,26 +19452,23 @@ const SmartPhoneAction = ({ phone }) => {
                 }
             };
 
-           // 🟢 Handle File Attachments (প্রগ্রেস বার + দৈনিক লিমিট চেক সহ)
-            const handleFileUpload = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
+           // 🟢 Unified File Uploader (Click + Drag & Drop + Clipboard Image Paste)
+            const processFileUpload = (file) => {
+                if (!file || uploadingFile) return;
 
                 if (!isAdmin && todaySentCount >= dailyLimit) {
                     playAudio('cancel');
                     addToast(`আজকের সর্বোচ্চ ${dailyLimit}টি মেসেজের লিমিট শেষ হয়েছে।`, 'error');
-                    e.target.value = null;
                     return;
                 }
-                
+
                 if (file.size > 5 * 1024 * 1024) {
                     addToast("File is too large! Maximum allowed is 5MB.", "error");
-                    e.target.value = null;
                     return;
                 }
 
                 setUploadingFile(true);
-                setUploadProgress({ active: true, percent: 10, fileName: file.name, stage: 'ফাইল প্রস্তুত হচ্ছে...' });
+                setUploadProgress({ active: true, percent: 10, fileName: file.name || 'image.png', stage: 'ফাইল প্রস্তুত হচ্ছে...' });
                 playAudio('click');
 
                 let progressTimer = setInterval(() => {
@@ -19481,22 +19480,22 @@ const SmartPhoneAction = ({ phone }) => {
                         return { ...prev, percent: nextPct, stage: nextStage };
                     });
                 }, 320);
-                
+
                 const reader = new FileReader();
                 reader.onload = async (evt) => {
                     const base64Data = evt.target.result.split(',')[1];
                     try {
                         const res = await executeAPI({
                             action: 'upload_chat_file',
-                            filename: file.name,
-                            mimeType: file.type,
+                            filename: file.name || `upload_${Date.now()}.png`,
+                            mimeType: file.type || 'image/png',
                             data: base64Data
                         });
                         const data = await res.json();
-                        
+
                         if (data.success && data.fileUrl) {
                             clearInterval(progressTimer);
-                            setUploadProgress({ active: true, percent: 100, fileName: file.name, stage: 'আপলোড সম্পন্ন!' });
+                            setUploadProgress({ active: true, percent: 100, fileName: file.name || 'File', stage: 'আপলোড সম্পন্ন!' });
                             const fileMeta = JSON.stringify({
                                 url: data.fileUrl,
                                 fileId: data.fileId || '',
@@ -19514,10 +19513,9 @@ const SmartPhoneAction = ({ phone }) => {
                     } catch (error) {
                         clearInterval(progressTimer);
                         setUploadProgress({ active: false, percent: 0, fileName: '', stage: '' });
-                        addToast("Failed to upload file.", "error");
+                        addToast(error?.message || "Failed to upload file.", "error");
                     }
                     setUploadingFile(false);
-                    e.target.value = null;
                 };
                 reader.onerror = () => {
                     clearInterval(progressTimer);
@@ -19526,6 +19524,12 @@ const SmartPhoneAction = ({ phone }) => {
                     addToast("Could not read file.", "error");
                 };
                 reader.readAsDataURL(file);
+            };
+
+            const handleFileUpload = (e) => {
+                const file = e.target.files?.[0];
+                if (file) processFileUpload(file);
+                e.target.value = null;
             };
 
             const updateStatus = async (id, newStatus) => {
@@ -19662,8 +19666,27 @@ const SmartPhoneAction = ({ phone }) => {
             };
 
            return (
-                // 🟢 100% Wide, Full-Height Flex Layout (Fixed Footer Input Bar & Mobile Responsive)
-                <div className="relative w-full h-full flex-1 min-h-0 flex flex-col overflow-hidden bg-[#efeae2] dark:bg-[#0b141a]">
+                // 🟢 100% Wide, Full-Height Flex Layout with Drag & Drop File Upload
+                <div
+                    onDragOver={(e) => { e.preventDefault(); if (!isDraggingFile) setIsDraggingFile(true); }}
+                    onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingFile(false); }}
+                    onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingFile(false);
+                        const droppedFile = e.dataTransfer?.files?.[0];
+                        if (droppedFile) processFileUpload(droppedFile);
+                    }}
+                    className="relative w-full h-full flex-1 min-h-0 flex flex-col overflow-hidden bg-[#efeae2] dark:bg-[#0b141a]"
+                >
+                    {isDraggingFile && (
+                        <div className="absolute inset-0 z-50 bg-[#005fb8]/20 dark:bg-[#00a884]/25 backdrop-blur-sm border-4 border-dashed border-[#005fb8] dark:border-[#00a884] m-2 rounded-2xl flex flex-col items-center justify-center pointer-events-none">
+                            <div className="bg-white dark:bg-[#182229] px-6 py-4 rounded-2xl shadow-xl text-center space-y-1.5 border border-gray-200 dark:border-white/10">
+                                <Icon name="upload-cloud" className="w-9 h-9 text-[#005fb8] dark:text-[#00a884] mx-auto animate-bounce" />
+                                <p className="text-sm font-bold text-gray-900 dark:text-white">ফাইল বা ছবি এখানে ছেড়ে দিন</p>
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400">Image, PDF, Word, Excel (Max 5MB)</p>
+                            </div>
+                        </div>
+                    )}
                     
                    {/* Zero-Network CSS Pattern Layer (ইনস্ট্যান্ট রেন্ডার, কোনো ইমেজ ডাউনলোড ল্যাগ নেই) */}
                     <div
@@ -19809,8 +19832,22 @@ const SmartPhoneAction = ({ phone }) => {
                                                         )}
                                                     </div>
 
-                                                    {/* Inline Action Buttons */}
+                                                    {/* Inline Action Buttons (1-Click Copy + Reply + Delete) */}
                                                     <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover/msg:opacity-100 transition-opacity shrink-0 mb-0.5">
+                                                        {!String(msg.text || '').startsWith('[FILE_ATTACHMENT]') && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    playAudio('click');
+                                                                    if (navigator.clipboard) navigator.clipboard.writeText(String(msg.text || ''));
+                                                                    addToast('মেসেজ কপি করা হয়েছে!', 'success');
+                                                                }}
+                                                                className="p-1.5 text-gray-500 hover:text-white bg-white/90 dark:bg-[#202c33] hover:bg-emerald-600 transition-colors rounded-md border border-gray-200/60 dark:border-white/10"
+                                                                title="Copy Text"
+                                                            >
+                                                                <Icon name="copy" className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
                                                         {canReply && (
                                                             <button onClick={() => setReplyingTo(msg)} className="p-1.5 text-gray-500 hover:text-white bg-white/90 dark:bg-[#202c33] hover:bg-[#005fb8] transition-colors rounded-md border border-gray-200/60 dark:border-white/10" title="Reply">
                                                                 <Icon name="corner-up-left" className="w-3.5 h-3.5"/>
@@ -19891,6 +19928,16 @@ const SmartPhoneAction = ({ phone }) => {
                                         className="w-full bg-transparent border-none outline-none text-[15px] font-medium py-2 px-2 text-[#111b21] dark:text-white placeholder-gray-500 dark:placeholder-gray-400 resize-none max-h-[100px] hide-scrollbar"
                                         rows="1"
                                         disabled={uploadingFile}
+                                        onPaste={(e) => {
+                                            const items = e.clipboardData?.items;
+                                            if (!items) return;
+                                            for (let i = 0; i < items.length; i++) {
+                                                if (items[i].kind === 'file') {
+                                                    const pastedFile = items[i].getAsFile();
+                                                    if (pastedFile) { e.preventDefault(); processFileUpload(pastedFile); break; }
+                                                }
+                                            }
+                                        }}
                                         onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
                                     />
                                     <button type="button" disabled={uploadingFile} onClick={() => fileInputRef.current?.click()} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors shrink-0 -rotate-45 disabled:opacity-40" title="Attach file">
@@ -21365,7 +21412,9 @@ const SmartPhoneAction = ({ phone }) => {
 
             // Result Slip Modal State
             const [slipModal, setSlipModal] = useState(null);
-            const [showReview, setShowReview] = useState(false);
+            const [showReview, setShowReview] = useState(true);
+            const [reviewFilter, setReviewFilter] = useState('wrong'); // 'wrong' | 'all'
+            const [loadingReview, setLoadingReview] = useState(false);
             const [downloadingSlip, setDownloadingSlip] = useState(false);
 
             // প্রতি মিনিটে কুলডাউন টাইমার রিফ্রেশ
@@ -21487,7 +21536,8 @@ const SmartPhoneAction = ({ phone }) => {
                         }
 
                         setActiveExam(null);
-                        setShowReview(false);
+                        setShowReview(true);
+                        setReviewFilter((data.result.review || []).some(r => !r.isCorrect) ? 'wrong' : 'all');
                         setSlipModal(data.result);
                         setNowTick(Date.now());
 
@@ -21568,12 +21618,14 @@ const SmartPhoneAction = ({ phone }) => {
                 setStartingModId(null);
             };
 
-            // সংরক্ষিত রেকর্ড থেকে স্লিপ ওপেন করা
-            const openSavedSlip = (mod, rec) => {
+            // সংরক্ষিত রেকর্ড থেকে স্লিপ ওপেন করা + ব্যাকএন্ড থেকে ভুল/সঠিক প্রশ্নোত্তর লোড করা
+            const openSavedSlip = async (mod, rec) => {
                 playAudio('click');
-                setShowReview(false);
+                setShowReview(true);
+                setReviewFilter('wrong');
+                const exId = rec.examId || `EXM-${mod.serial}`;
                 setSlipModal({
-                    examId: rec.examId || `EXM-${mod.serial}`,
+                    examId: exId,
                     studentName: myRecord?.name || auth?.name || auth?.username || 'Student',
                     studentId: myRecord?.id || auth?.userId || '',
                     course: rec.course || mod.course,
@@ -21592,6 +21644,17 @@ const SmartPhoneAction = ({ phone }) => {
                     attempts: Number(rec.attempts || 1),
                     review: []
                 });
+
+                setLoadingReview(true);
+                try {
+                    const res = await executeAPI({ action: 'get_exam_review', examId: exId, moduleId: mod.id });
+                    const data = await res.json();
+                    if (data && data.success && Array.isArray(data.review)) {
+                        setSlipModal(prev => (prev && prev.examId === exId ? { ...prev, review: data.review } : prev));
+                        if (!data.review.some(r => !r.isCorrect)) setReviewFilter('all');
+                    }
+                } catch (e) {}
+                setLoadingReview(false);
             };
 
            // 🟢 ফিক্সড-সাইজ হাই-রেজোলিউশন স্লিপ PNG জেনারেটর (মোবাইল ও পিসি সবখানে একই প্রফেশনাল সাইজ)
@@ -22336,35 +22399,84 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 </div>
 
-                                {/* Optional Question-by-Question Answer Review */}
-                                {Array.isArray(slipModal.review) && slipModal.review.length > 0 && (
-                                    <div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowReview(prev => !prev)}
-                                            className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline flex items-center gap-1"
-                                        >
-                                            <Icon name={showReview ? 'chevron-up' : 'chevron-down'} className="w-3.5 h-3.5" />
-                                            <span>{showReview ? 'Hide Answer Review' : 'Show Answer Review'}</span>
-                                        </button>
-                                        {showReview && (
-                                            <div className="mt-2 max-h-48 overflow-y-auto hide-scrollbar divide-y divide-gray-100 dark:divide-white/10 border border-gray-200 dark:border-white/10 rounded-xl p-2.5 text-xs">
-                                                {slipModal.review.map(r => (
-                                                    <div key={r.idx} className="py-2 first:pt-0 last:pb-0">
-                                                        <p className="font-bold text-gray-900 dark:text-white">
-                                                            <span className={r.isCorrect ? 'text-emerald-600' : 'text-rose-500'}>{r.isCorrect ? '✓' : '✗'}</span> {r.idx}. {r.q}
-                                                        </p>
-                                                        {!r.isCorrect && (
-                                                            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
-                                                                Correct: {r.correctText}
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+                                {/* 🟢 Question-by-Question Wrong & Correct Answer Review */}
+                                <div className="space-y-2">
+                                    {(() => {
+                                        const allRev = Array.isArray(slipModal.review) ? slipModal.review : [];
+                                        const wrongRev = allRev.filter(r => !r.isCorrect);
+                                        const visibleRev = reviewFilter === 'wrong' ? wrongRev : allRev;
+
+                                        return (
+                                            <>
+                                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowReview(prev => !prev)}
+                                                        className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline flex items-center gap-1"
+                                                    >
+                                                        <Icon name={showReview ? 'chevron-up' : 'chevron-down'} className="w-3.5 h-3.5" />
+                                                        <span>প্রশ্ন ও উত্তর রিভিউ ({wrongRev.length}টি ভুল)</span>
+                                                    </button>
+
+                                                    {showReview && allRev.length > 0 && (
+                                                        <div className="flex items-center gap-1 bg-gray-100 dark:bg-dark-800 p-0.5 rounded-lg text-[10px] font-bold">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setReviewFilter('wrong')}
+                                                                className={`px-2 py-0.5 rounded-md ${reviewFilter === 'wrong' ? 'bg-rose-600 text-white' : 'text-gray-600 dark:text-gray-300'}`}
+                                                            >
+                                                                ভুলগুলো ({wrongRev.length})
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setReviewFilter('all')}
+                                                                className={`px-2 py-0.5 rounded-md ${reviewFilter === 'all' ? 'bg-[#005fb8] text-white' : 'text-gray-600 dark:text-gray-300'}`}
+                                                            >
+                                                                সব প্রশ্ন ({allRev.length})
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {showReview && (
+                                                    loadingReview ? (
+                                                        <div className="py-4 text-center text-xs text-gray-500 flex items-center justify-center gap-2 border border-gray-200 dark:border-white/10 rounded-xl">
+                                                            <Icon name="loader" className="w-4 h-4 animate-spin text-[#005fb8]" />
+                                                            <span>প্রশ্নোত্তর লোড হচ্ছে...</span>
+                                                        </div>
+                                                    ) : allRev.length === 0 ? (
+                                                        <p className="text-[11px] text-gray-400 italic px-1">এই পরীক্ষার বিস্তারিত প্রশ্নোত্তর ডাটাবেসে পাওয়া যায়নি।</p>
+                                                    ) : visibleRev.length === 0 ? (
+                                                        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-300/50 text-xs font-bold text-emerald-700 dark:text-emerald-300 text-center">
+                                                            অসাধারণ! কোনো ভুল উত্তর নেই—সব প্রশ্ন সঠিক হয়েছে।
+                                                        </div>
+                                                    ) : (
+                                                        <div className="max-h-60 overflow-y-auto overscroll-y-contain hide-scrollbar divide-y divide-gray-100 dark:divide-white/10 border border-gray-200 dark:border-white/10 rounded-xl p-2.5 space-y-2 text-xs">
+                                                            {visibleRev.map(r => (
+                                                                <div key={r.idx} className="pt-2 first:pt-0 space-y-1">
+                                                                    <p className="font-bold text-gray-900 dark:text-white leading-snug break-words">
+                                                                        <span className={r.isCorrect ? 'text-emerald-600 mr-1' : 'text-rose-600 mr-1'}>{r.isCorrect ? '✓' : '✗'}</span>
+                                                                        {r.idx}. {r.q}
+                                                                    </p>
+                                                                    <div className="pl-4 space-y-0.5 text-[11px]">
+                                                                        <p className={r.isCorrect ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-rose-600 dark:text-rose-400 font-semibold'}>
+                                                                            আপনার উত্তর: {r.selectedText || 'উত্তর দেওয়া হয়নি'}
+                                                                        </p>
+                                                                        {!r.isCorrect && (
+                                                                            <p className="text-emerald-700 dark:text-emerald-400 font-bold">
+                                                                                সঠিক উত্তর: {r.correctText}
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </div>
 
                                 {/* Download / Print Actions */}
                                 <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
@@ -23542,14 +23654,28 @@ const SmartPhoneAction = ({ phone }) => {
         // ==========================================
         // 🛒 FIVERR-STYLE MARKETPLACE VIEW (GIG MANAGER + SHAREABLE PORTFOLIO)
         // ==========================================
-        const MarketplaceView = ({ auth, gigs = [], projects = [], clientLeads = [], studentsPanel = [], studentLeads = [], executeAPI, fetchOrders, addToast, onOpenPublicPortfolio }) => {
+        const MarketplaceView = ({ auth, gigs = [], projects = [], clientLeads = [], studentsPanel = [], studentLeads = [], myPortfolioConfig = null, executeAPI, fetchOrders, addToast, onOpenPublicPortfolio }) => {
             const playAudio = (type) => { if (typeof window.playSound === 'function') window.playSound(type); };
             const [serviceList] = useGlobalServices();
             const isAdminMgr = ['Admin', 'Manager'].includes(auth?.role);
             const myId = String(auth?.userId || '').trim();
             const myName = String(auth?.name || auth?.username || myId).trim();
 
-            const [activeTab, setActiveTab] = useState('my-gigs'); // 'my-gigs' | 'explore' | 'orders'
+            const [activeTab, setActiveTab] = useState('my-gigs'); // 'my-gigs' | 'explore' | 'orders' | 'customize'
+            const [pfTagline, setPfTagline] = useState(myPortfolioConfig?.tagline || '');
+            const [pfBio, setPfBio] = useState(myPortfolioConfig?.bio || '');
+            const [pfSkills, setPfSkills] = useState(Array.isArray(myPortfolioConfig?.skills) && myPortfolioConfig.skills.length > 0 ? myPortfolioConfig.skills : [{ name: '', level: 90 }]);
+            const [pfItems, setPfItems] = useState(Array.isArray(myPortfolioConfig?.portfolioItems) ? myPortfolioConfig.portfolioItems : []);
+            const [newCaseStudy, setNewCaseStudy] = useState({ title: '', imageUrl: '', caseStudy: '', uploading: false });
+            const [savingPortfolio, setSavingPortfolio] = useState(false);
+
+            useEffect(() => {
+                if (!myPortfolioConfig) return;
+                setPfTagline(myPortfolioConfig.tagline || '');
+                setPfBio(myPortfolioConfig.bio || '');
+                if (Array.isArray(myPortfolioConfig.skills) && myPortfolioConfig.skills.length > 0) setPfSkills(myPortfolioConfig.skills);
+                if (Array.isArray(myPortfolioConfig.portfolioItems)) setPfItems(myPortfolioConfig.portfolioItems);
+            }, [myPortfolioConfig]);
             const [searchQ, setSearchQ] = useState('');
             const [catFilter, setCatFilter] = useState('All');
             const [modalOpen, setModalOpen] = useState(false);
@@ -23792,7 +23918,7 @@ const SmartPhoneAction = ({ phone }) => {
                                 </span>
                             </div>
 
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2" title={g.title}>
+                            <h3 className="text-[15px] sm:text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 tracking-tight" title={g.title}>
                                 {g.title}
                             </h3>
                             <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed flex-1">
@@ -23900,10 +24026,11 @@ const SmartPhoneAction = ({ phone }) => {
                         </div>
                     </div>
 
-                    {/* 3-Tab Navigation */}
-                    <div className="glass-panel p-1.5 rounded-xl border border-gray-200/70 dark:border-white/10 grid grid-cols-3 gap-1.5">
+                    {/* 4-Tab Navigation */}
+                    <div className="glass-panel p-1.5 rounded-xl border border-gray-200/70 dark:border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                         {[
                             { id: 'my-gigs', label: `My Gigs (${myGigs.length})`, icon: 'layers' },
+                            { id: 'customize', label: `Profile & Portfolio`, icon: 'sliders' },
                             { id: 'explore', label: `Marketplace (${gigs.length})`, icon: 'compass' },
                             { id: 'orders', label: `Orders (${incomingOrders.length})`, icon: 'shopping-bag' }
                         ].map(t => (
@@ -24007,6 +24134,158 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    )}
+
+                    {/* TAB 4: PROFILE CUSTOMIZATION (TAGLINE, BIO, SKILLS + IMAGE & CASE STUDY PORTFOLIO) */}
+                    {activeTab === 'customize' && (
+                        <div className="space-y-4">
+                            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-4">
+                                <div className="flex items-center justify-between gap-2 flex-wrap border-b border-gray-100 dark:border-white/10 pb-3">
+                                    <div>
+                                        <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">Customize Dedicated Profile</h3>
+                                        <p className="text-xs text-gray-500">আপনার পাবলিক পোর্টফোলিও পেজের বায়ো, দক্ষতা (%) এবং কাজের ছবি ও কেস স্টাডি সাজান।</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        disabled={savingPortfolio}
+                                        onClick={async () => {
+                                            setSavingPortfolio(true);
+                                            playAudio('action');
+                                            try {
+                                                const cleanSkills = pfSkills.map(s => ({ name: String(s.name || '').trim(), level: Math.min(100, Math.max(10, Number(s.level) || 80)) })).filter(s => s.name);
+                                                const res = await executeAPI({
+                                                    action: 'save_user_portfolio',
+                                                    portfolioConfig: { shortId: portfolioSlug, tagline: pfTagline, bio: pfBio, skills: cleanSkills, portfolioItems: pfItems }
+                                                });
+                                                const data = await res.json();
+                                                if (data && data.success) {
+                                                    playAudio('success');
+                                                    addToast(data.message || 'Saved!', 'success');
+                                                    fetchOrders(true);
+                                                } else addToast((data && data.message) || 'Save failed.', 'error');
+                                            } catch (err) { addToast('Network error.', 'error'); }
+                                            setSavingPortfolio(false);
+                                        }}
+                                        className="px-5 py-2 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button"
+                                    >
+                                        {savingPortfolio ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="save" className="w-3.5 h-3.5" />}
+                                        <span>{savingPortfolio ? 'Saving...' : 'Save Changes'}</span>
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Profile Tagline / Headline</label>
+                                        <input type="text" value={pfTagline} onChange={e => setPfTagline(e.target.value)} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-semibold" placeholder="e.g. Full-Stack WordPress & Digital Marketing Expert" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">About Me / Bio</label>
+                                        <textarea rows="2" value={pfBio} onChange={e => setPfBio(e.target.value)} className="w-full input-style px-3 py-2 text-xs sm:text-sm resize-none" placeholder="আপনার অভিজ্ঞতা ও কাজের ধরন সংক্ষেপে লিখুন..." />
+                                    </div>
+                                </div>
+
+                                {/* Detailed Skills Builder */}
+                                <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-white/10">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200">Skills &amp; Proficiency (%)</span>
+                                        <button type="button" onClick={() => setPfSkills(prev => [...prev, { name: '', level: 85 }])} className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold">
+                                            + Add Skill
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        {pfSkills.map((sk, idx) => (
+                                            <div key={idx} className="flex items-center gap-2 bg-gray-50 dark:bg-dark-800 p-2 rounded-xl border border-gray-200/70 dark:border-white/10">
+                                                <input type="text" value={sk.name} onChange={e => setPfSkills(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} className="flex-1 min-w-0 input-style px-2.5 py-1.5 text-xs font-semibold" placeholder="Skill name (e.g. SEO)" />
+                                                <input type="number" min="10" max="100" value={sk.level} onChange={e => setPfSkills(prev => prev.map((x, i) => i === idx ? { ...x, level: e.target.value } : x))} className="w-16 input-style px-2 py-1.5 text-xs font-numbers font-bold text-center" />
+                                                <button type="button" onClick={() => setPfSkills(prev => prev.filter((_, i) => i !== idx))} className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg"><Icon name="x" className="w-3.5 h-3.5" /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Portfolio Image + Case Study Builder */}
+                                <div className="space-y-3 pt-3 border-t border-gray-100 dark:border-white/10">
+                                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">Portfolio Projects (Image &amp; Case Study)</span>
+
+                                    <div className="p-3 rounded-xl bg-gray-50/90 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 space-y-2.5">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                            <input type="text" value={newCaseStudy.title} onChange={e => setNewCaseStudy(p => ({ ...p, title: e.target.value }))} className="w-full input-style px-3 py-2 text-xs font-semibold" placeholder="Project / Case Study Title *" />
+                                            <div className="flex gap-1.5">
+                                                <input type="url" value={newCaseStudy.imageUrl} onChange={e => setNewCaseStudy(p => ({ ...p, imageUrl: e.target.value }))} className="flex-1 min-w-0 input-style px-2.5 py-2 text-xs" placeholder="Image URL or Upload →" />
+                                                <label className="px-3 py-2 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 shrink-0">
+                                                    <Icon name={newCaseStudy.uploading ? 'loader' : 'upload'} className={`w-3.5 h-3.5 ${newCaseStudy.uploading ? 'animate-spin' : ''}`} />
+                                                    <span>Photo</span>
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        className="hidden"
+                                                        disabled={newCaseStudy.uploading}
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (!file) return;
+                                                            setNewCaseStudy(p => ({ ...p, uploading: true }));
+                                                            const img = new Image();
+                                                            const u = URL.createObjectURL(file);
+                                                            img.onload = async () => {
+                                                                try {
+                                                                    const sc = Math.min(1, 960 / img.width);
+                                                                    const c = document.createElement('canvas');
+                                                                    c.width = Math.round(img.width * sc);
+                                                                    c.height = Math.round(img.height * sc);
+                                                                    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                                                                    const b64 = c.toDataURL('image/jpeg', 0.82).split(',')[1];
+                                                                    const res = await executeAPI({ action: 'upload_chat_file', filename: `portfolio_${Date.now()}.jpg`, mimeType: 'image/jpeg', data: b64 });
+                                                                    const data = await res.json();
+                                                                    if (data && data.success && data.fileId) {
+                                                                        setNewCaseStudy(p => ({ ...p, imageUrl: `https://lh3.googleusercontent.com/d/${data.fileId}=w1000`, uploading: false }));
+                                                                        addToast('পোর্টফোলিও ছবি আপলোড হয়েছে!', 'success');
+                                                                    } else setNewCaseStudy(p => ({ ...p, uploading: false }));
+                                                                } catch (err) { setNewCaseStudy(p => ({ ...p, uploading: false })); }
+                                                                URL.revokeObjectURL(u);
+                                                            };
+                                                            img.src = u;
+                                                            e.target.value = '';
+                                                        }}
+                                                    />
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <textarea rows="3" value={newCaseStudy.caseStudy} onChange={e => setNewCaseStudy(p => ({ ...p, caseStudy: e.target.value }))} className="w-full input-style px-3 py-2 text-xs resize-none" placeholder="Case Study Details (ক্লায়েন্টের সমস্যা কী ছিল, আপনি কীভাবে সমাধান করেছেন এবং কী রেজাল্ট এসেছে)..." />
+                                        <div className="flex justify-end">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (!newCaseStudy.title.trim() || !newCaseStudy.imageUrl.trim()) return addToast('ছবি এবং টাইটেল দিন।', 'error');
+                                                    setPfItems(prev => [{ id: `PF-${Date.now()}`, title: newCaseStudy.title.trim(), imageUrl: newCaseStudy.imageUrl.trim(), caseStudy: newCaseStudy.caseStudy.trim() }, ...prev]);
+                                                    setNewCaseStudy({ title: '', imageUrl: '', caseStudy: '', uploading: false });
+                                                    addToast('লিস্টে যোগ হয়েছে — উপরের Save Changes বাটনে ক্লিক করে সেভ করুন!', 'info');
+                                                }}
+                                                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold win-button"
+                                            >
+                                                + Add to Portfolio
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {pfItems.length > 0 && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {pfItems.map(item => (
+                                                <div key={item.id} className="rounded-xl border border-gray-200/80 dark:border-white/10 overflow-hidden bg-white dark:bg-dark-800 flex flex-col">
+                                                    <div className="aspect-video bg-gray-100 dark:bg-dark-900 overflow-hidden relative">
+                                                        <img src={item.imageUrl} alt={item.title} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                                                        <button type="button" onClick={() => setPfItems(prev => prev.filter(x => x.id !== item.id))} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-md"><Icon name="trash-2" className="w-3.5 h-3.5" /></button>
+                                                    </div>
+                                                    <div className="p-2.5">
+                                                        <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{item.title}</p>
+                                                        <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">{item.caseStudy}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -24515,7 +24794,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                         </svg>
                                                     )}
                                                 </div>
-                                                <h3 className="text-xs sm:text-[13px] font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] flex-1">
+                                                <h3 className="text-[15px] sm:text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] tracking-tight flex-1">
                                                     {gig.title}
                                                 </h3>
                                                 <div className="pt-2 mt-auto border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-2 whitespace-nowrap">
@@ -24546,14 +24825,15 @@ const SmartPhoneAction = ({ phone }) => {
             );
         };
 
-        // ==========================================
-        // 🌍 DEDICATED PUBLIC STUDENT PORTFOLIO PAGE (4-DIGIT SHORT URL + CLEAN NO-WRAP + SEO)
+       // ==========================================
+        // 🌍 FULL-WIDTH DEDICATED PUBLIC PORTFOLIO (PURE WHITE + SHARE + SKILLS + CASE STUDIES + SEO)
         // ==========================================
         const PublicPortfolioView = ({ slug, isDarkMode, setIsDarkMode, addToast, onClose, onOpenMarketplace }) => {
             const [loading, setLoading] = useState(true);
             const [portfolio, setPortfolio] = useState(null);
             const [errorMsg, setErrorMsg] = useState('');
             const [selectedGig, setSelectedGig] = useState(null);
+            const [activeCaseStudy, setActiveCaseStudy] = useState(null);
 
             useEffect(() => {
                 let cancelled = false;
@@ -24571,7 +24851,7 @@ const SmartPhoneAction = ({ phone }) => {
                             const pf = data.portfolio;
                             setPortfolio(pf);
                             const shortUrl = `${window.location.origin}/?p=${encodeURIComponent(pf.shortId || slug)}`;
-                            const desc = `${pf.name} — ${(pf.courses || []).join(', ')} specialist offering ${(pf.gigs || []).length} professional services at Faridpur IT Institute.`;
+                            const desc = pf.tagline || `${pf.name} — ${(pf.courses || []).join(', ')} specialist offering ${(pf.gigs || []).length} services at Faridpur IT Institute.`;
                             updateDynamicSEO({
                                 title: `${pf.name} | Faridpur IT Institute`,
                                 description: desc,
@@ -24583,8 +24863,9 @@ const SmartPhoneAction = ({ phone }) => {
                                     mainEntity: {
                                         '@type': 'Person',
                                         name: pf.name,
+                                        description: pf.bio || desc,
                                         url: shortUrl,
-                                        knowsAbout: pf.courses || [],
+                                        knowsAbout: [...(pf.courses || []), ...((pf.customSkills || []).map(s => s.name))].filter(Boolean),
                                         sameAs: [pf.linkedin, pf.fbProfile, pf.website].filter(Boolean)
                                     },
                                     hasPart: (pf.gigs || []).map(g => {
@@ -24610,10 +24891,30 @@ const SmartPhoneAction = ({ phone }) => {
                 return () => { cancelled = true; };
             }, [slug]);
 
+            const shareUrl = `${window.location.origin}/?p=${encodeURIComponent(portfolio?.shortId || slug)}`;
+            const handleShareProfile = async () => {
+                if (typeof window.playSound === 'function') window.playSound('click');
+                if (navigator.share) {
+                    try {
+                        await navigator.share({ title: `${portfolio?.name || 'Talent'} — Portfolio`, url: shareUrl });
+                        return;
+                    } catch (e) {}
+                }
+                if (navigator.clipboard) navigator.clipboard.writeText(shareUrl);
+                if (typeof addToast === 'function') addToast('প্রোফাইল লিংক কপি করা হয়েছে!', 'success');
+            };
+
+            const resolvedSkills = useMemo(() => {
+                if (!portfolio) return [];
+                if (Array.isArray(portfolio.customSkills) && portfolio.customSkills.length > 0) return portfolio.customSkills;
+                return (portfolio.courses || []).map(c => ({ name: c, level: Math.max(70, Number(portfolio.skillProgress) || 85) }));
+            }, [portfolio]);
+
             return (
-                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-slate-50 dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100 flex flex-col">
-                    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#141416]/90 backdrop-blur-xl border-b border-gray-200/70 dark:border-white/10 px-4 py-3">
-                        <div className="max-w-5xl mx-auto flex items-center justify-between gap-2 flex-nowrap">
+                <div className="min-h-[100dvh] w-full max-w-[100vw] overflow-x-hidden bg-white dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100 flex flex-col">
+                    {/* Full-Width Top Navigation */}
+                    <header className="sticky top-0 z-40 w-full bg-white/95 dark:bg-[#141416]/95 backdrop-blur-xl border-b border-gray-200/80 dark:border-white/10 px-3 sm:px-6 lg:px-8 py-3">
+                        <div className="w-full flex items-center justify-between gap-2 flex-nowrap">
                             <div className="flex items-center gap-2 min-w-0">
                                 <div className="w-8 h-8 rounded-lg bg-[#005fb8] text-white flex items-center justify-center shrink-0">
                                     <Icon name="award" className="w-4 h-4" />
@@ -24622,64 +24923,56 @@ const SmartPhoneAction = ({ phone }) => {
                             </div>
 
                             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-nowrap">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsDarkMode(prev => !prev)}
-                                    className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0"
-                                >
+                                <button type="button" onClick={() => setIsDarkMode(prev => !prev)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-600 dark:text-gray-300 shrink-0">
                                     <Icon name={isDarkMode ? 'sun' : 'moon'} className="w-4 h-4" />
                                 </button>
                                 {typeof onOpenMarketplace === 'function' && (
-                                    <button
-                                        type="button"
-                                        onClick={onOpenMarketplace}
-                                        className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold whitespace-nowrap shrink-0"
-                                    >
+                                    <button type="button" onClick={onOpenMarketplace} className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-bold whitespace-nowrap shrink-0">
                                         Marketplace
                                     </button>
                                 )}
-                                <button
-                                    type="button"
-                                    onClick={onClose}
-                                    className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap shrink-0"
-                                >
+                                <button type="button" onClick={onClose} className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold whitespace-nowrap shrink-0">
                                     Portal Home
                                 </button>
                             </div>
                         </div>
                     </header>
 
-                    <main className="flex-1 w-full max-w-5xl mx-auto px-3.5 sm:px-6 py-6 sm:py-9 space-y-6">
+                    {/* Full-Width Seamless Main Content (No Excess Side Padding) */}
+                    <main className="flex-1 w-full px-3 sm:px-6 lg:px-8 py-5 sm:py-7 space-y-7">
                         {loading ? (
                             <div className="py-24 text-center space-y-3">
                                 <Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mx-auto" />
                                 <p className="text-xs font-semibold text-gray-500">Loading portfolio...</p>
                             </div>
                         ) : errorMsg || !portfolio ? (
-                            <div className="py-16 text-center space-y-3 bg-white dark:bg-[#161618] rounded-2xl border border-gray-200 dark:border-white/10 p-6">
+                            <div className="py-16 text-center space-y-3 bg-gray-50 dark:bg-[#161618] rounded-2xl border border-gray-200 dark:border-white/10 p-6">
                                 <Icon name="user-x" className="w-10 h-10 text-gray-400 mx-auto" />
                                 <h2 className="text-base font-bold">{errorMsg || 'Portfolio Not Found'}</h2>
-                                <button type="button" onClick={onClose} className="px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">
-                                    Back to Home
-                                </button>
+                                <button type="button" onClick={onClose} className="px-5 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold">Back to Home</button>
                             </div>
                         ) : (
                             <>
-                                {/* Clean Minimal Profile Card (Icon-Only Verified Badge) */}
-                                <section className="bg-white dark:bg-[#161618] rounded-3xl p-4 sm:p-6 border border-gray-200/80 dark:border-white/10 shadow-sm">
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                        <div className="flex items-center gap-3.5 min-w-0">
+                                {/* 1. Seamless Blended Profile Hero Section with Share Button & Circular Active Dot */}
+                                <section className="w-full pb-6 border-b border-gray-200/80 dark:border-white/10 space-y-4">
+                                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                                        <div className="flex items-center gap-4 min-w-0">
                                             <div className="relative shrink-0">
                                                 <img
                                                     src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(portfolio.name)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
                                                     alt={portfolio.name}
-                                                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-[3px] border-white dark:border-[#242428] shadow-sm bg-gray-100"
+                                                    className="w-16 h-16 sm:w-20 sm:h-20 object-cover border-[3px] border-white dark:border-[#242428] shadow-sm bg-gray-100"
+                                                    style={{ borderRadius: '9999px' }}
                                                 />
-                                                <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#161618]" />
+                                                <span
+                                                    className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#0d0d0f] shadow-[0_0_8px_rgba(16,185,129,0.7)]"
+                                                    style={{ borderRadius: '9999px' }}
+                                                    title="Active"
+                                                />
                                             </div>
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex items-center gap-1.5 flex-nowrap">
-                                                    <h1 className="text-lg sm:text-2xl font-bold tracking-tight truncate">{portfolio.name}</h1>
+                                                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight truncate">{portfolio.name}</h1>
                                                     {portfolio.isVerified && (
                                                         <svg className="w-4 h-4 sm:w-5 sm:h-5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none" aria-label="Verified">
                                                             <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
@@ -24687,9 +24980,12 @@ const SmartPhoneAction = ({ phone }) => {
                                                         </svg>
                                                     )}
                                                 </div>
+                                                {portfolio.tagline && (
+                                                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 font-medium mt-0.5 line-clamp-1">{portfolio.tagline}</p>
+                                                )}
                                                 <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap mt-2">
                                                     {(portfolio.courses || []).map(c => (
-                                                        <span key={c} className="px-2.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.07] text-[10px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap shrink-0">
+                                                        <span key={c} className="px-2.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.07] text-[10.5px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap shrink-0">
                                                             {c}
                                                         </span>
                                                     ))}
@@ -24697,45 +24993,47 @@ const SmartPhoneAction = ({ phone }) => {
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-col sm:flex-row md:flex-col items-stretch sm:items-center md:items-end gap-2.5 shrink-0">
-                                            <div className="grid grid-cols-3 gap-2 text-center">
-                                                <div className="px-3 py-1.5 rounded-xl bg-blue-500/[0.08] border border-blue-200/60 dark:border-blue-500/20 whitespace-nowrap">
+                                        {/* Right Stats + Share Profile Button */}
+                                        <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2.5 shrink-0">
+                                            <div className="flex items-center gap-2 text-center">
+                                                <div className="px-3 py-1.5 rounded-xl bg-blue-500/[0.07] border border-blue-200/60 dark:border-blue-500/20 whitespace-nowrap">
                                                     <span className="block text-sm font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{portfolio.skillProgress}%</span>
                                                     <span className="text-[9px] font-bold uppercase text-gray-500">Skill</span>
                                                 </div>
-                                                <div className="px-3 py-1.5 rounded-xl bg-emerald-500/[0.08] border border-emerald-200/60 dark:border-emerald-500/20 whitespace-nowrap">
+                                                <div className="px-3 py-1.5 rounded-xl bg-emerald-500/[0.07] border border-emerald-200/60 dark:border-emerald-500/20 whitespace-nowrap">
                                                     <span className="block text-sm font-numbers font-bold text-emerald-600 dark:text-emerald-400">{(portfolio.gigs || []).length}</span>
                                                     <span className="text-[9px] font-bold uppercase text-gray-500">Gigs</span>
                                                 </div>
-                                                <div className="px-3 py-1.5 rounded-xl bg-amber-500/[0.08] border border-amber-200/60 dark:border-amber-500/20 whitespace-nowrap">
+                                                <div className="px-3 py-1.5 rounded-xl bg-amber-500/[0.07] border border-amber-200/60 dark:border-amber-500/20 whitespace-nowrap">
                                                     <span className="block text-sm font-numbers font-bold text-amber-600 dark:text-amber-400">{portfolio.totalOrders || 0}</span>
                                                     <span className="text-[9px] font-bold uppercase text-gray-500">Orders</span>
                                                 </div>
                                             </div>
 
-                                            {(portfolio.linkedin || portfolio.fbProfile || portfolio.website) && (
-                                                <div className="flex items-center gap-1.5 flex-nowrap">
-                                                    {portfolio.linkedin && <a href={portfolio.linkedin} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-[#0A66C2]/10 text-[#0A66C2] text-[11px] font-bold whitespace-nowrap">LinkedIn</a>}
-                                                    {portfolio.fbProfile && <a href={portfolio.fbProfile} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-[#1877F2]/10 text-[#1877F2] text-[11px] font-bold whitespace-nowrap">Facebook</a>}
-                                                    {portfolio.website && <a href={portfolio.website} target="_blank" rel="noreferrer" className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold whitespace-nowrap">Website</a>}
-                                                </div>
-                                            )}
+                                            <div className="flex items-center gap-1.5 flex-nowrap">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleShareProfile}
+                                                    className="h-9 px-3.5 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center gap-1.5 whitespace-nowrap win-button shadow-sm"
+                                                >
+                                                    <Icon name="share-2" className="w-3.5 h-3.5 shrink-0" />
+                                                    <span>Share Profile</span>
+                                                </button>
+                                                {portfolio.linkedin && <a href={portfolio.linkedin} target="_blank" rel="noreferrer" className="h-9 px-2.5 rounded-xl bg-[#0A66C2]/10 text-[#0A66C2] text-xs font-bold flex items-center whitespace-nowrap">in</a>}
+                                                {portfolio.fbProfile && <a href={portfolio.fbProfile} target="_blank" rel="noreferrer" className="h-9 px-2.5 rounded-xl bg-[#1877F2]/10 text-[#1877F2] text-xs font-bold flex items-center whitespace-nowrap">FB</a>}
+                                                {portfolio.website && <a href={portfolio.website} target="_blank" rel="noreferrer" className="h-9 px-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center whitespace-nowrap">Web</a>}
+                                            </div>
                                         </div>
                                     </div>
 
-                                    {Array.isArray(portfolio.passedExams) && portfolio.passedExams.length > 0 && (
-                                        <div className="mt-4 pt-3.5 border-t border-gray-100 dark:border-white/10 flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
-                                            {portfolio.passedExams.slice(0, 6).map((ex, idx) => (
-                                                <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/[0.09] border border-emerald-300/50 dark:border-emerald-500/25 text-[10.5px] font-semibold text-emerald-800 dark:text-emerald-200 whitespace-nowrap shrink-0">
-                                                    <Icon name="check-circle" className="w-3 h-3 text-emerald-600 shrink-0" />
-                                                    <span>{ex.moduleTitle} ({ex.bestScore}%)</span>
-                                                </span>
-                                            ))}
-                                        </div>
+                                    {portfolio.bio && (
+                                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 leading-relaxed max-w-4xl">
+                                            {portfolio.bio}
+                                        </p>
                                     )}
                                 </section>
 
-                                {/* Services & Packages Section (Strictly No-Wrap Heading, Zero Extra Text) */}
+                                {/* 2. Services & Packages Section (Fiverr-Style Large Readable Gig Titles) */}
                                 <section className="space-y-4">
                                     <div className="flex items-center justify-between gap-2 flex-nowrap">
                                         <h2 className="text-base sm:text-xl font-bold tracking-tight flex items-center gap-2 whitespace-nowrap truncate">
@@ -24745,11 +25043,11 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
 
                                     {(!portfolio.gigs || portfolio.gigs.length === 0) ? (
-                                        <div className="bg-white dark:bg-[#161618] rounded-2xl p-10 text-center border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
+                                        <div className="bg-gray-50 dark:bg-[#161618] rounded-2xl p-10 text-center border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
                                             কোনো সার্ভিস পাওয়া যায়নি।
                                         </div>
                                     ) : (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                                             {portfolio.gigs.map(gig => {
                                                 const prices = (gig.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
                                                 const startPrice = prices.length > 0 ? Math.min(...prices) : 0;
@@ -24775,7 +25073,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                         </div>
 
                                                         <div className="p-3.5 flex-1 flex flex-col gap-2">
-                                                            <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] transition-colors">
+                                                            <h3 className="text-[15px] sm:text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 group-hover:text-[#005fb8] transition-colors tracking-tight">
                                                                 {gig.title}
                                                             </h3>
                                                             <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed flex-1">
@@ -24800,6 +25098,67 @@ const SmartPhoneAction = ({ phone }) => {
                                         </div>
                                     )}
                                 </section>
+
+                                {/* 3. Skills & Proficiency Breakdown + Verified Assessments */}
+                                {(resolvedSkills.length > 0 || (portfolio.passedExams && portfolio.passedExams.length > 0)) && (
+                                    <section className="pt-6 border-t border-gray-200/80 dark:border-white/10 space-y-4">
+                                        <h2 className="text-base sm:text-xl font-bold tracking-tight flex items-center gap-2 whitespace-nowrap">
+                                            <Icon name="zap" className="w-5 h-5 text-amber-500 shrink-0" />
+                                            <span>Skills &amp; Expertise</span>
+                                        </h2>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                            {resolvedSkills.map((sk, i) => (
+                                                <div key={i} className="p-3 rounded-xl bg-gray-50/80 dark:bg-white/[0.03] border border-gray-200/70 dark:border-white/10 space-y-1.5">
+                                                    <div className="flex items-center justify-between text-xs font-bold">
+                                                        <span className="text-gray-800 dark:text-gray-200 truncate">{sk.name}</span>
+                                                        <span className="font-numbers text-[#005fb8] dark:text-[#60cdff] shrink-0">{sk.level}%</span>
+                                                    </div>
+                                                    <div className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-[#005fb8] rounded-full" style={{ width: `${Math.min(100, Number(sk.level) || 80)}%` }} />
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {Array.isArray(portfolio.passedExams) && portfolio.passedExams.length > 0 && (
+                                            <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap pt-1">
+                                                {portfolio.passedExams.slice(0, 8).map((ex, idx) => (
+                                                    <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/[0.09] border border-emerald-300/50 dark:border-emerald-500/25 text-[11px] font-semibold text-emerald-800 dark:text-emerald-200 whitespace-nowrap shrink-0">
+                                                        <Icon name="check-circle" className="w-3 h-3 text-emerald-600 shrink-0" />
+                                                        <span>{ex.moduleTitle} ({ex.bestScore}%)</span>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </section>
+                                )}
+
+                                {/* 4. Dedicated Portfolio & Case Studies Section (Bottom) */}
+                                {Array.isArray(portfolio.portfolioItems) && portfolio.portfolioItems.length > 0 && (
+                                    <section className="pt-6 border-t border-gray-200/80 dark:border-white/10 space-y-4">
+                                        <h2 className="text-base sm:text-xl font-bold tracking-tight flex items-center gap-2 whitespace-nowrap">
+                                            <Icon name="image" className="w-5 h-5 text-emerald-600 shrink-0" />
+                                            <span>Portfolio &amp; Case Studies ({portfolio.portfolioItems.length})</span>
+                                        </h2>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                            {portfolio.portfolioItems.map((item, idx) => (
+                                                <article
+                                                    key={item.id || idx}
+                                                    onClick={() => setActiveCaseStudy(item)}
+                                                    className="bg-white dark:bg-[#161618] rounded-2xl border border-gray-200/80 dark:border-white/10 overflow-hidden cursor-pointer hover:border-[#005fb8] transition-all flex flex-col group"
+                                                >
+                                                    <div className="aspect-video bg-gray-100 dark:bg-dark-900 overflow-hidden">
+                                                        <img src={item.imageUrl} alt={item.title} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                    </div>
+                                                    <div className="p-3.5 space-y-1.5 flex-1">
+                                                        <h3 className="text-sm sm:text-[15px] font-bold text-gray-900 dark:text-white leading-snug line-clamp-1">{item.title}</h3>
+                                                        <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-3 leading-relaxed">{item.caseStudy}</p>
+                                                    </div>
+                                                </article>
+                                            ))}
+                                        </div>
+                                    </section>
+                                )}
                             </>
                         )}
                     </main>
@@ -24808,11 +25167,21 @@ const SmartPhoneAction = ({ phone }) => {
                         Faridpur IT Institute
                     </footer>
 
-                    <GigDetailOrderModal
-                        gig={selectedGig}
-                        onClose={() => setSelectedGig(null)}
-                        addToast={addToast}
-                    />
+                    <GigDetailOrderModal gig={selectedGig} onClose={() => setSelectedGig(null)} addToast={addToast} />
+
+                    <Modal isOpen={!!activeCaseStudy} onClose={() => setActiveCaseStudy(null)} title={activeCaseStudy?.title || 'Case Study'} maxWidth="max-w-2xl" compact={true}>
+                        {activeCaseStudy && (
+                            <div className="space-y-4">
+                                <div className="w-full aspect-video rounded-xl overflow-hidden bg-gray-100 dark:bg-dark-900 border border-gray-200 dark:border-white/10">
+                                    <img src={activeCaseStudy.imageUrl} alt={activeCaseStudy.title} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                                </div>
+                                <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">{activeCaseStudy.title}</h3>
+                                <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap break-words">
+                                    {activeCaseStudy.caseStudy}
+                                </p>
+                            </div>
+                        )}
+                    </Modal>
                 </div>
             );
         };
@@ -24824,24 +25193,70 @@ const SmartPhoneAction = ({ phone }) => {
             // 🟢 MISSING AUTH & CORE APP STATES RECOVERED
            const [auth, setAuth] = useState(() => { try { return JSON.parse(localStorage.getItem('faridpurit_auth')) || null; } catch(e) { return null; } });
             const [currentRoute, setCurrentRoute] = useState('dashboard');
-            const [publicPortfolioSlug, setPublicPortfolioSlug] = useState(() => {
+            // 🌐 Bulletproof URL Parser for Facebook / Instagram / Messenger / Blogger (?m=1, fbclid, igsh, #_=_)
+            const extractPublicParams = () => {
+                const rawHref = String(window.location.href || '').replace(/&amp;/g, '&');
+                let pSlug = '';
+                let isMkt = false;
+
                 try {
                     const sp = new URLSearchParams(window.location.search);
-                    const qp = sp.get('p') || sp.get('portfolio');
-                    if (qp && qp.trim()) return qp.trim();
+                    pSlug = sp.get('p') || sp.get('u') || sp.get('portfolio') || '';
+                    if (sp.get('market') || sp.get('marketplace')) isMkt = true;
                 } catch (e) {}
-                const h = String(window.location.hash || '');
-                const m = h.match(/^#(?:p|portfolio)\/(.+)$/i);
-                return (m && m[1]) ? decodeURIComponent(m[1]).trim() : '';
-            });
+
+                // Fallback regex for malformed FB/IG links (e.g. ?p=1234?fbclid=... or hash links)
+                if (!pSlug) {
+                    const qMatch = rawHref.match(/[?&](?:p|u|portfolio)=([^&#?]+)/i);
+                    if (qMatch && qMatch[1]) pSlug = decodeURIComponent(qMatch[1]);
+                }
+                if (!pSlug) {
+                    const hMatch = String(window.location.hash || '').match(/^#\/?(?:p|u|portfolio)\/([^&#?]+)/i);
+                    if (hMatch && hMatch[1]) pSlug = decodeURIComponent(hMatch[1]);
+                }
+                if (!isMkt && (/[?&](?:market|marketplace)=1/i.test(rawHref) || /^#\/?market(?:place)?\b/i.test(String(window.location.hash || '')))) {
+                    isMkt = true;
+                }
+
+                // Clean Facebook #_=_ or stray query fragments
+                pSlug = String(pSlug || '').split('?')[0].split('#')[0].trim();
+
+                // Blogger mobile ?m=1 redirect safety net (keeps param alive across instant redirect)
+                try {
+                    if (pSlug) sessionStorage.setItem('fit_pub_p_tmp', JSON.stringify({ slug: pSlug, ts: Date.now() }));
+                    else if (!isMkt) {
+                        const saved = JSON.parse(sessionStorage.getItem('fit_pub_p_tmp') || 'null');
+                        if (saved && saved.slug && Date.now() - saved.ts < 4000) {
+                            pSlug = saved.slug;
+                        }
+                    }
+                } catch (e) {}
+
+                return { pSlug, isMkt };
+            };
+
+            const [publicPortfolioSlug, setPublicPortfolioSlug] = useState(() => extractPublicParams().pSlug);
             const [showPublicMarketplace, setShowPublicMarketplace] = useState(() => {
-                try {
-                    const sp = new URLSearchParams(window.location.search);
-                    if (sp.get('market') || sp.get('marketplace')) return true;
-                } catch (e) {}
-                return String(window.location.hash || '').toLowerCase() === '#market';
+                const parsed = extractPublicParams();
+                return !parsed.pSlug && parsed.isMkt;
             });
             const [publicGigs, setPublicGigs] = useState([]);
+            const [myPortfolioConfig, setMyPortfolioConfig] = useState({ tagline: '', bio: '', skills: [], portfolioItems: [] });
+
+            // Keep URL navigation synced with browser Back/Forward & FB/IG hash transitions
+            useEffect(() => {
+                const syncPublicFromUrl = () => {
+                    const { pSlug, isMkt } = extractPublicParams();
+                    if (pSlug) { setPublicPortfolioSlug(pSlug); setShowPublicMarketplace(false); }
+                    else if (isMkt) { setPublicPortfolioSlug(''); setShowPublicMarketplace(true); }
+                };
+                window.addEventListener('popstate', syncPublicFromUrl);
+                window.addEventListener('hashchange', syncPublicFromUrl);
+                return () => {
+                    window.removeEventListener('popstate', syncPublicFromUrl);
+                    window.removeEventListener('hashchange', syncPublicFromUrl);
+                };
+            }, []);
             const [isRouteLoading, setIsRouteLoading] = useState(false); // 🟢 NEW: Page Transition State
             // 🟢 কমিউনিটি চ্যাট ফিল্টার ও দৈনিক মেসেজ লিমিট (ডিফল্ট ১২ — এখান থেকে অথবা ড্যাশবোর্ড থেকেই যেকোনো সময় বদলানো যাবে)
             const [communityFilterOnlyMine, setCommunityFilterOnlyMine] = useState(false);
@@ -25685,6 +26100,7 @@ const [courseModules, setCourseModules] = useState([]);
                 setDailyTasks(d.dailyTasks || []);
                 setWorkspaceLinks(d.workspaceLinks || []); // 🟢 Load Links
                 setMarketplaceGigs(d.marketplaceGigs || []);
+                if (d.myPortfolioConfig) setMyPortfolioConfig(d.myPortfolioConfig);
                 if (typeof d.communityTodayCount === 'number') {
                     setCommunityAllTodayCount(d.communityTodayCount);
                 }
@@ -26677,6 +27093,7 @@ const [courseModules, setCourseModules] = useState([]);
             }, [filteredOrders, myFilteredOrders, orders, filteredExpensesData, payouts, myPayouts, startDate, endDate, auth, networkList]);
 
         const clearPublicParams = () => {
+             try { sessionStorage.removeItem('fit_pub_p_tmp'); } catch (e) {}
              try {
                  const u = new URL(window.location.href);
                  u.searchParams.delete('p');
@@ -27409,6 +27826,7 @@ const [courseModules, setCourseModules] = useState([]);
                                                         clientLeads={myClientLeads}
                                                         studentsPanel={studentsPanel}
                                                         studentLeads={studentLeads}
+                                                        myPortfolioConfig={myPortfolioConfig}
                                                         executeAPI={executeAPI}
                                                         fetchOrders={fetchOrders}
                                                         addToast={addToast}
