@@ -19647,7 +19647,7 @@ const SmartPhoneAction = ({ phone }) => {
                                     playAudio('click');
                                     setLightboxImg({ src: directImgUrl, fallback: fallbackThumbUrl, alt: meta.name || 'Image' });
                                 }}
-                                className="w-[215px] sm:w-[260px] md:w-[300px] max-w-full rounded-lg overflow-hidden border border-black/10 dark:border-white/10 bg-black/5 dark:bg-black/30 cursor-pointer"
+                               className="w-full max-w-[230px] sm:max-w-[270px] md:max-w-[300px] rounded-lg overflow-hidden border border-black/10 dark:border-white/10 bg-black/5 dark:bg-black/30 cursor-pointer"
                             >
                                 <img
                                     src={directImgUrl}
@@ -19682,7 +19682,7 @@ const SmartPhoneAction = ({ phone }) => {
                             href={driveOpenUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="flex items-center gap-3 w-[220px] sm:w-[270px] max-w-full bg-black/[0.06] dark:bg-black/25 hover:bg-black/10 dark:hover:bg-black/35 px-3 py-2.5 rounded-lg border border-black/10 dark:border-white/10 transition-colors"
+                            className="flex items-center gap-2.5 w-full max-w-[230px] sm:max-w-[270px] bg-black/[0.06] dark:bg-black/25 hover:bg-black/10 dark:hover:bg-black/35 px-2.5 py-2 rounded-lg border border-black/10 dark:border-white/10 transition-colors"
                         >
                             <div className={`w-10 h-11 rounded-md ${badgeBg} text-white flex flex-col items-center justify-center shrink-0`}>
                                 <Icon name="file-text" className="w-4 h-4" />
@@ -19739,11 +19739,11 @@ const SmartPhoneAction = ({ phone }) => {
                         }}
                     />
 
-                    {/* Scrollable Chat Feed - 100% Wide */}
+                    {/* Scrollable Chat Feed - Strictly Zero Horizontal Scroll */}
                     <div
                         ref={chatFeedRef}
                         onScroll={handleFeedScroll}
-                        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain w-full px-3 sm:px-5 md:px-6 py-4 space-y-4 hide-scrollbar flex flex-col relative z-10"
+                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain w-full max-w-full px-2.5 sm:px-5 md:px-6 py-4 space-y-4 hide-scrollbar flex flex-col relative z-10 box-border"
                         style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}
                     >
                         
@@ -19805,8 +19805,8 @@ const SmartPhoneAction = ({ phone }) => {
                                 const initials = String(msg.senderName || 'U').trim().charAt(0).toUpperCase();
                                 
                                 return (
-                                    <div key={msg.id} className={`flex w-full group ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`flex items-end gap-2 sm:gap-2.5 max-w-[92%] sm:max-w-[80%] md:max-w-[70%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                                   <div key={msg.id} className={`flex w-full min-w-0 max-w-full group ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`flex items-end gap-1.5 sm:gap-2.5 min-w-0 max-w-full sm:max-w-[85%] md:max-w-[74%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                                             
                                             {/* Avatar with Active Green Dot */}
                                             <div className="shrink-0 mb-0.5">
@@ -19814,7 +19814,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                     <img
                                                         src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(msg.senderName)}&backgroundColor=e2e8f0`}
                                                         loading="lazy"
-                                                        className="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover bg-white border border-gray-200 dark:border-white/10"
+                                                        className="w-7 h-7 sm:w-9 sm:h-9 rounded-full object-cover bg-white border border-gray-200 dark:border-white/10"
                                                         alt="Avatar"
                                                     />
                                                     <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-[#0b141a] rounded-full"></span>
@@ -19822,22 +19822,25 @@ const SmartPhoneAction = ({ phone }) => {
                                             </div>
                                             
                                             {/* Message Content Area */}
-                                            <div className={`flex flex-col min-w-0 ${isMe ? 'items-end' : 'items-start'}`}>
+                                            <div className={`flex flex-col flex-1 min-w-0 max-w-full ${isMe ? 'items-end' : 'items-start'}`}>
                                                 
                                                 {!isMe && (
-                                                    <span className="text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1 ml-1">
+                                                    <span className="text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1 ml-1 truncate max-w-full">
                                                         {msg.senderName}
                                                     </span>
                                                 )}
 
-                                                <div className={`flex items-end gap-1.5 group/msg ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-                                                    <div className={`relative px-3 sm:px-3.5 pt-2 pb-5 min-w-[95px] text-[14px] leading-relaxed shadow-[0_1px_1px_rgba(0,0,0,0.12)] break-words
-                                                        ${isMe ? 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-white rounded-lg rounded-tr-none' : 'bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] rounded-lg rounded-tl-none'}
-                                                    `}>
+                                                <div className={`flex items-end gap-1 sm:gap-1.5 min-w-0 max-w-full group/msg ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                                                    <div
+                                                        style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                                        className={`relative px-3 sm:px-3.5 pt-2 pb-5 min-w-[90px] max-w-full overflow-hidden text-[14px] leading-relaxed shadow-[0_1px_1px_rgba(0,0,0,0.12)] whitespace-normal
+                                                            ${isMe ? 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-white rounded-lg rounded-tr-none' : 'bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] rounded-lg rounded-tl-none'}
+                                                        `}
+                                                    >
                                                         {msg.replyTo && (
-                                                            <div className={`mb-2 pl-2.5 border-l-4 ${isMe ? 'border-[#00a884]' : 'border-[#005fb8]'} text-xs flex flex-col items-start bg-black/5 dark:bg-black/25 py-1.5 pr-3 rounded max-w-full`}>
-                                                                <span className="font-bold text-[#005fb8] dark:text-[#60cdff] truncate max-w-full">{msg.replyTo.senderName}</span>
-                                                                <span className="text-gray-700 dark:text-gray-300 truncate max-w-full mt-0.5 opacity-85">
+                                                            <div className={`mb-2 pl-2.5 border-l-4 ${isMe ? 'border-[#00a884]' : 'border-[#005fb8]'} text-xs flex flex-col items-start bg-black/5 dark:bg-black/25 py-1.5 pr-2.5 rounded w-full max-w-full min-w-0 overflow-hidden`}>
+                                                                <span className="font-bold text-[#005fb8] dark:text-[#60cdff] break-words whitespace-normal w-full">{msg.replyTo.senderName}</span>
+                                                                <span className="text-gray-700 dark:text-gray-300 line-clamp-2 break-words whitespace-normal w-full mt-0.5 opacity-85">
                                                                     {msg.replyTo.text.startsWith('[FILE_ATTACHMENT]') ? '📎 Photo/Document' : msg.replyTo.text}
                                                                 </span>
                                                             </div>
@@ -19846,9 +19849,12 @@ const SmartPhoneAction = ({ phone }) => {
                                                         {String(msg.text || '').startsWith('[FILE_ATTACHMENT]') ? (
                                                             renderMessageText(msg.text)
                                                         ) : (
-                                                            <div className="text-[13.5px] sm:text-sm leading-relaxed whitespace-pre-wrap break-words">
+                                                            <div
+                                                                style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                                                className="text-[13.5px] sm:text-sm leading-relaxed min-w-0 max-w-full"
+                                                            >
                                                                 <LinkifyText text={msg.text} isOwn={isMe} />
-                                                                <span className="inline-block w-16" aria-hidden="true" />
+                                                                <span className="inline-block w-14" aria-hidden="true" />
                                                             </div>
                                                         )}
                                                         
@@ -19957,8 +19963,8 @@ const SmartPhoneAction = ({ phone }) => {
                         )}
 
                         {replyingTo && (
-                            <div className="mb-2 flex items-center justify-between bg-white dark:bg-[#2a3942] px-3.5 py-2 rounded-lg border-l-4 border-[#00a884]">
-                                <div className="min-w-0 pr-2">
+                            <div className="mb-2 flex items-center justify-between gap-2 w-full max-w-full overflow-hidden bg-white dark:bg-[#2a3942] px-3 py-2 rounded-lg border-l-4 border-[#00a884]">
+                                <div className="flex-1 min-w-0 overflow-hidden pr-1">
                                     <span className="text-[11px] font-bold text-[#00a884] block">Replying to {replyingTo.senderName}</span>
                                     <p className="text-xs text-gray-600 dark:text-gray-300 truncate font-medium">
                                         {replyingTo.text.startsWith('[FILE_ATTACHMENT]') ? '📎 Attached File' : replyingTo.text}
@@ -26127,6 +26133,8 @@ const handleAISubmit = async (e) => {
                 setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
             };
 
+            const sessionLogoutLockRef = useRef(false);
+
             const handleLogout = (silent = false) => {
                 if (!silent && typeof window.playSound === 'function') window.playSound('cancel');
                 let currentAuth = auth;
@@ -26145,9 +26153,11 @@ const handleAISubmit = async (e) => {
                     localStorage.removeItem('faridpurit_community_chats_v1');
                     localStorage.removeItem('faridpurit_synced_tasks_done');
                     Object.keys(localStorage).forEach(k => {
-                        if (k.startsWith('fit_vid_prog_')) localStorage.removeItem(k);
+                        if (k.startsWith('fit_vid_prog_') || k.startsWith('fit_pf_cache_')) localStorage.removeItem(k);
                     });
+                    sessionStorage.clear();
                 } catch (e) {}
+
                 lastDataSnapshotRef.current = '';
                 setOrders([]);
                 setExpenses([]);
@@ -26158,7 +26168,13 @@ const handleAISubmit = async (e) => {
                 setClientLeads([]);
                 setStudentLeads([]);
                 setStudentsPanel([]);
+                setDailyTasks([]);
+                setUsersList([]);
+                setActivityLogs([]);
+                setMarketplaceGigs([]);
                 setAuth(null);
+                window.location.hash = '';
+                setTimeout(() => { sessionLogoutLockRef.current = false; }, 1500);
             };
 
             const executeAPI = async (payload) => {
@@ -26174,10 +26190,11 @@ const handleAISubmit = async (e) => {
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify(securePayload)
                 });
-                // 🔒 সার্ভার সেশন টোকেন বাতিল বা মেয়াদোত্তীর্ণ হলে স্বয়ংক্রিয় লগআউট
+                // 🔒 সার্ভার সেশন টোকেন বাতিল বা পাসওয়ার্ড বদলালে সাথে সাথে অটো লগআউট ও ডাটা ওয়াইপ
                 res.clone().json().then(d => {
-                    if (d && d.sessionExpired) {
-                        addToast(d.message || 'সেশনের মেয়াদ শেষ হয়েছে। অনুগ্রহ করে পুনরায় লগইন করুন।', 'error');
+                    if (d && d.sessionExpired && !sessionLogoutLockRef.current) {
+                        sessionLogoutLockRef.current = true;
+                        addToast(d.message || 'নিরাপত্তার জন্য আপনার সেশন বাতিল করা হয়েছে। পুনরায় লগইন করুন।', 'error');
                         handleLogout(true);
                     }
                 }).catch(() => {});
@@ -26300,26 +26317,55 @@ const handleAISubmit = async (e) => {
                 });
             }, [auth]);
 
-           // 🟢 STRICT LIVE AUTH SYNC (AUTO LOGOUT & ROLE UPDATE - BULLETPROOF)
+           // 🔒 REAL-TIME GOOGLE SHEET SESSION GUARD (Checks on Load, Tab Focus & Periodic Heartbeat)
+            useEffect(() => {
+                if (!auth) return;
+                // টোকেন ছাড়া পুরোনো লগইন থাকলে সাথে সাথে লগআউট
+                if (!auth.token) {
+                    handleLogout(true);
+                    return;
+                }
+
+                let cancelled = false;
+                const checkLiveSession = async () => {
+                    if (cancelled || document.hidden || sessionLogoutLockRef.current) return;
+                    try {
+                        await executeAPI({ action: 'verify_session' });
+                    } catch (e) {}
+                };
+
+                checkLiveSession();
+                const onFocusCheck = () => { if (!document.hidden) checkLiveSession(); };
+                window.addEventListener('focus', onFocusCheck);
+                document.addEventListener('visibilitychange', onFocusCheck);
+
+                return () => {
+                    cancelled = true;
+                    window.removeEventListener('focus', onFocusCheck);
+                    document.removeEventListener('visibilitychange', onFocusCheck);
+                };
+            }, [auth?.token]);
+
+            // 🟢 STRICT LIVE AUTH SYNC (AUTO LOGOUT WITH FULL CACHE WIPE & ROLE UPDATE)
             useEffect(() => {
                 if (auth && usersList && usersList.length > 0) {
                     const currentUserId = String(auth.userId || auth.name || '').trim().toLowerCase();
                     const freshUser = usersList.find(u => String(u.Username).trim().toLowerCase() === currentUserId);
                     
                     if (!freshUser) {
-                        if(typeof window.playSound === 'function') window.playSound('cancel');
-                        setAuth(null);
-                        localStorage.removeItem('faridpurit_auth');
-                        window.location.reload(); // 🔴 Forced Hard Reload 
+                        addToast('আপনার অ্যাকাউন্টটি পরিবর্তন বা ডিলিট করা হয়েছে।', 'error');
+                        handleLogout(true);
                     } else {
                         const isRoleChanged = String(freshUser.Role || '').trim().toLowerCase() !== String(auth.role || '').trim().toLowerCase();
                         const isCourseChanged = String(freshUser.Course || '').trim().toLowerCase() !== String(auth.course || '').trim().toLowerCase();
                         
-                        if (isRoleChanged || isCourseChanged) {
-                            const updatedAuth = { ...auth, role: freshUser.Role, course: freshUser.Course, email: freshUser.Email };
+                        if (isRoleChanged) {
+                            addToast('আপনার রোল পরিবর্তন হয়েছে। নিরাপত্তার জন্য পুনরায় লগইন করুন।', 'info');
+                            handleLogout(true);
+                        } else if (isCourseChanged) {
+                            const updatedAuth = { ...auth, course: freshUser.Course, email: freshUser.Email };
                             setAuth(updatedAuth);
                             localStorage.setItem('faridpurit_auth', JSON.stringify(updatedAuth));
-                            if (isRoleChanged) window.location.reload(); // শুধু রোল বদলালেই রিলোড হবে
                         }
                     }
                 }
