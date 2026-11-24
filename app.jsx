@@ -907,9 +907,8 @@
             );
         };
 
-          const LandingView = ({ auth = null, currentRoute = 'dashboard', setAuth, addToast, isDarkMode, setIsDarkMode, publicGigs = [], onOpenPublicMarketplace, onOpenPublicPortfolio }) => {
+          const LandingView = ({ auth, currentRoute, setAuth, addToast, isDarkMode, setIsDarkMode, publicGigs = [], onOpenPublicMarketplace, onOpenPublicPortfolio, onOpenPublicGig }) => {
             const [showLoginModal, setShowLoginModal] = useState(false);
-            const [selectedHomeGig, setSelectedHomeGig] = useState(null);
             const [homeGigRowLimit, setHomeGigRowLimit] = useState(() => {
                 if (typeof window === 'undefined') return 12;
                 if (window.innerWidth < 640) return 3;   // Mobile: 1 per row × 3 rows
@@ -1485,14 +1484,19 @@
                               </div>
                           </section>
 
-                          {/* 🛒 PUBLIC MARKETPLACE RANDOM GIGS SHOWCASE (3 Rows: 1/row Mobile, 4-5/row PC + See More) */}
+                         {/* 🛒 PUBLIC MARKETPLACE SHOWCASE (8 Gig Cards + Full-Width + Dedicated Gig Page) */}
                           {randomHomeGigs.length > 0 && (
-                              <section className="w-full max-w-[90rem] mx-auto mt-16 md:mt-20 px-2 sm:px-4 md:px-8 relative z-10 box-border text-left">
+                              <section className="w-full mt-16 md:mt-20 px-3 sm:px-5 relative z-10 box-border text-left">
                                   <div className="flex items-center justify-between gap-2 flex-nowrap mb-5">
-                                      <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2 whitespace-nowrap truncate">
-                                          <Icon name="store" className="w-5 h-5 sm:w-6 sm:h-6 text-[#005fb8] shrink-0" />
-                                          <span className="truncate">Marketplace</span>
-                                      </h2>
+                                      <div className="min-w-0">
+                                          <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2 whitespace-nowrap truncate">
+                                              <Icon name="store" className="w-5 h-5 sm:w-6 sm:h-6 text-[#005fb8] shrink-0" />
+                                              <span className="truncate">Verified Freelance Marketplace</span>
+                                          </h2>
+                                          <p className="hidden sm:block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                              Hire verified students &amp; experts — quality-assured and delivered by Faridpur IT Institute.
+                                          </p>
+                                      </div>
                                       <button
                                           type="button"
                                           onClick={() => { playSound('click'); if (typeof onOpenPublicMarketplace === 'function') onOpenPublicMarketplace(); }}
@@ -1503,14 +1507,18 @@
                                       </button>
                                   </div>
 
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 sm:gap-4">
-                                      {randomHomeGigs.slice(0, homeGigRowLimit).map(gig => {
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+                                      {randomHomeGigs.slice(0, 8).map(gig => {
                                           const prices = (gig.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
                                           const startPrice = prices.length > 0 ? Math.min(...prices) : 0;
                                           return (
                                               <article
                                                   key={gig.id}
-                                                  onClick={() => { playSound('click'); setSelectedHomeGig(gig); }}
+                                                  onClick={() => {
+                                                      playSound('click');
+                                                      if (typeof onOpenPublicGig === 'function') onOpenPublicGig(gig);
+                                                      else window.open(`${window.location.origin}/?g=${encodeURIComponent(gig.id)}`, '_blank');
+                                                  }}
                                                   className="bg-white dark:bg-[#18181b] rounded-2xl border border-gray-200/80 dark:border-white/10 overflow-hidden cursor-pointer hover:border-[#005fb8] transition-all flex flex-col group shadow-sm"
                                               >
                                                   <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden shrink-0">
@@ -1573,15 +1581,6 @@
                                       </button>
                                   </div>
 
-                                  <GigDetailOrderModal
-                                      gig={selectedHomeGig}
-                                      onClose={() => setSelectedHomeGig(null)}
-                                      addToast={addToast}
-                                      onOpenOwnerPortfolio={(slug) => {
-                                          setSelectedHomeGig(null);
-                                          if (typeof onOpenPublicPortfolio === 'function') onOpenPublicPortfolio(slug);
-                                      }}
-                                  />
                               </section>
                           )}
 
@@ -23723,7 +23722,7 @@ const SmartPhoneAction = ({ phone }) => {
             const isAdminMgr = ['Admin', 'Manager'].includes(auth?.role);
             const myId = String(auth?.userId || '').trim();
             const myName = String(auth?.name || auth?.username || myId).trim();
-            const MAX_GIGS_PER_PROFILE = 6;
+            const MAX_GIGS_PER_PROFILE = 8;
 
             const normId = (v) => String(v || '').replace(/^'/, '').replace(/^\+88/, '').replace(/[^a-z0-9\u0980-\u09ff]/gi, '').toLowerCase();
             const myStMatch = useMemo(() => {
@@ -25777,10 +25776,33 @@ const SmartPhoneAction = ({ phone }) => {
 
             useEffect(() => {
                 const syncPublicFromUrl = () => {
-                    const { pSlug, gId, isMkt } = extractPublicParams();
-                    if (gId) { setPublicGigState({ id: gId, initialGig: null }); setPublicPortfolioSlug(''); setShowPublicMarketplace(false); }
-                    else if (pSlug) { setPublicGigState({ id: '', initialGig: null }); setPublicPortfolioSlug(pSlug); setShowPublicMarketplace(false); }
-                    else if (isMkt) { setPublicGigState({ id: '', initialGig: null }); setPublicPortfolioSlug(''); setShowPublicMarketplace(true); }
+                    const { pSlug, gId, csId, isMkt } = extractPublicParams();
+                    if (gId) {
+                        setPublicGigState({ id: gId, initialGig: null });
+                        setPublicCaseStudyState({ slug: '', itemId: '', initialProfile: null, initialItem: null });
+                        setPublicPortfolioSlug('');
+                        setShowPublicMarketplace(false);
+                    } else if (csId && pSlug) {
+                        setPublicGigState({ id: '', initialGig: null });
+                        setPublicCaseStudyState({ slug: pSlug, itemId: csId, initialProfile: null, initialItem: null });
+                        setPublicPortfolioSlug('');
+                        setShowPublicMarketplace(false);
+                    } else if (pSlug) {
+                        setPublicGigState({ id: '', initialGig: null });
+                        setPublicCaseStudyState({ slug: '', itemId: '', initialProfile: null, initialItem: null });
+                        setPublicPortfolioSlug(pSlug);
+                        setShowPublicMarketplace(false);
+                    } else if (isMkt) {
+                        setPublicGigState({ id: '', initialGig: null });
+                        setPublicCaseStudyState({ slug: '', itemId: '', initialProfile: null, initialItem: null });
+                        setPublicPortfolioSlug('');
+                        setShowPublicMarketplace(true);
+                    } else {
+                        setPublicGigState({ id: '', initialGig: null });
+                        setPublicCaseStudyState({ slug: '', itemId: '', initialProfile: null, initialItem: null });
+                        setPublicPortfolioSlug('');
+                        setShowPublicMarketplace(false);
+                    }
                 };
                 window.addEventListener('popstate', syncPublicFromUrl);
                 window.addEventListener('hashchange', syncPublicFromUrl);
