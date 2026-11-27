@@ -5646,305 +5646,371 @@
         // SMART FINANCIAL CALENDAR & MONEY MANAGEMENT (PRO UI - 100% BUG-FREE)
         // ==========================================
         const SmartFinancialCalendar = ({ orders = [], expenses = [], onAddExpense, goTo }) => {
-            const [viewMode, setViewMode] = useState('Month'); 
-            const [dateOffset, setDateOffset] = useState(0);
-            const [filterCat, setFilterCat] = useState('All');
-            const [selectedBox, setSelectedBox] = useState(null); 
-            const chartRef = useRef(null);
-            const chartInstance = useRef(null);
+            const playAudio = (t) => { if (typeof window.playSound === 'function') window.playSound(t); };
+            const [rangeFilter, setRangeFilter] = useState('7d'); // '7d' | '14d' | '30d' | '12m' | 'all'
+            const [calMonth, setCalMonth] = useState(() => moment().startOf('month'));
+            const [selectedDayYMD, setSelectedDayYMD] = useState(() => moment().format('YYYY-MM-DD'));
+            const barCanvasRef = useRef(null);
+            const barChartInst = useRef(null);
 
-            const playAudio = (type) => { if (typeof window.playSound === 'function') window.playSound(type); };
-
-            const formatCompactAmount = (num) => {
-                if (!num || num === 0) return '0';
-                if (num >= 100000) return (num / 100000).toFixed(2).replace(/\.00$/, '') + 'L';
-                return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+            const parseMoney = (v) => Math.max(0, parseFloat(String(v ?? 0).replace(/[^0-9.-]+/g, '')) || 0);
+            const getPaidVal = (o) => {
+                const st = String(o?.Status || '').trim().toLowerCase();
+                if (st === 'cancelled' || st === 'fake' || st === 'incomplete') return 0;
+                if (o.Paid !== undefined && o.Paid !== null && o.Paid !== '') return parseMoney(o.Paid);
+                return st === 'completed' ? parseMoney(o.Amount) : 0;
             };
 
-            const filteredOrders = useMemo(() => orders.filter(o => {
-                const status = String(o.Status || '').trim().toLowerCase();
-                if (status !== 'completed' && status !== 'active' && status !== 'admitted') return false; 
-                
-                const isAgency = String(o.Address || o.CourseName || '').toLowerCase().includes('agency') || String(o.CourseName || '').toLowerCase().includes('project') || String(o.Address || '').toLowerCase().includes('client');
-                const isAcademy = String(o.Address || o.CourseName || '').toLowerCase().includes('academy') || String(o.Address || '').toLowerCase().includes('student');
-                
-                if (filterCat === 'Agency' && !isAgency) return false;
-                if (filterCat === 'Academy' && !isAcademy) return false;
-                if (filterCat === 'Expense Only') return false;
-                return true;
-            }), [orders, filterCat]);
+            // 📊 Grouped Bar Chart Buckets (7D, 14D, 30D, 12M, All Time) — Income & Expense Together
+            const chartBundle = useMemo(() => {
+                const buckets = [];
+                const map = {};
+                const today = moment().startOf('day');
 
-            const filteredExpenses = useMemo(() => expenses.filter(e => {
-                if (filterCat === 'Agency' || filterCat === 'Academy' || filterCat === 'Income Only') return false; 
-                return true;
-            }), [expenses, filterCat]);
+                const addBucket = (key, label) => {
+                    const obj = { key, label, income: 0, expense: 0 };
+                    map[key] = obj;
+                    buckets.push(obj);
+                };
 
-            const { gridCells, totalIncome, totalExpense, incomeSources, expenseCategories, displayTitle, activeMoment, periodOrders, periodExpenses } = useMemo(() => {
-                const aMoment = moment().add(dateOffset, viewMode === 'Month' ? 'months' : 'years');
-                const activePeriodStr = viewMode === 'Month' ? aMoment.format('YYYY-MM') : aMoment.format('YYYY');
-                
-                const pOrders = viewMode === 'All' ? filteredOrders : filteredOrders.filter(o => moment(window.parseCustomDate ? window.parseCustomDate(o.Timestamp) : new Date(o.Timestamp)).format(viewMode === 'Month' ? 'YYYY-MM' : 'YYYY') === activePeriodStr);
-                const pExpenses = viewMode === 'All' ? filteredExpenses : filteredExpenses.filter(e => moment(window.parseCustomDate ? window.parseCustomDate(e.Date || e.Timestamp) : new Date(e.Date || e.Timestamp)).format(viewMode === 'Month' ? 'YYYY-MM' : 'YYYY') === activePeriodStr);
-
-                const tInc = pOrders.reduce((sum, o) => sum + (Number(parseFloat(String(o.Paid !== undefined ? o.Paid : o.Amount).replace(/[^0-9.-]+/g, ""))) || 0), 0);
-                const tExp = pExpenses.reduce((sum, e) => sum + (Number(parseFloat(String(e.Amount).replace(/[^0-9.-]+/g, ""))) || 0), 0);
-                const iSrc = new Set(pOrders.map(o => String(o.CourseName).split(' (')[0])).size;
-                const eCat = new Set(pExpenses.map(e => e.Category)).size;
-
-                let title = '';
-                if (viewMode === 'Month') title = aMoment.format('MMMM YYYY');
-                else if (viewMode === 'Year') title = aMoment.format('YYYY');
-                else title = 'LIFETIME DATA';
-
-                let cells = [];
-                if (viewMode === 'Month') {
-                    const startOfMonth = moment(aMoment).startOf('month');
-                    const endOfMonth = moment(aMoment).endOf('month');
-                    for (let i = 0; i < startOfMonth.day(); i++) cells.push(null);
-                    
-                    for (let d = 1; d <= endOfMonth.date(); d++) {
-                        const dStr = aMoment.date(d).format('YYYY-MM-DD');
-                        cells.push({ label: dStr, display: d, format: 'YYYY-MM-DD', isToday: dStr === moment().format('YYYY-MM-DD') });
+                if (rangeFilter === '7d' || rangeFilter === '14d' || rangeFilter === '30d') {
+                    const daysCount = rangeFilter === '7d' ? 7 : rangeFilter === '14d' ? 14 : 30;
+                    for (let i = daysCount - 1; i >= 0; i--) {
+                        const d = moment(today).subtract(i, 'days');
+                        addBucket(d.format('YYYY-MM-DD'), daysCount <= 14 ? d.format('DD MMM') : d.format('DD/MM'));
                     }
-                } else if (viewMode === 'Year') {
-                    for (let m = 0; m < 12; m++) {
-                        const mStr = aMoment.month(m).format('YYYY-MM');
-                        cells.push({ label: mStr, display: aMoment.month(m).format('MMM'), format: 'YYYY-MM', isToday: mStr === moment().format('YYYY-MM') });
-                    }
-                } else if (viewMode === 'All') {
-                    let minDate = moment();
-                    [...filteredOrders, ...filteredExpenses].forEach(item => {
-                        const d = moment(window.parseCustomDate ? window.parseCustomDate(item.Timestamp || item.Date) : new Date(item.Timestamp || item.Date));
-                        if (d.isValid() && d.isBefore(minDate)) minDate = d;
+                    (orders || []).forEach(o => {
+                        const k = moment(parseCustomDate(o.Timestamp)).format('YYYY-MM-DD');
+                        if (map[k]) map[k].income += getPaidVal(o);
                     });
-                    let curr = moment(minDate).startOf('month');
-                    const end = moment().endOf('month');
-                    while (curr.isSameOrBefore(end)) {
-                        cells.push({ label: curr.format('YYYY-MM'), display: curr.format('MMM YY'), format: 'YYYY-MM', isToday: curr.format('YYYY-MM') === moment().format('YYYY-MM') });
-                        curr.add(1, 'month');
+                    (expenses || []).forEach(e => {
+                        const k = moment(parseCustomDate(e.Date || e.Timestamp)).format('YYYY-MM-DD');
+                        if (map[k]) map[k].expense += parseMoney(e.Amount);
+                    });
+                } else if (rangeFilter === '12m') {
+                    for (let i = 11; i >= 0; i--) {
+                        const m = moment().subtract(i, 'months');
+                        addBucket(m.format('YYYY-MM'), m.format('MMM YY'));
                     }
-                    if (cells.length === 0) cells.push({ label: moment().format('YYYY-MM'), display: moment().format('MMM YY'), format: 'YYYY-MM', isToday: true });
+                    (orders || []).forEach(o => {
+                        const k = moment(parseCustomDate(o.Timestamp)).format('YYYY-MM');
+                        if (map[k]) map[k].income += getPaidVal(o);
+                    });
+                    (expenses || []).forEach(e => {
+                        const k = moment(parseCustomDate(e.Date || e.Timestamp)).format('YYYY-MM');
+                        if (map[k]) map[k].expense += parseMoney(e.Amount);
+                    });
+                } else {
+                    // All Time (Grouped by Month chronologically)
+                    const tempMap = {};
+                    const pushMonth = (ym) => {
+                        if (!ym || ym === 'Invalid date') return null;
+                        if (!tempMap[ym]) tempMap[ym] = { key: ym, label: moment(ym, 'YYYY-MM').format('MMM YY'), income: 0, expense: 0 };
+                        return tempMap[ym];
+                    };
+                    (orders || []).forEach(o => {
+                        const b = pushMonth(moment(parseCustomDate(o.Timestamp)).format('YYYY-MM'));
+                        if (b) b.income += getPaidVal(o);
+                    });
+                    (expenses || []).forEach(e => {
+                        const b = pushMonth(moment(parseCustomDate(e.Date || e.Timestamp)).format('YYYY-MM'));
+                        if (b) b.expense += parseMoney(e.Amount);
+                    });
+                    Object.values(tempMap).sort((a, b) => a.key.localeCompare(b.key)).forEach(b => buckets.push(b));
+                    if (buckets.length === 0) addBucket(moment().format('YYYY-MM'), moment().format('MMM YY'));
                 }
 
-                const finalGrid = cells.map(p => {
-                    if(!p) return null;
-                    const inc = filteredOrders.filter(o => moment(window.parseCustomDate ? window.parseCustomDate(o.Timestamp) : new Date(o.Timestamp)).format(p.format) === p.label).reduce((s, o) => s + (Number(parseFloat(String(o.Paid !== undefined ? o.Paid : o.Amount).replace(/[^0-9.-]+/g, ""))) || 0), 0);
-                    const exp = filteredExpenses.filter(e => moment(window.parseCustomDate ? window.parseCustomDate(e.Date || e.Timestamp) : new Date(e.Date || e.Timestamp)).format(p.format) === p.label).reduce((s, e) => s + (Number(parseFloat(String(e.Amount).replace(/[^0-9.-]+/g, ""))) || 0), 0);
-                    return { ...p, inc, exp };
-                });
+                const totalInc = buckets.reduce((s, b) => s + b.income, 0);
+                const totalExp = buckets.reduce((s, b) => s + b.expense, 0);
+                return { buckets, totalInc, totalExp, net: totalInc - totalExp };
+            }, [orders, expenses, rangeFilter]);
 
-                return { gridCells: finalGrid, totalIncome: tInc, totalExpense: tExp, incomeSources: iSrc, expenseCategories: eCat, displayTitle: title, activeMoment: aMoment, periodOrders: pOrders, periodExpenses: pExpenses };
-            }, [viewMode, dateOffset, filteredOrders, filteredExpenses]);
-
-            // 🟢 RENDER STABLE CHART
+            // Render / Update Grouped Bar Chart (Income + Expense Side by Side)
             useEffect(() => {
-                if (chartRef.current && gridCells.length > 0) {
-                    if (chartInstance.current) chartInstance.current.destroy();
-                    const ctx = chartRef.current.getContext('2d');
-                    
-                    const labels = gridCells.filter(c => c !== null).map(c => c.display);
-                    const incData = gridCells.filter(c => c !== null).map(c => c.inc);
-                    const expData = gridCells.filter(c => c !== null).map(c => c.exp);
+                if (!barCanvasRef.current || typeof Chart === 'undefined') return;
+                const isDark = document.documentElement.classList.contains('dark');
+                const labels = chartBundle.buckets.map(b => b.label);
+                const incData = chartBundle.buckets.map(b => Math.round(b.income));
+                const expData = chartBundle.buckets.map(b => Math.round(b.expense));
 
-                    const isDark = document.documentElement.classList.contains('dark');
-                    const textColor = isDark ? '#9ca3af' : '#6b7280';
-                    const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+                if (barChartInst.current) {
+                    barChartInst.current.destroy();
+                    barChartInst.current = null;
+                }
 
-                    chartInstance.current = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: labels,
-                            datasets: [
-                                { label: 'Income', data: incData, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.15)', borderWidth: 2, pointBackgroundColor: '#10b981', pointBorderColor: isDark ? '#111' : '#fff', pointBorderWidth: 2, pointRadius: 3, pointHoverRadius: 6, fill: true, tension: 0.4 },
-                                { label: 'Expense', data: expData, borderColor: '#f43f5e', backgroundColor: 'rgba(244, 63, 94, 0.15)', borderWidth: 2, pointBackgroundColor: '#f43f5e', pointBorderColor: isDark ? '#111' : '#fff', pointBorderWidth: 2, pointRadius: 3, pointHoverRadius: 6, fill: true, tension: 0.4 }
-                            ]
-                        },
-                        options: {
-                            animation: false,
-                            responsive: true, maintainAspectRatio: false,
-                            interaction: { mode: 'index', intersect: false },
-                            plugins: {
-                                legend: { display: true, position: 'top', align: 'end', labels: { color: textColor, usePointStyle: true, boxWidth: 8, font: { size: 11, weight: 'bold' } } },
-                                tooltip: { backgroundColor: isDark ? 'rgba(32,32,32,0.95)' : 'rgba(255,255,255,0.95)', titleColor: isDark ? '#fff' : '#000', bodyColor: isDark ? '#e5e7eb' : '#374151', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', borderWidth: 1 }
+                barChartInst.current = new Chart(barCanvasRef.current, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                label: 'Income (৳)',
+                                data: incData,
+                                backgroundColor: 'rgba(16, 185, 129, 0.85)',
+                                hoverBackgroundColor: '#059669',
+                                borderRadius: 5,
+                                borderSkipped: false,
+                                maxBarThickness: 28
                             },
-                            scales: {
-                                x: { grid: { display: false }, ticks: { color: textColor, font: {family: 'Segoe UI'} }, border: {display: false} },
-                                y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: textColor, font: {family: 'Segoe UI'}, callback: (val) => '৳' + formatCompactAmount(val) }, border: {display: false} }
+                            {
+                                label: 'Expense (৳)',
+                                data: expData,
+                                backgroundColor: 'rgba(244, 63, 94, 0.82)',
+                                hoverBackgroundColor: '#e11d48',
+                                borderRadius: 5,
+                                borderSkipped: false,
+                                maxBarThickness: 28
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                align: 'end',
+                                labels: {
+                                    boxWidth: 10,
+                                    boxHeight: 10,
+                                    usePointStyle: true,
+                                    pointStyle: 'rectRounded',
+                                    color: isDark ? '#cbd5e1' : '#334155',
+                                    font: { size: 11, weight: 'bold' }
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(15, 23, 42, 0.94)',
+                                titleColor: '#f8fafc',
+                                bodyColor: '#e2e8f0',
+                                padding: 10,
+                                cornerRadius: 8,
+                                callbacks: {
+                                    label: (ctx) => ` ${ctx.dataset.label}: ৳${Number(ctx.raw || 0).toLocaleString()}`,
+                                    afterBody: (items) => {
+                                        const inc = Number(items[0]?.raw || 0);
+                                        const exp = Number(items[1]?.raw || 0);
+                                        const net = inc - exp;
+                                        return `\n Net Balance: ${net >= 0 ? '+' : '-'}৳${Math.abs(net).toLocaleString()}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: { color: isDark ? '#94a3b8' : '#64748b', font: { size: 10, weight: '600' }, maxRotation: 0, autoSkip: true }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)' },
+                                ticks: {
+                                    color: isDark ? '#94a3b8' : '#64748b',
+                                    font: { size: 10 },
+                                    callback: (v) => v >= 1000 ? `৳${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `৳${v}`
+                                }
                             }
                         }
-                    });
-                }
-                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
-            }, [gridCells]);
+                    }
+                });
 
-            // 🟢 CLICK HANDLER FOR CALENDAR CELLS
-            const handleCellClick = (cell) => {
-                if(cell.inc > 0 || cell.exp > 0) {
-                    playAudio('click');
-                    setSelectedBox(cell);
+                return () => {
+                    if (barChartInst.current) { barChartInst.current.destroy(); barChartInst.current = null; }
+                };
+            }, [chartBundle]);
+
+            // 📅 Monthly Daily Breakdown Calendar
+            const { calCells, dailyMap } = useMemo(() => {
+                const dMap = {};
+                const ensureDay = (ymd) => {
+                    if (!dMap[ymd]) dMap[ymd] = { income: 0, expense: 0, items: [] };
+                    return dMap[ymd];
+                };
+                (orders || []).forEach(o => {
+                    const amt = getPaidVal(o);
+                    if (amt <= 0) return;
+                    const ymd = moment(parseCustomDate(o.Timestamp)).format('YYYY-MM-DD');
+                    const d = ensureDay(ymd);
+                    d.income += amt;
+                    d.items.push({ type: 'income', title: `${o.Name || 'Income'} — ${o.CourseName || ''}`, amount: amt });
+                });
+                (expenses || []).forEach(e => {
+                    const amt = parseMoney(e.Amount);
+                    if (amt <= 0) return;
+                    const ymd = moment(parseCustomDate(e.Date || e.Timestamp)).format('YYYY-MM-DD');
+                    const d = ensureDay(ymd);
+                    d.expense += amt;
+                    d.items.push({ type: 'expense', title: `${e.Category || 'Expense'}${e.Note ? ' — ' + e.Note : ''}`, amount: amt });
+                });
+
+                const startOfMonth = moment(calMonth).startOf('month');
+                const daysInMonth = startOfMonth.daysInMonth();
+                const startPad = startOfMonth.day(); // 0=Sun ... 6=Sat
+                const cells = [];
+                for (let i = 0; i < startPad; i++) cells.push(null);
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const ymd = moment(startOfMonth).date(d).format('YYYY-MM-DD');
+                    cells.push({ day: d, ymd, data: dMap[ymd] || { income: 0, expense: 0, items: [] } });
                 }
-            };
+                return { calCells: cells, dailyMap: dMap };
+            }, [orders, expenses, calMonth]);
+
+            const selectedDayData = dailyMap[selectedDayYMD] || { income: 0, expense: 0, items: [] };
+            const filterTabs = [
+                { id: '7d', label: '7 Days' },
+                { id: '14d', label: '14 Days' },
+                { id: '30d', label: '30 Days' },
+                { id: '12m', label: '12 Months' },
+                { id: 'all', label: 'All Time' }
+            ];
 
             return (
-                <div className="glass-panel p-4 md:p-6 rounded-[20px] shadow-sm border border-gray-200/50 dark:border-white/5 mt-6 transition-all duration-500 bg-white dark:bg-[#1a1a1a] max-w-full overflow-hidden">
-                    
-                    {/* Responsive Header */}
-                    <div className="flex justify-between items-center mb-4 gap-2">
-                        <div className="min-w-0 flex-1">
-                            <h3 className="text-base md:text-xl font-bold text-gray-800 dark:text-white flex items-center gap-1.5 md:gap-2 truncate">
-                                <Icon name="line-chart" className="w-4 h-4 md:w-5 md:h-5 text-emerald-500 shrink-0"/> 
-                                <span className="truncate">Financial Overview</span>
+                <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-5">
+                    {/* Header + 5 Range Filter Pills */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="min-w-0">
+                            <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                <Icon name="bar-chart-2" className="w-5 h-5 text-[#005fb8] shrink-0" />
+                                <span>Financial Overview (Income vs Expense)</span>
                             </h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Compare cashflow bars &amp; inspect daily records on the calendar.</p>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                            <button onClick={() => { playAudio('click'); if(goTo) goTo('orders'); }} className="bg-[#facc15] hover:bg-[#eab308] text-gray-900 w-8 h-8 md:w-auto md:px-3 md:py-1.5 rounded-full md:rounded-lg font-bold shadow-sm flex items-center justify-center gap-1.5 text-xs transition-colors shrink-0 win-button" title="Add Income">
-                                <Icon name="plus" className="w-4 h-4 md:w-3.5 md:h-3.5 shrink-0" /> <span className="hidden md:inline">Income</span>
-                            </button>
-                            <button onClick={() => { playAudio('click'); if(onAddExpense) onAddExpense(); }} className="bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-400 border border-red-200 dark:border-red-800/50 w-8 h-8 md:w-auto md:px-3 md:py-1.5 rounded-full md:rounded-lg font-bold shadow-sm flex items-center justify-center gap-1.5 text-xs transition-colors shrink-0 win-button" title="Add Expense">
-                                <Icon name="minus" className="w-4 h-4 md:w-3.5 md:h-3.5 shrink-0" /> <span className="hidden md:inline">Expense</span>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    {/* Filters */}
-                    <div className="glass-panel p-2 md:p-2.5 flex items-center gap-1.5 overflow-x-auto hide-scrollbar mb-5 border border-gray-200/50 dark:border-white/5 rounded-xl">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-1 shrink-0 flex items-center gap-1">
-                            <Icon name="filter" className="w-3 h-3"/> Filter:
-                        </span>
-                        {['All', 'Agency', 'Academy', 'Income Only', 'Expense Only'].map(f => (
-                            <button key={f} onClick={() => { playAudio('action'); setFilterCat(f); setSelectedBox(null); }} className={`px-2.5 md:px-4 py-1 md:py-1.5 text-[10px] md:text-xs font-bold whitespace-nowrap transition-colors border shrink-0 win-button ${filterCat === f ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 border-gray-900 dark:border-white rounded-lg shadow-sm' : 'bg-gray-50 dark:bg-dark-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-dark-600 hover:bg-gray-100 dark:hover:bg-dark-700 rounded-lg'}`}>
-                                {f}
-                            </button>
-                        ))}
-                    </div>
 
-                    {/* Top 4 Cards */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
-                        <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 flex flex-col justify-center">
-                            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase tracking-widest font-bold mb-1 flex items-center gap-1.5"><Icon name="trending-up" className="w-3 h-3"/> Total Income</p>
-                            <p className="text-xl md:text-2xl font-normal font-numbers text-emerald-700 dark:text-emerald-300 truncate">৳{totalIncome.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-rose-50/50 dark:bg-rose-900/10 p-4 rounded-2xl border border-rose-100 dark:border-rose-900/30 flex flex-col justify-center">
-                            <p className="text-[10px] text-rose-600 dark:text-rose-400 uppercase tracking-widest font-bold mb-1 flex items-center gap-1.5"><Icon name="trending-down" className="w-3 h-3"/> Total Expense</p>
-                            <p className="text-xl md:text-2xl font-normal font-numbers text-rose-700 dark:text-rose-300 truncate">৳{totalExpense.toLocaleString()}</p>
-                        </div>
-                        <div className={`p-4 rounded-2xl border flex flex-col justify-center ${totalIncome >= totalExpense ? 'bg-blue-50/50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-900/30' : 'bg-orange-50/50 dark:bg-orange-900/10 border-orange-100 dark:border-orange-900/30'}`}>
-                            <p className={`text-[10px] uppercase tracking-widest font-bold mb-1 flex items-center gap-1.5 ${totalIncome >= totalExpense ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}><Icon name="dollar-sign" className="w-3 h-3"/> Net Profit</p>
-                            <p className={`text-xl md:text-2xl font-normal font-numbers truncate ${totalIncome >= totalExpense ? 'text-blue-700 dark:text-blue-300' : 'text-orange-700 dark:text-orange-300'}`}>৳{(totalIncome - totalExpense).toLocaleString()}</p>
-                        </div>
-                        <div className="bg-purple-50/50 dark:bg-purple-900/10 p-4 rounded-2xl border border-purple-100 dark:border-purple-900/30 flex flex-col justify-center">
-                            <p className="text-[10px] text-purple-600 dark:text-purple-400 uppercase tracking-widest font-bold mb-1 flex items-center gap-1.5"><Icon name="pie-chart" className="w-3 h-3"/> Overview</p>
-                            <p className="text-lg md:text-xl font-normal font-numbers text-purple-700 dark:text-purple-300 truncate">{incomeSources} <span className="text-xs font-sans font-semibold">Inc</span> / {expenseCategories} <span className="text-xs font-sans font-semibold">Exp</span></p>
+                        <div className="flex items-center gap-1 bg-gray-100 dark:bg-dark-900 p-1 rounded-xl border border-gray-200/70 dark:border-white/10 overflow-x-auto hide-scrollbar flex-nowrap">
+                            {filterTabs.map(t => (
+                                <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => { playAudio('click'); setRangeFilter(t.id); }}
+                                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap shrink-0 transition-colors ${
+                                        rangeFilter === t.id
+                                            ? 'bg-[#005fb8] text-white shadow-sm'
+                                            : 'text-gray-600 dark:text-gray-300 hover:bg-white/70 dark:hover:bg-dark-800'
+                                    }`}
+                                >
+                                    {t.label}
+                                </button>
+                            ))}
                         </div>
                     </div>
 
-                    {/* Chart Canvas */}
-                    <div className="w-full h-64 md:h-80 mb-6 relative">
-                        <canvas ref={chartRef}></canvas>
-                    </div>
-
-                    {/* Calendar Controls */}
-                    <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center bg-gray-50 dark:bg-dark-900/50 p-2.5 md:p-3 rounded-xl border border-gray-200/50 dark:border-white/5 mb-4 gap-3">
-                        <div className="flex gap-1 sm:gap-2 bg-gray-200/50 dark:bg-dark-800 p-1 rounded-lg shrink-0 justify-center">
-                            <button onClick={() => { playAudio('click'); setViewMode('Month'); setDateOffset(0); setSelectedBox(null); }} className={`px-3 sm:px-4 py-1.5 rounded-md text-[10px] sm:text-xs font-bold transition-colors win-button ${viewMode === 'Month' ? 'bg-[#005fb8] text-white shadow-sm' : 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-dark-700'}`}>30 Days</button>
-                            <button onClick={() => { playAudio('click'); setViewMode('Year'); setDateOffset(0); setSelectedBox(null); }} className={`px-3 sm:px-4 py-1.5 rounded-md text-[10px] sm:text-xs font-bold transition-colors win-button ${viewMode === 'Year' ? 'bg-[#005fb8] text-white shadow-sm' : 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-dark-700'}`}>12 Months</button>
-                            <button onClick={() => { playAudio('click'); setViewMode('All'); setDateOffset(0); setSelectedBox(null); }} className={`px-3 sm:px-4 py-1.5 rounded-md text-[10px] sm:text-xs font-bold transition-colors win-button ${viewMode === 'All' ? 'bg-[#005fb8] text-white shadow-sm' : 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-dark-700'}`}>All Time</button>
+                    {/* 3 Range Summary Strips */}
+                    <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                        <div className="p-3 rounded-xl bg-emerald-500/[0.08] border border-emerald-200/60 dark:border-emerald-500/20">
+                            <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">Income</p>
+                            <p className="text-base sm:text-xl font-numbers font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 truncate">৳{Math.round(chartBundle.totalInc).toLocaleString()}</p>
                         </div>
-                        
-                        {viewMode !== 'All' ? (
-                            <div className="flex items-center justify-between sm:justify-end gap-1 sm:gap-3 flex-1 min-w-0">
-                                <button onClick={() => { playAudio('click'); setDateOffset(prev => prev - 1); setSelectedBox(null); }} className="p-1.5 bg-white dark:bg-dark-800 text-gray-600 rounded-md border border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-dark-700 win-button shrink-0"><Icon name="chevron-left" className="w-4 h-4"/></button>
-                                <span className="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-200 min-w-[90px] sm:min-w-[100px] text-center uppercase tracking-widest truncate max-w-full px-2">{displayTitle}</span>
-                                <button onClick={() => { playAudio('click'); setDateOffset(prev => prev + 1); setSelectedBox(null); }} className="p-1.5 bg-white dark:bg-dark-800 text-gray-600 rounded-md border border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-dark-700 win-button shrink-0"><Icon name="chevron-right" className="w-4 h-4"/></button>
-                            </div>
-                        ) : (
-                            <div className="text-xs sm:text-sm font-bold text-[#005fb8] dark:text-[#60cdff] uppercase tracking-widest sm:pr-2 flex items-center justify-center gap-2 flex-1">
-                                <Icon name="history" className="w-4 h-4" /> Lifetime Data
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Pro Calendar Grid */}
-                    <div className="glass-panel p-2.5 md:p-4 rounded-xl border border-gray-200/50 dark:border-white/5 bg-gray-50/30 dark:bg-dark-900/20">
-                        {viewMode === 'Month' && (
-                            <div className="grid grid-cols-7 gap-1 md:gap-2 text-center text-[10px] font-bold uppercase text-gray-400 mb-1.5">
-                                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (<div key={i} className="py-1">{d}</div>))}
-                            </div>
-                        )}
-                        <div className={`grid gap-1 md:gap-2 ${viewMode === 'Month' ? 'grid-cols-7' : 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-6'}`}>
-                            {gridCells.map((cell, i) => {
-                                if (!cell) return <div key={`empty-${i}`} className="min-h-[60px] md:min-h-[90px] bg-transparent"></div>;
-                                return (
-                                    <div key={i} onClick={() => handleCellClick(cell)} className={`min-h-[60px] md:min-h-[90px] p-1.5 md:p-2 border cursor-pointer flex flex-col justify-between overflow-hidden transition-colors rounded-xl ${cell.inc > 0 || cell.exp > 0 ? 'bg-white dark:bg-dark-800 border-gray-200 dark:border-white/10 hover:border-[#005fb8] dark:hover:border-[#60cdff] hover:shadow-md' : 'bg-gray-50/50 dark:bg-dark-900/20 border-transparent opacity-60 cursor-default'} ${cell.isToday ? 'ring-2 ring-emerald-500' : ''} ${selectedBox?.label === cell.label ? 'ring-2 ring-[#005fb8] dark:ring-[#facc15] shadow-md z-10' : ''}`}>
-                                        <div className="flex justify-between items-start mb-1">
-                                            <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] md:text-xs font-numbers leading-none ${cell.isToday ? 'bg-[#005fb8] text-white shadow-sm font-bold' : 'text-gray-500 font-bold'}`}>{cell.display}</span>
-                                        </div>
-                                        <div className="flex flex-col gap-0.5 mt-auto mb-1 w-full overflow-hidden">
-                                            {cell.inc > 0 && <span className="text-[8px] md:text-[9px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-900/30 px-1 rounded truncate leading-tight font-numbers">+৳{formatCompactAmount(cell.inc)}</span>}
-                                            {cell.exp > 0 && <span className="text-[8px] md:text-[9px] font-bold text-rose-700 dark:text-rose-400 bg-rose-100/50 dark:bg-rose-900/30 px-1 rounded truncate leading-tight font-numbers">-৳{formatCompactAmount(cell.exp)}</span>}
-                                        </div>
-                                        <div className="w-full h-1 bg-black/10 dark:bg-white/10 overflow-hidden mt-auto rounded-full">
-                                            <div className="h-full bg-[#005fb8] dark:bg-[#60cdff]" style={{ width: `${cell.inc > 0 || cell.exp > 0 ? 100 : 0}%` }}></div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                        <div className="p-3 rounded-xl bg-rose-500/[0.08] border border-rose-200/60 dark:border-rose-500/20">
+                            <p className="text-[10px] font-bold uppercase text-rose-600 dark:text-rose-300">Expense</p>
+                            <p className="text-base sm:text-xl font-numbers font-bold text-rose-600 dark:text-rose-400 mt-0.5 truncate">৳{Math.round(chartBundle.totalExp).toLocaleString()}</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-blue-500/[0.08] border border-blue-200/60 dark:border-blue-500/20">
+                            <p className="text-[10px] font-bold uppercase text-[#005fb8] dark:text-[#60cdff]">Net Cashflow</p>
+                            <p className={`text-base sm:text-xl font-numbers font-bold mt-0.5 truncate ${chartBundle.net >= 0 ? 'text-[#005fb8] dark:text-[#60cdff]' : 'text-rose-600'}`}>
+                                {chartBundle.net >= 0 ? '+' : '-'}৳{Math.round(Math.abs(chartBundle.net)).toLocaleString()}
+                            </p>
                         </div>
                     </div>
 
-                    {/* BUG-FREE Details Drawer */}
-                    {selectedBox && (
-                        <div className="mt-4 p-4 md:p-5 bg-gray-50 dark:bg-dark-900/50 rounded-2xl border border-gray-200 dark:border-white/10 animate-in slide-in-from-top-4">
-                            <div className="flex justify-between items-center mb-4 border-b border-gray-200 dark:border-white/5 pb-2">
-                                <h4 className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
-                                    <Icon name="list" className="w-4 h-4 text-[#005fb8]"/> 
-                                    Details for: <span className="text-[#005fb8] dark:text-[#60cdff]">
-                                        {selectedBox.label && moment(selectedBox.label).isValid() ? moment(selectedBox.label).format(selectedBox.format === 'YYYY-MM-DD' ? 'DD MMMM YYYY' : 'MMMM YYYY') : 'Unknown Date'}
-                                    </span>
+                    {/* Grouped Bar Chart Canvas */}
+                    <div className="w-full h-[250px] sm:h-[290px] p-3 rounded-2xl bg-white/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10">
+                        <canvas ref={barCanvasRef} />
+                    </div>
+
+                    {/* Interactive Financial Calendar + Day Ledger */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-2 border-t border-gray-100 dark:border-white/10">
+                        <div className="lg:col-span-7 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                                    <Icon name="calendar" className="w-4 h-4 text-[#005fb8]" />
+                                    <span>{calMonth.format('MMMM YYYY')}</span>
                                 </h4>
-                                <button onClick={() => { playAudio('cancel'); setSelectedBox(null); }} className="p-1.5 rounded-lg text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors win-button"><Icon name="x" className="w-4 h-4"/></button>
+                                <div className="flex items-center gap-1">
+                                    <button type="button" onClick={() => setCalMonth(m => moment(m).subtract(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center hover:bg-gray-200"><Icon name="chevron-left" className="w-4 h-4" /></button>
+                                    <button type="button" onClick={() => { setCalMonth(moment().startOf('month')); setSelectedDayYMD(moment().format('YYYY-MM-DD')); }} className="px-2.5 h-7 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold">Today</button>
+                                    <button type="button" onClick={() => setCalMonth(m => moment(m).add(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center hover:bg-gray-200"><Icon name="chevron-right" className="w-4 h-4" /></button>
+                                </div>
                             </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[300px] overflow-y-auto hide-scrollbar pr-1">
-                                {/* Incomes */}
-                                <div>
-                                    <h5 className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-3 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-lg border border-emerald-100 dark:border-emerald-800/50 flex justify-between">
-                                        <span>Income</span>
-                                        <span className="font-numbers font-normal">৳{selectedBox.inc.toLocaleString()}</span>
-                                    </h5>
-                                    <div className="space-y-2">
-                                        {periodOrders.filter(o => o.Timestamp && moment(window.parseCustomDate ? window.parseCustomDate(o.Timestamp) : new Date(o.Timestamp)).format(selectedBox.format) === selectedBox.label).map((o, idx) => (
-                                            <div key={idx} className="bg-white dark:bg-dark-800 p-3 rounded-xl border border-gray-100 dark:border-white/5 flex justify-between items-center shadow-sm">
-                                                <div className="min-w-0 pr-2">
-                                                    <p className="text-[11px] font-bold text-gray-800 dark:text-gray-200 truncate">{o.Name}</p>
-                                                    <p className="text-[9px] text-gray-500 truncate mt-0.5">{o.CourseName} • <span className="font-mono-code">{o.TrxID}</span></p>
-                                                </div>
-                                                <span className="text-[11px] font-normal text-emerald-600 dark:text-emerald-400 whitespace-nowrap font-numbers">+৳{(Number(parseFloat(String(o.Paid !== undefined ? o.Paid : o.Amount).replace(/[^0-9.-]+/g, ""))) || 0).toLocaleString()}</span>
+
+                            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase text-gray-400">
+                                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-1">{d}</div>)}
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1">
+                                {calCells.map((cell, idx) => {
+                                    if (!cell) return <div key={`empty-${idx}`} className="h-12 sm:h-14" />;
+                                    const isSel = cell.ymd === selectedDayYMD;
+                                    const isToday = cell.ymd === moment().format('YYYY-MM-DD');
+                                    const hasInc = cell.data.income > 0;
+                                    const hasExp = cell.data.expense > 0;
+                                    return (
+                                        <button
+                                            key={cell.ymd}
+                                            type="button"
+                                            onClick={() => { playAudio('click'); setSelectedDayYMD(cell.ymd); }}
+                                            className={`h-12 sm:h-14 p-1 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                                                isSel
+                                                    ? 'bg-[#005fb8] text-white border-[#005fb8] shadow-sm'
+                                                    : isToday
+                                                        ? 'bg-blue-500/10 border-[#005fb8]/50 text-gray-900 dark:text-white'
+                                                        : 'bg-white/70 dark:bg-dark-800/60 border-gray-200/60 dark:border-white/10 hover:border-[#005fb8]/50'
+                                            }`}
+                                        >
+                                            <span className="text-[11px] font-numbers font-bold leading-none">{cell.day}</span>
+                                            <div className="flex flex-col gap-0.5 text-[8.5px] font-numbers font-bold leading-none overflow-hidden">
+                                                {hasInc && <span className={isSel ? 'text-emerald-200 truncate' : 'text-emerald-600 dark:text-emerald-400 truncate'}>+{Math.round(cell.data.income)}</span>}
+                                                {hasExp && <span className={isSel ? 'text-rose-200 truncate' : 'text-rose-500 truncate'}>-{Math.round(cell.data.expense)}</span>}
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                {/* Expenses */}
-                                <div>
-                                    <h5 className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-widest mb-3 bg-rose-50 dark:bg-rose-900/20 px-3 py-1.5 rounded-lg border border-rose-100 dark:border-rose-800/50 flex justify-between">
-                                        <span>Expense</span>
-                                        <span className="font-numbers font-normal">৳{selectedBox.exp.toLocaleString()}</span>
-                                    </h5>
-                                    <div className="space-y-2">
-                                        {periodExpenses.filter(e => e.Date || e.Timestamp ? moment(window.parseCustomDate ? window.parseCustomDate(e.Date || e.Timestamp) : new Date(e.Date || e.Timestamp)).format(selectedBox.format) === selectedBox.label : false).map((e, idx) => (
-                                            <div key={idx} className="bg-white dark:bg-dark-800 p-3 rounded-xl border border-gray-100 dark:border-white/5 flex justify-between items-center shadow-sm">
-                                                <div className="min-w-0 pr-2">
-                                                    <p className="text-[11px] font-bold text-gray-800 dark:text-gray-200 truncate">{e.Category}</p>
-                                                    <p className="text-[9px] text-gray-500 truncate mt-0.5" title={e.Note}>{e.Note || 'No details'}</p>
-                                                </div>
-                                                <span className="text-[11px] font-normal text-rose-600 dark:text-rose-400 whitespace-nowrap font-numbers">-৳{(Number(parseFloat(String(e.Amount).replace(/[^0-9.-]+/g, ""))) || 0).toLocaleString()}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
-                    )}
+
+                        {/* Selected Day Details Panel */}
+                        <div className="lg:col-span-5 p-3.5 rounded-2xl bg-gray-50/90 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 flex flex-col justify-between gap-3">
+                            <div className="space-y-2.5">
+                                <div className="flex items-center justify-between gap-2 pb-2 border-b border-gray-200/70 dark:border-white/10">
+                                    <span className="text-xs font-bold text-gray-900 dark:text-white">
+                                        {moment(selectedDayYMD).format('DD MMM YYYY')}
+                                    </span>
+                                    <div className="flex items-center gap-2 text-[11px] font-numbers font-bold">
+                                        <span className="text-emerald-600">+৳{Math.round(selectedDayData.income).toLocaleString()}</span>
+                                        <span className="text-rose-500">-৳{Math.round(selectedDayData.expense).toLocaleString()}</span>
+                                    </div>
+                                </div>
+
+                                {selectedDayData.items.length === 0 ? (
+                                    <p className="text-xs text-gray-400 py-6 text-center">No income or expense recorded on this date.</p>
+                                ) : (
+                                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                                        {selectedDayData.items.map((it, idx) => (
+                                            <div key={idx} className="p-2 rounded-lg bg-white dark:bg-dark-800 border border-gray-200/60 dark:border-white/10 flex items-center justify-between gap-2 text-xs">
+                                                <span className="truncate font-semibold text-gray-800 dark:text-gray-200">{it.title}</span>
+                                                <span className={`font-numbers font-bold shrink-0 ${it.type === 'income' ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                    {it.type === 'income' ? '+' : '-'}৳{Math.round(it.amount).toLocaleString()}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-2 border-t border-gray-200/70 dark:border-white/10">
+                                {typeof onAddExpense === 'function' && (
+                                    <button type="button" onClick={onAddExpense} className="flex-1 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold win-button">
+                                        + Add Expense
+                                    </button>
+                                )}
+                                {typeof goTo === 'function' && (
+                                    <button type="button" onClick={() => goTo('orders')} className="flex-1 py-2 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold win-button">
+                                        All Transactions →
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             );
         };
@@ -9691,6 +9757,7 @@ const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrder
             const [duePayModal, setDuePayModal] = useState({ isOpen: false, project: null, amount: '', method: 'Cash', saving: false });
             const [isSaving, setIsSaving] = useState(false);
             const [quickBusyId, setQuickBusyId] = useState(null);
+            const [confirmPopup, setConfirmPopup] = useState({ isOpen: false, title: '', message: '', yesLabel: 'Yes, Confirm', tone: 'primary', onYes: null });
             const [expandedProject, setExpandedProject] = useState(null);
             const [searchQ, setSearchQ] = useState('');
             const [filterStatus, setFilterStatus] = useState('Ongoing'); // 🟢 Default Filter: Ongoing
@@ -9768,10 +9835,21 @@ const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrder
                 setShowModal(true);
             };
 
-            const handleDeleteDraft = (draftId) => {
-                if (typeof playSound === 'function') playSound('cancel');
-                saveDraftList(projectDrafts.filter(d => d.draftId !== draftId));
-                showToast('ড্রাফট মুছে ফেলা হয়েছে।', 'info');
+            const handleDeleteDraft = (draftId, draftTitle = 'this draft') => {
+                if (typeof playSound === 'function') playSound('click');
+                setConfirmPopup({
+                    isOpen: true,
+                    title: 'Delete Project Draft?',
+                    message: `Are you sure you want to permanently remove "${draftTitle}" from drafts?`,
+                    yesLabel: 'Yes, Delete',
+                    tone: 'danger',
+                    onYes: () => {
+                        if (typeof playSound === 'function') playSound('cancel');
+                        saveDraftList(projectDrafts.filter(d => d.draftId !== draftId));
+                        showToast('Draft deleted.', 'info');
+                        setConfirmPopup(prev => ({ ...prev, isOpen: false }));
+                    }
+                });
             };
 
             const allUnifiedProjects = useMemo(() => {
@@ -9887,8 +9965,8 @@ const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrder
                 setIsSaving(false);
             };
 
-            // ⚡ 1-CLICK 100% COMPLETE & DELIVER (Zero Payment Duplication — Due Stays Due!)
-            const handleOneClickCompleteDeliver = async (p) => {
+            // ⚡ 1-CLICK 100% COMPLETE & DELIVER WITH YES/NO CONFIRMATION POPUP
+            const executeOneClickCompleteDeliver = async (p) => {
                 if (quickBusyId) return;
                 playSound('action');
                 setQuickBusyId(p.id);
@@ -9915,6 +9993,25 @@ const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrder
                     showToast('Network error updating project.', 'error');
                 }
                 setQuickBusyId(null);
+            };
+
+            const handleOneClickCompleteDeliver = (p) => {
+                if (quickBusyId) return;
+                playSound('click');
+                const dueRem = Math.max(0, Number(p.revenue || 0) - Number(p.paid || 0));
+                setConfirmPopup({
+                    isOpen: true,
+                    title: 'Confirm 100% Complete & Deliver?',
+                    message: dueRem > 0
+                        ? `Mark "${p.name}" as 100% Completed & Delivered? Remaining Due (৳${dueRem.toLocaleString()}) will stay untouched in the Due list (no duplicate payment).`
+                        : `Are you sure you want to mark "${p.name}" as 100% Completed & Delivered?`,
+                    yesLabel: 'Yes, Complete & Deliver',
+                    tone: 'success',
+                    onYes: () => {
+                        setConfirmPopup(prev => ({ ...prev, isOpen: false }));
+                        executeOneClickCompleteDeliver(p);
+                    }
+                });
             };
 
             // 💰 Quick Collect Due Payment (Adds ONLY the new Due payment to Finance/Transactions!)
@@ -10004,18 +10101,28 @@ const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrder
                 navigator.clipboard.writeText(text).then(() => showToast('Project details copied!', 'success'));
             };
 
-            const handleDeleteProject = async (id) => {
-                if (!isAdminMgr) return showToast('শুধুমাত্র Admin বা Manager ডিলিট করতে পারবেন।', 'error');
-                if (!window.confirm('Are you sure you want to delete this project?')) return;
-                playSound('cancel');
-                try {
-                    const res = await executeAPI({ action: 'delete_project', id });
-                    const data = await res.json();
-                    if (data && data.success) {
-                        showToast('Project moved to Trash.', 'info');
-                        fetchOrders(true);
-                    } else showToast((data && data.message) || 'Delete failed.', 'error');
-                } catch (e) { showToast('Failed to delete project.', 'error'); }
+            const handleDeleteProject = (id, name = 'this project') => {
+                if (!isAdminMgr) return showToast('Only Admin or Manager can delete projects.', 'error');
+                playSound('click');
+                setConfirmPopup({
+                    isOpen: true,
+                    title: 'Delete Project?',
+                    message: `Are you sure you want to move "${name}" to the 30-Day Trash Bin?`,
+                    yesLabel: 'Yes, Delete',
+                    tone: 'danger',
+                    onYes: async () => {
+                        setConfirmPopup(prev => ({ ...prev, isOpen: false }));
+                        playSound('cancel');
+                        try {
+                            const res = await executeAPI({ action: 'delete_project', id });
+                            const data = await res.json();
+                            if (data && data.success) {
+                                showToast('Project moved to Trash.', 'info');
+                                fetchOrders(true);
+                            } else showToast((data && data.message) || 'Delete failed.', 'error');
+                        } catch (e) { showToast('Failed to delete project.', 'error'); }
+                    }
+                });
             };
 
             return (
@@ -10272,7 +10379,7 @@ const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrder
                                                 <Icon name="copy" className="w-3.5 h-3.5" />
                                             </button>
                                             {isAdminMgr && (
-                                                <button type="button" onClick={() => handleDeleteProject(p.id)} className="h-8 w-8 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white flex items-center justify-center transition-colors win-button" title="Delete Project">
+                                               <button type="button" onClick={() => handleDeleteProject(p.id, p.name)} className="h-8 w-8 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white flex items-center justify-center transition-colors win-button" title="Delete Project">
                                                     <Icon name="trash-2" className="w-3.5 h-3.5" />
                                                 </button>
                                             )}
@@ -10488,6 +10595,36 @@ const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrder
                                 </div>
                             </form>
                         )}
+                    </Modal>
+                    {/* ✅ Yes / No Confirmation Popup Modal for Project Actions */}
+                    <Modal isOpen={confirmPopup.isOpen} onClose={() => setConfirmPopup(prev => ({ ...prev, isOpen: false }))} title={confirmPopup.title || 'Confirm Action'} maxWidth="max-w-sm" compact={true}>
+                        <div className="space-y-4">
+                            <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-200 leading-relaxed">
+                                {confirmPopup.message}
+                            </p>
+                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                                <button
+                                    type="button"
+                                    onClick={() => { playSound('cancel'); setConfirmPopup(prev => ({ ...prev, isOpen: false })); }}
+                                    className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold win-button"
+                                >
+                                    No
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { if (typeof confirmPopup.onYes === 'function') confirmPopup.onYes(); }}
+                                    className={`px-5 py-2 rounded-lg text-white text-xs font-bold win-button ${
+                                        confirmPopup.tone === 'danger'
+                                            ? 'bg-rose-600 hover:bg-rose-700'
+                                            : confirmPopup.tone === 'success'
+                                                ? 'bg-emerald-600 hover:bg-emerald-700'
+                                                : 'bg-[#005fb8] hover:bg-[#004a94]'
+                                    }`}
+                                >
+                                    {confirmPopup.yesLabel || 'Yes'}
+                                </button>
+                            </div>
+                        </div>
                     </Modal>
                 </div>
             );
@@ -25347,31 +25484,173 @@ const SmartPhoneAction = ({ phone }) => {
             const [orderForm, setOrderForm] = useState({ clientName: '', clientPhone: '', clientEmail: '', brief: '', submitting: false });
             const [orderReceipt, setOrderReceipt] = useState(null);
 
-            const handleDownloadReceiptPNG = async () => {
+           // 🧾 Pure Sharp-Edged Corporate Canvas PNG Generator (Zero Shapes, Zero Distortion on Any Device)
+            const handleDownloadReceiptPNG = () => {
+                if (!orderReceipt) return;
                 if (typeof window.playSound === 'function') window.playSound('action');
-                const el = document.getElementById('fit-client-order-receipt');
-                if (!el || typeof html2canvas === 'undefined') {
-                    window.print();
-                    return;
-                }
                 try {
-                    const canvas = await html2canvas(el, { scale: 2.5, useCORS: true, backgroundColor: '#ffffff' });
+                    const r = orderReceipt;
+                    const W = 760;
+                    const pad = 42;
+                    const innerW = W - pad * 2;
+                    const labelW = 190;
+                    const valW = innerW - labelW;
+                    const fontMain = "'Inter', 'Segoe UI', Arial, sans-serif";
+
+                    const mCanvas = document.createElement('canvas');
+                    const mCtx = mCanvas.getContext('2d');
+                    const wrap = (ctx, text, maxW) => {
+                        const words = String(text || '—').trim().split(/\s+/);
+                        const lines = [];
+                        let cur = '';
+                        words.forEach(w => {
+                            const t = cur ? `${cur} ${w}` : w;
+                            if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; }
+                            else cur = t;
+                        });
+                        if (cur) lines.push(cur);
+                        return lines.length ? lines : ['—'];
+                    };
+
+                    const rows = [
+                        { label: 'Order ID', value: r.orderId, bold: true },
+                        { label: 'Order Date', value: r.orderDate },
+                        { label: 'Payment Status', value: 'PAYMENT DUE (Advance or Full Payment Required)', bold: true, color: '#b91c1c' },
+                        { label: 'Assigned Freelancer', value: `${r.assignedFreelancer}${r.freelancerShortId ? `  (Profile: ?p=${r.freelancerShortId})` : ''}`, bold: true },
+                        { label: 'Service / Gig', value: r.gigTitle, bold: true },
+                        { label: 'Package & Timeline', value: `${r.packageName}  |  ${r.deliveryDays} Days  |  Est. Delivery: ${r.deadlineDate}` },
+                        { label: 'Client Name', value: r.clientName, bold: true },
+                        { label: 'Client Contact', value: `${r.clientPhone}${r.clientEmail ? `  |  ${r.clientEmail}` : ''}` },
+                        { label: 'Order Total', value: `BDT ${Number(r.totalAmount || 0).toLocaleString()}`, bold: true },
+                        { label: 'Paid / Advance', value: 'BDT 0' },
+                        { label: 'Payment Due', value: `BDT ${Number(r.dueAmount || 0).toLocaleString()}`, bold: true, color: '#b91c1c' }
+                    ];
+
+                    const measured = rows.map(row => {
+                        mCtx.font = `${row.bold ? '700' : '500'} 13.5px ${fontMain}`;
+                        const lines = wrap(mCtx, row.value, valW - 24);
+                        return { ...row, lines, h: Math.max(36, lines.length * 19 + 16) };
+                    });
+                    const tableH = measured.reduce((s, x) => s + x.h, 0);
+
+                    const noteText = 'Payment & Verification Notice: Your order has been registered under PAYMENT DUE status. Please complete the advance or full payment with the Faridpur IT Institute management team to initiate your project. Present or forward this receipt to our Admin / Support Team (+880 1642890942) to verify your assigned freelancer and project details.';
+                    mCtx.font = `500 12px ${fontMain}`;
+                    const noteLines = wrap(mCtx, noteText, innerW - 4);
+                    const noteH = noteLines.length * 18 + 20;
+
+                    const headerH = 56;
+                    const footerH = 34;
+                    const totalH = pad + headerH + 18 + tableH + 22 + noteH + 22 + footerH + pad;
+
+                    const dpr = 2;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = W * dpr;
+                    canvas.height = totalH * dpr;
+                    const ctx = canvas.getContext('2d');
+                    ctx.scale(dpr, dpr);
+
+                    // Pure White Minimal Sheet + Crisp Straight Hairline Border (Zero Rounded Shapes)
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, W, totalH);
+                    ctx.strokeStyle = '#111827';
+                    ctx.lineWidth = 1.25;
+                    ctx.strokeRect(20, 20, W - 40, totalH - 40);
+
+                    let y = pad;
+                    ctx.textBaseline = 'top';
+                    ctx.textAlign = 'left';
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = `800 20px ${fontMain}`;
+                    ctx.fillText('FARIDPUR IT INSTITUTE', pad, y);
+                    ctx.fillStyle = '#475569';
+                    ctx.font = `600 11px ${fontMain}`;
+                    ctx.fillText('OFFICIAL ORDER CONFIRMATION & PAYMENT SLIP', pad, y + 27);
+
+                    ctx.textAlign = 'right';
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = `700 12px monospace`;
+                    ctx.fillText(`REF: ${r.orderId}`, W - pad, y + 3);
+                    ctx.fillStyle = '#64748b';
+                    ctx.font = `500 11px ${fontMain}`;
+                    ctx.fillText('faridpurit.com', W - pad, y + 24);
+
+                    y += headerH;
+                    ctx.strokeStyle = '#0f172a';
+                    ctx.lineWidth = 1.75;
+                    ctx.beginPath();
+                    ctx.moveTo(pad, y);
+                    ctx.lineTo(W - pad, y);
+                    ctx.stroke();
+
+                    // Sharp Minimalist Table (Zero Shapes)
+                    y += 18;
+                    ctx.lineWidth = 1;
+                    measured.forEach(row => {
+                        ctx.fillStyle = '#f8fafc';
+                        ctx.fillRect(pad, y, labelW, row.h);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(pad + labelW, y, valW, row.h);
+                        ctx.strokeStyle = '#cbd5e1';
+                        ctx.strokeRect(pad, y, labelW, row.h);
+                        ctx.strokeRect(pad + labelW, y, valW, row.h);
+
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillStyle = '#334155';
+                        ctx.font = `700 12.5px ${fontMain}`;
+                        ctx.fillText(row.label, pad + 12, y + row.h / 2);
+
+                        ctx.fillStyle = row.color || '#0f172a';
+                        ctx.font = `${row.bold ? '700' : '500'} 13.5px ${fontMain}`;
+                        const blkH = row.lines.length * 19;
+                        const startY = y + (row.h - blkH) / 2 + 9.5;
+                        row.lines.forEach((ln, idx) => ctx.fillText(ln, pad + labelW + 12, startY + idx * 19));
+                        y += row.h;
+                    });
+
+                    // Plain Minimal Instruction Text (No Colored Boxes or Shapes)
+                    y += 22;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'top';
+                    ctx.fillStyle = '#334155';
+                    ctx.font = `500 12px ${fontMain}`;
+                    noteLines.forEach((ln, idx) => ctx.fillText(ln, pad, y + idx * 18));
+
+                    y += noteH + 14;
+                    ctx.strokeStyle = '#cbd5e1';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(pad, y);
+                    ctx.lineTo(W - pad, y);
+                    ctx.stroke();
+
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#475569';
+                    ctx.font = `600 11px ${fontMain}`;
+                    ctx.textAlign = 'left';
+                    ctx.fillText('Faridpur IT Institute  |  WhatsApp: +880 1642890942  |  info@faridpurit.com', pad, y + 20);
+                    ctx.textAlign = 'right';
+                    ctx.fillText('19/A, Rajendra College Rd, Faridpur', W - pad, y + 20);
+
+                    const dataUrl = canvas.toDataURL('image/png');
                     const link = document.createElement('a');
-                    link.download = `FaridpurIT_Order_${orderReceipt?.orderId || 'Receipt'}.png`;
-                    link.href = canvas.toDataURL('image/png');
+                    link.download = `FaridpurIT_Order_${r.orderId || 'Slip'}.png`;
+                    link.href = dataUrl;
+                    document.body.appendChild(link);
                     link.click();
-                    if (typeof addToast === 'function') addToast('Order receipt downloaded!', 'success');
+                    document.body.removeChild(link);
+                    if (typeof addToast === 'function') addToast('Minimalist order slip downloaded!', 'success');
                 } catch (err) {
                     window.print();
                 }
             };
 
             const handlePrintReceipt = () => {
+                if (!orderReceipt) return;
                 if (typeof window.playSound === 'function') window.playSound('action');
-                const el = document.getElementById('fit-client-order-receipt');
-                if (!el) return window.print();
+                const r = orderReceipt;
                 const win = window.open('', '_blank');
-                win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Order Receipt — ${orderReceipt?.orderId || ''}</title><style>body{font-family:'Segoe UI',Arial,sans-serif;padding:24px;color:#0f172a;background:#fff;} .slip{max-width:600px;margin:0 auto;border:1px solid #cbd5e1;border-radius:14px;padding:22px;} table{width:100%;border-collapse:collapse;margin:14px 0;} td,th{padding:8px 10px;border:1px solid #e2e8f0;font-size:13px;text-align:left;} .due{background:#fff7ed;border:1px solid #fdba74;padding:12px;border-radius:10px;font-size:12.5px;line-height:1.6;margin-top:12px;} @media print{body{padding:0;}}</style></head><body><div class="slip"><h2 style="margin:0 0 4px 0;">Faridpur IT Institute</h2><p style="margin:0 0 14px 0;font-size:12px;color:#475569;">Official Order Confirmation &amp; Payment Due Slip</p><table><tr><th>Order ID</th><td><strong>${orderReceipt.orderId}</strong></td></tr><tr><th>Date</th><td>${orderReceipt.orderDate}</td></tr><tr><th>Payment Status</th><td><strong style="color:#c2410c;">PAYMENT DUE (Advance Required)</strong></td></tr><tr><th>Assigned Freelancer</th><td><strong>${orderReceipt.assignedFreelancer}</strong> (Profile: ?p=${orderReceipt.freelancerShortId})</td></tr><tr><th>Service / Gig</th><td>${orderReceipt.gigTitle}</td></tr><tr><th>Selected Package</th><td>${orderReceipt.packageName} (${orderReceipt.deliveryDays} Days • Est. Delivery: ${orderReceipt.deadlineDate})</td></tr><tr><th>Client Name</th><td>${orderReceipt.clientName}</td></tr><tr><th>Client Phone</th><td>${orderReceipt.clientPhone}</td></tr>${orderReceipt.clientEmail ? `<tr><th>Client Email</th><td>${orderReceipt.clientEmail}</td></tr>` : ''}<tr><th>Order Total</th><td><strong>৳${Number(orderReceipt.totalAmount || 0).toLocaleString()}</strong></td></tr><tr><th>Paid / Advance</th><td>৳0</td></tr><tr><th>Payment Due</th><td><strong style="color:#dc2626;font-size:15px;">৳${Number(orderReceipt.dueAmount || 0).toLocaleString()}</strong></td></tr></table><div class="due"><strong>Payment &amp; Verification Instructions:</strong><br/>Your order is currently registered under <strong>Payment Due</strong> status. Please complete the advance or full due payment with the Faridpur IT Institute management team to initiate your project. Present or forward this slip to our Admin / Support Team (WhatsApp: +880 1642890942) so we can verify the assigned freelancer and get started immediately.</div><p style="margin-top:14px;font-size:11px;color:#64748b;text-align:center;">Faridpur IT Institute • faridpurit.com • +880 1642890942</p></div><script>setTimeout(function(){window.print();},400);</script></body></html>`);
+                win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Order Slip — ${r.orderId}</title><style>body{font-family:'Segoe UI',Arial,sans-serif;margin:28px;color:#0f172a;background:#fff;} .slip{max-width:680px;margin:0 auto;border:1px solid #111827;padding:28px;} .hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #0f172a;padding-bottom:12px;margin-bottom:18px;} h1{margin:0;font-size:19px;letter-spacing:0.6px;text-transform:uppercase;} .sub{margin:3px 0 0 0;font-size:11px;color:#475569;letter-spacing:0.6px;text-transform:uppercase;} .ref{font-family:monospace;font-size:11.5px;text-align:right;} table{width:100%;border-collapse:collapse;margin-bottom:18px;font-size:13px;} th,td{border:1px solid #cbd5e1;padding:8px 11px;text-align:left;vertical-align:top;} th{width:32%;background:#f8fafc;color:#334155;font-weight:700;} .note{font-size:12px;color:#334155;line-height:1.65;margin:0 0 18px 0;} .ft{border-top:1px solid #cbd5e1;padding-top:10px;font-size:11px;color:#475569;display:flex;justify-content:space-between;} @media print{body{margin:10mm;}}</style></head><body><div class="slip"><div class="hdr"><div><h1>Faridpur IT Institute</h1><p class="sub">Official Order Confirmation &amp; Payment Slip</p></div><div class="ref"><strong>REF: ${r.orderId}</strong><br/>faridpurit.com</div></div><table><tr><th>Order ID</th><td><strong>${r.orderId}</strong></td></tr><tr><th>Order Date</th><td>${r.orderDate}</td></tr><tr><th>Payment Status</th><td><strong style="color:#b91c1c;">PAYMENT DUE (Advance or Full Payment Required)</strong></td></tr><tr><th>Assigned Freelancer</th><td><strong>${r.assignedFreelancer}</strong>${r.freelancerShortId ? ` (Profile: ?p=${r.freelancerShortId})` : ''}</td></tr><tr><th>Service / Gig</th><td><strong>${r.gigTitle}</strong></td></tr><tr><th>Package &amp; Timeline</th><td>${r.packageName} | ${r.deliveryDays} Days | Est. Delivery: ${r.deadlineDate}</td></tr><tr><th>Client Name</th><td><strong>${r.clientName}</strong></td></tr><tr><th>Client Contact</th><td>${r.clientPhone}${r.clientEmail ? ` | ${r.clientEmail}` : ''}</td></tr><tr><th>Order Total</th><td><strong>BDT ${Number(r.totalAmount || 0).toLocaleString()}</strong></td></tr><tr><th>Paid / Advance</th><td>BDT 0</td></tr><tr><th>Payment Due</th><td><strong style="color:#b91c1c;font-size:14px;">BDT ${Number(r.dueAmount || 0).toLocaleString()}</strong></td></tr></table><p class="note"><strong>Payment &amp; Verification Notice:</strong> Your order has been registered under <strong>PAYMENT DUE</strong> status. Please complete the advance or full payment with the Faridpur IT Institute management team to initiate your project. Present or forward this receipt to our Admin / Support Team (+880 1642890942) so we can verify your assigned freelancer and start immediately.</p><div class="ft"><span>Faridpur IT Institute | WhatsApp: +880 1642890942 | info@faridpurit.com</span><span>19/A, Rajendra College Rd, Faridpur</span></div></div><script>setTimeout(function(){window.print();},350);</script></body></html>`);
                 win.document.close();
             };
             const [orderSuccess, setOrderSuccess] = useState(null);
@@ -25691,70 +25970,46 @@ setOrderReceipt(r);
 
                                     {orderReceipt ? (
                                         <div className="space-y-3">
-                                            {/* 🧾 Printable & Downloadable Official English Order & Payment Due Slip */}
-                                            <div id="fit-client-order-receipt" className="p-4 sm:p-5 rounded-2xl bg-white text-gray-900 border-2 border-emerald-500/70 shadow-md space-y-3.5">
-                                                <div className="flex items-start justify-between gap-2 pb-3 border-b border-gray-200">
+                                            {/* 🧾 Minimal Corporate Sharp-Edged Order & Payment Due Slip (Zero Shapes) */}
+                                            <div id="fit-client-order-receipt" className="p-4 sm:p-5 bg-white text-gray-900 border border-gray-900 space-y-3">
+                                                <div className="flex items-end justify-between gap-2 pb-2.5 border-b-2 border-gray-900">
                                                     <div>
-                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#005fb8]">Faridpur IT Institute</p>
-                                                        <h3 className="text-base font-bold text-gray-900 leading-tight mt-0.5">Order Confirmation &amp; Payment Slip</h3>
-                                                        <p className="text-[11px] text-gray-500 font-numbers mt-0.5">{orderReceipt.orderDate}</p>
+                                                        <p className="text-sm font-extrabold uppercase tracking-wider text-gray-900">Faridpur IT Institute</p>
+                                                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Order Confirmation &amp; Payment Slip</p>
                                                     </div>
-                                                    <div className="text-right shrink-0 space-y-1">
-                                                        <span className="inline-block px-2 py-0.5 rounded bg-blue-100 text-[#005fb8] text-[10px] font-mono-code font-bold">{orderReceipt.orderId}</span>
-                                                        <span className="block px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold uppercase">Payment Due</span>
-                                                    </div>
-                                                </div>
-
-                                                {/* Assignment & Service Details (For Admin / Team Verification) */}
-                                                <div className="rounded-xl bg-gray-50 border border-gray-200 divide-y divide-gray-200 text-xs">
-                                                    <div className="px-3 py-2 flex justify-between gap-2">
-                                                        <span className="text-gray-500 font-semibold">Assigned Freelancer</span>
-                                                        <span className="font-bold text-[#005fb8] text-right">{orderReceipt.assignedFreelancer} {orderReceipt.freelancerShortId ? `(#${orderReceipt.freelancerShortId})` : ''}</span>
-                                                    </div>
-                                                    <div className="px-3 py-2 flex justify-between gap-2">
-                                                        <span className="text-gray-500 font-semibold">Service / Gig</span>
-                                                        <span className="font-bold text-gray-900 text-right line-clamp-2 max-w-[62%]">{orderReceipt.gigTitle}</span>
-                                                    </div>
-                                                    <div className="px-3 py-2 flex justify-between gap-2">
-                                                        <span className="text-gray-500 font-semibold">Package &amp; Timeline</span>
-                                                        <span className="font-bold text-gray-900 text-right">{orderReceipt.packageName} • {orderReceipt.deliveryDays} Days</span>
-                                                    </div>
-                                                    <div className="px-3 py-2 flex justify-between gap-2">
-                                                        <span className="text-gray-500 font-semibold">Est. Delivery</span>
-                                                        <span className="font-numbers font-bold text-gray-900">{orderReceipt.deadlineDate}</span>
-                                                    </div>
-                                                    <div className="px-3 py-2 flex justify-between gap-2">
-                                                        <span className="text-gray-500 font-semibold">Client</span>
-                                                        <span className="font-bold text-gray-900 text-right">{orderReceipt.clientName} ({orderReceipt.clientPhone})</span>
+                                                    <div className="text-right font-mono-code text-[10px] text-gray-700 leading-tight">
+                                                        <p className="font-bold text-gray-900">{orderReceipt.orderId}</p>
+                                                        <p>{orderReceipt.orderDate}</p>
                                                     </div>
                                                 </div>
 
-                                                {/* Payment Breakdown Box */}
-                                                <div className="rounded-xl bg-rose-50/80 border border-rose-200 p-3 space-y-1.5 text-xs font-numbers">
-                                                    <div className="flex justify-between">
-                                                        <span className="font-sans text-gray-600 font-semibold">Order Total</span>
-                                                        <span className="font-bold text-gray-900">{CURRENCY_SYMBOL}{Number(orderReceipt.totalAmount || 0).toLocaleString()}</span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span className="font-sans text-gray-600 font-semibold">Paid / Advance</span>
-                                                        <span className="font-bold text-emerald-700">{CURRENCY_SYMBOL}0</span>
-                                                    </div>
-                                                    <div className="flex justify-between pt-1.5 border-t border-rose-200 text-sm">
-                                                        <span className="font-sans font-bold text-rose-700 uppercase">Payment Due</span>
-                                                        <span className="font-bold text-rose-700">{CURRENCY_SYMBOL}{Number(orderReceipt.dueAmount || 0).toLocaleString()}</span>
-                                                    </div>
-                                                </div>
+                                                <table className="w-full border-collapse text-xs">
+                                                    <tbody>
+                                                        {[
+                                                            { k: 'Status', v: 'PAYMENT DUE', cls: 'font-bold text-red-700' },
+                                                            { k: 'Freelancer', v: `${orderReceipt.assignedFreelancer}${orderReceipt.freelancerShortId ? ` (?p=${orderReceipt.freelancerShortId})` : ''}`, cls: 'font-bold text-gray-900' },
+                                                            { k: 'Service', v: orderReceipt.gigTitle, cls: 'font-semibold text-gray-900' },
+                                                            { k: 'Package', v: `${orderReceipt.packageName} • ${orderReceipt.deliveryDays} Days (${orderReceipt.deadlineDate})`, cls: 'text-gray-800' },
+                                                            { k: 'Client', v: `${orderReceipt.clientName} • ${orderReceipt.clientPhone}`, cls: 'text-gray-800' },
+                                                            { k: 'Total', v: `BDT ${Number(orderReceipt.totalAmount || 0).toLocaleString()}`, cls: 'font-numbers font-bold text-gray-900' },
+                                                            { k: 'Paid', v: 'BDT 0', cls: 'font-numbers text-gray-700' },
+                                                            { k: 'Payment Due', v: `BDT ${Number(orderReceipt.dueAmount || 0).toLocaleString()}`, cls: 'font-numbers font-bold text-red-700' }
+                                                        ].map(row => (
+                                                            <tr key={row.k}>
+                                                                <th className="w-[34%] bg-gray-50 border border-gray-300 px-2.5 py-1.5 text-left font-bold text-gray-700">{row.k}</th>
+                                                                <td className={`border border-gray-300 px-2.5 py-1.5 break-words ${row.cls}`}>{row.v}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
 
-                                                {/* Clear English Payment & Team Verification Notice */}
-                                                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11.5px] leading-relaxed text-amber-950 space-y-1">
-                                                    <p className="font-bold">Action Required — Complete Advance or Due Payment:</p>
-                                                    <p>
-                                                        Your order has been successfully placed with <strong>Payment Due</strong> status. Please complete your advance or full payment with the <strong>Faridpur IT Institute</strong> team to start your project immediately. Show or forward this receipt to our Admin / Support Team so we can verify your assigned freelancer and project details.
-                                                    </p>
-                                                </div>
+                                                <p className="text-[11px] leading-relaxed text-gray-700">
+                                                    <strong>Payment &amp; Verification Notice:</strong> Your order is currently under <strong>PAYMENT DUE</strong> status. Complete the advance or full payment with the <strong>Faridpur IT Institute</strong> team to start work. Forward this slip to our Admin / Support Team (<strong>+880 1642890942</strong>) to verify your assigned freelancer.
+                                                </p>
 
-                                                <div className="text-[10px] text-center text-gray-500 pt-1 border-t border-gray-100">
-                                                    Faridpur IT Institute • faridpurit.com • Official Support: +880 1642890942
+                                                <div className="pt-2 border-t border-gray-300 flex items-center justify-between text-[10px] text-gray-500">
+                                                    <span>faridpurit.com • +880 1642890942</span>
+                                                    <span>Official Receipt</span>
                                                 </div>
                                             </div>
 
@@ -27238,8 +27493,11 @@ const handleAISubmit = async (e) => {
                 }
 
                 let cancelled = false;
-                const checkLiveSession = async () => {
+                let lastCheckTs = 0;
+                const checkLiveSession = async (force = false) => {
                     if (cancelled || document.hidden || sessionLogoutLockRef.current) return;
+                    if (!force && Date.now() - lastCheckTs < 30000) return;
+                    lastCheckTs = Date.now();
                     try {
                         await executeAPI({ action: 'verify_session' });
                     } catch (e) {}
