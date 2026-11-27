@@ -20973,7 +20973,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                             <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white break-words min-w-0">{t.title}</p>
                                                         </div>
                                                         {t.description && (
-                                                            <div className="text-xs text-gray-600 dark:text-gray-300 mt-1.5 pl-2 border-l-2 border-gray-200 dark:border-white/15 whitespace-pre-wrap break-words leading-relaxed">
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 whitespace-pre-wrap break-words leading-relaxed">
                                                                 <LinkifyText text={t.description} />
                                                             </div>
                                                         )}
@@ -21036,69 +21036,86 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 </div>
 
-                                {/* ✅ Clean, Modern, Super Readable Task Cards (Zero Extra Timer Clutter) */}
+                                {/* ✅ Minimal, Clean & Intuitive Daily Task List (Zero Thick Side Borders) */}
                                 {myRoleTasks.length === 0 ? (
-                                    <div className="py-8 px-4 text-center rounded-xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
+                                    <div className="py-8 px-4 text-center rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
                                         আপনার ({myRole}) জন্য এখনো কোনো নির্ধারিত ডেইলি টাস্ক যুক্ত করা হয়নি।
                                     </div>
                                 ) : (
-                                    <div className="space-y-2">
+                                    <div className="rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/85 dark:bg-[#141417] overflow-hidden divide-y divide-gray-100 dark:divide-white/[0.06]">
+                                        {/* Clean Micro Guide Header */}
+                                        <div className="px-3.5 sm:px-4 py-2 bg-gray-50/80 dark:bg-white/[0.02] flex items-center justify-between gap-2 flex-nowrap text-[11px]">
+                                            <span className="font-semibold text-gray-500 dark:text-gray-400 truncate">
+                                                কাজ শেষ হলে বামের ঘরে ট্যাপ করে টিক দিন
+                                            </span>
+                                            <span className={`font-bold whitespace-nowrap shrink-0 ${
+                                                isAllDoneToday ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#005fb8] dark:text-[#60cdff]'
+                                            }`}>
+                                                {isAllDoneToday ? 'সব সম্পন্ন ✓' : `${remainingTasksCount}টি বাকি`}
+                                            </span>
+                                        </div>
+
+                                        {/* Minimal Task Rows */}
                                         {myRoleTasks.map((task, idx) => {
                                             const isDone = checkedSet.has(task.id);
-                                            const serNum = parseSerial(task, idx + 1);
+                                            const serNum = String(parseSerial(task, idx + 1)).padStart(2, '0');
 
                                             return (
                                                 <div
                                                     key={task.id}
                                                     onClick={() => handleToggleTask(task.id)}
                                                     style={{ WebkitTapHighlightColor: 'transparent' }}
-                                                    className={`p-3 sm:p-3.5 rounded-xl border border-l-4 cursor-pointer flex items-start gap-3 transition-all select-none active:scale-[0.995] ${
+                                                    className={`group px-3.5 sm:px-4 py-3 sm:py-3.5 cursor-pointer flex items-start gap-3 transition-colors select-none ${
                                                         isDone
-                                                            ? 'bg-emerald-500/[0.07] dark:bg-emerald-500/[0.12] border-emerald-200/80 dark:border-emerald-500/30 border-l-emerald-500'
-                                                            : 'bg-white dark:bg-[#16161a] border-gray-200/80 dark:border-white/10 border-l-[#005fb8] hover:border-[#005fb8]/60 hover:shadow-sm'
+                                                            ? 'bg-emerald-500/[0.04] dark:bg-emerald-500/[0.06]'
+                                                            : 'hover:bg-blue-500/[0.03] dark:hover:bg-white/[0.02]'
                                                     }`}
                                                 >
-                                                    {/* Easy-to-Tap Checkbox */}
-                                                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border-2 transition-all ${
+                                                    {/* Crystal-Clear Interactive Round Checkbox */}
+                                                    <div className={`w-5 h-5 sm:w-[22px] sm:h-[22px] rounded-full flex items-center justify-center shrink-0 mt-0.5 border-2 transition-all ${
                                                         isDone
-                                                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                                                            : 'bg-gray-50 dark:bg-dark-800 border-gray-300 dark:border-white/25'
+                                                            ? 'bg-emerald-500 border-emerald-500 text-white'
+                                                            : 'bg-white dark:bg-transparent border-gray-300 dark:border-gray-600 group-hover:border-[#005fb8]'
                                                     }`}>
-                                                        {isDone
-                                                            ? <Icon name="check" className="w-3.5 h-3.5 stroke-[3]" />
-                                                            : <span className="text-[10px] font-numbers font-bold text-gray-400">{serNum}</span>
-                                                        }
+                                                        {isDone && <Icon name="check" className="w-3 h-3 stroke-[3]" />}
                                                     </div>
 
-                                                    {/* Clean Task Title + Description */}
+                                                    {/* Clean Task Title & Description */}
                                                     <div className="min-w-0 flex-1 space-y-1">
                                                         <div className="flex items-start justify-between gap-2">
-                                                            <h4 className={`text-[13.5px] sm:text-[15px] font-bold leading-snug break-words min-w-0 flex-1 ${
+                                                            <h4 className={`text-[13.5px] sm:text-sm font-semibold leading-snug break-words min-w-0 flex-1 ${
                                                                 isDone
-                                                                    ? 'line-through text-emerald-900/70 dark:text-emerald-200/70'
+                                                                    ? 'line-through text-gray-400 dark:text-gray-500'
                                                                     : 'text-gray-900 dark:text-white'
                                                             }`}>
+                                                                <span className="font-numbers text-[11px] font-bold text-gray-400 dark:text-gray-500 mr-1.5">
+                                                                    {serNum}.
+                                                                </span>
                                                                 {task.title}
                                                             </h4>
 
                                                             <div className="flex items-center gap-1 shrink-0 flex-nowrap">
-                                                                {isDone && (
-                                                                    <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-bold uppercase whitespace-nowrap">
-                                                                        Done ✓
+                                                                {isDone ? (
+                                                                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap mr-0.5">
+                                                                        Done
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-semibold text-[#005fb8] dark:text-[#60cdff] bg-blue-500/[0.08] px-1.5 py-0.5 rounded whitespace-nowrap mr-0.5">
+                                                                        To Do
                                                                     </span>
                                                                 )}
-                                                                <button type="button" onClick={(e) => handleCopyTaskText(e, task)} className="p-1 rounded-md bg-gray-100 dark:bg-dark-800 text-gray-500 hover:bg-emerald-600 hover:text-white transition-colors" title="Copy">
+                                                                <button type="button" onClick={(e) => handleCopyTaskText(e, task)} className="p-1 rounded-md text-gray-400 hover:text-emerald-600 hover:bg-emerald-500/10 transition-colors" title="Copy">
                                                                     <Icon name="copy" className="w-3 h-3" />
                                                                 </button>
                                                                 {isAdmin && (
                                                                     <>
-                                                                        <button type="button" onClick={(e) => handleDuplicateTask(e, task)} className="p-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors" title="Duplicate">
+                                                                        <button type="button" onClick={(e) => handleDuplicateTask(e, task)} className="p-1 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-500/10 transition-colors" title="Duplicate">
                                                                             <Icon name="files" className="w-3 h-3" />
                                                                         </button>
-                                                                        <button type="button" onClick={(e) => handleEditTask(e, task, idx)} className="p-1 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors" title="Edit">
+                                                                        <button type="button" onClick={(e) => handleEditTask(e, task, idx)} className="p-1 rounded-md text-gray-400 hover:text-[#005fb8] hover:bg-blue-500/10 transition-colors" title="Edit">
                                                                             <Icon name="edit-2" className="w-3 h-3" />
                                                                         </button>
-                                                                        <button type="button" onClick={(e) => handleDeleteAdminTask(e, task)} className="p-1 rounded-md bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors" title="Delete">
+                                                                        <button type="button" onClick={(e) => handleDeleteAdminTask(e, task)} className="p-1 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-500/10 transition-colors" title="Delete">
                                                                             <Icon name="trash-2" className="w-3 h-3" />
                                                                         </button>
                                                                     </>
@@ -21111,8 +21128,8 @@ const SmartPhoneAction = ({ phone }) => {
                                                                 onClick={(e) => { if (e.target.closest('a')) e.stopPropagation(); }}
                                                                 className={`text-xs leading-relaxed whitespace-pre-wrap break-words ${
                                                                     isDone
-                                                                        ? 'text-emerald-900/60 dark:text-emerald-200/60'
-                                                                        : 'text-gray-600 dark:text-gray-300'
+                                                                        ? 'text-gray-400/75 dark:text-gray-500/75'
+                                                                        : 'text-gray-500 dark:text-gray-400'
                                                                 }`}
                                                             >
                                                                 <LinkifyText text={task.description} />
@@ -21957,6 +21974,109 @@ const SmartPhoneAction = ({ phone }) => {
                 ? `${String(focusHours).padStart(2, '0')}:${String(focusMins).padStart(2, '0')}:${String(focusSecs).padStart(2, '0')}`
                 : `${String(focusMins).padStart(2, '0')}:${String(focusSecs).padStart(2, '0')}`;
 
+            const renderMyAssignmentsCard = () => {
+                const gradedList = mySubmittedAssignments.filter(a => a.status === 'Graded');
+                const pendingList = mySubmittedAssignments.filter(a => a.status !== 'Graded');
+                const shownAsn = asnSidebarTab === 'Graded'
+                    ? gradedList
+                    : asnSidebarTab === 'Pending'
+                        ? pendingList
+                        : mySubmittedAssignments;
+
+                return (
+                    <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
+                        <div className="flex items-center justify-between gap-2 mb-3 flex-nowrap">
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 whitespace-nowrap truncate">
+                                <Icon name="file-code" className="w-4 h-4 text-emerald-500 shrink-0" />
+                                <span className="truncate">My Assignments</span>
+                            </h3>
+                            <a href="#assignments" onClick={() => playAudio('click')} className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline whitespace-nowrap shrink-0">
+                                View All →
+                            </a>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-1 bg-gray-100/90 dark:bg-dark-800 p-0.5 rounded-lg border border-gray-200/60 dark:border-white/10 mb-3">
+                            {[
+                                { id: 'All', label: `All (${mySubmittedAssignments.length})` },
+                                { id: 'Graded', label: `Graded (${gradedList.length})` },
+                                { id: 'Pending', label: `Pending (${pendingList.length})` }
+                            ].map(t => (
+                                <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => { playAudio('click'); setAsnSidebarTab(t.id); }}
+                                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                                    className={`py-1 px-1.5 text-[10px] font-bold rounded-md whitespace-nowrap truncate transition-colors outline-none focus:outline-none ${
+                                        asnSidebarTab === t.id
+                                            ? 'bg-white dark:bg-dark-700 text-gray-900 dark:text-white shadow-sm'
+                                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+                                    }`}
+                                >
+                                    {t.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="divide-y divide-gray-100 dark:divide-white/10">
+                            {shownAsn.length === 0 ? (
+                                <div className="py-6 text-center">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        {asnSidebarTab === 'Graded'
+                                            ? 'No graded assignments yet.'
+                                            : asnSidebarTab === 'Pending'
+                                                ? 'No pending assignments right now.'
+                                                : 'No assignments submitted yet.'}
+                                    </p>
+                                    <a href="#assignments" onClick={() => playAudio('click')} className="inline-block mt-1.5 text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">
+                                        Submit an Assignment →
+                                    </a>
+                                </div>
+                            ) : shownAsn.slice(0, 11).map((asn, idx) => {
+                                const isGraded = asn.status === 'Graded';
+                                const isResub = asn.status === 'Resubmit';
+                                return (
+                                    <div key={asn.id || idx} className="py-2.5 first:pt-1 last:pb-0">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-xs font-semibold text-gray-900 dark:text-white leading-snug break-words">{asn.taskTitle}</p>
+                                                <p className="text-[10px] text-gray-400 font-numbers mt-0.5">
+                                                    {asn.timestamp ? moment(asn.timestamp).format('DD MMM YYYY') : 'Submitted'}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center shrink-0">
+                                                {isGraded ? (
+                                                    <span className="text-xs font-numbers font-bold text-emerald-600 dark:text-emerald-400">{asn.mark || 0}/100</span>
+                                                ) : (
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${isResub ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                                        {asn.status || 'Pending'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {asn.feedback && (
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 italic leading-relaxed">"{asn.feedback}"</p>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {shownAsn.length > 11 && (
+                            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-white/10">
+                                <a
+                                    href="#assignments"
+                                    onClick={() => playAudio('click')}
+                                    className="w-full py-2 px-3 rounded-xl bg-blue-500/[0.08] hover:bg-[#005fb8] text-[#005fb8] hover:text-white dark:bg-blue-500/[0.14] dark:text-[#60cdff] dark:hover:bg-[#005fb8] dark:hover:text-white border border-blue-200/60 dark:border-blue-500/25 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors win-button"
+                                >
+                                    <span>See More from Assignments (+{shownAsn.length - 11})</span>
+                                    <Icon name="arrow-right" className="w-3.5 h-3.5 shrink-0" />
+                                </a>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
             return (
                 <div className="w-full max-w-full overflow-x-hidden pb-12 space-y-4 sm:space-y-5">
 
@@ -21964,54 +22084,28 @@ const SmartPhoneAction = ({ phone }) => {
                     {/* BAND 1 (TOP HIGHLIGHTED): WELCOME + ATTENDANCE + 5 KPI CARDS */}
                     {/* ===================================================== */}
                     <div className="space-y-3.5 sm:space-y-4">
-                        {/* 1. Smart Welcome + Daily Attendance Bar */}
-                        <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-3.5">
-                            <div className="flex items-start justify-between gap-2.5 flex-nowrap">
-                                <div className="min-w-0 flex-1">
-                                    <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff] whitespace-nowrap">
-                                        {moment().format('ddd, DD MMM YYYY')}
-                                    </p>
-                                    <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white tracking-tight truncate mt-0.5">
-                                        Welcome, {displayName.split(' ')[0]}!
+                       {/* 1. Minimal & Friendly Welcome + Daily Attendance Bar */}
+                        <div className="glass-panel px-4 py-3.5 sm:px-5 sm:py-4 rounded-2xl border border-gray-200/70 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-center justify-between sm:justify-start gap-2.5 min-w-0 flex-1">
+                                <div className="min-w-0">
+                                    <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white tracking-tight truncate">
+                                        Hi, {displayName.split(' ')[0]} 👋
                                     </h2>
-                                    <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
-                                        {nextRankEntry
-                                            ? `Rank #${myRankNum} • ${pointsToNextRank} pts to pass ${nextRankEntry.name}`
-                                            : myRankNum === 1
-                                                ? 'Ranked #1 — Keep your daily streak alive!'
-                                                : 'Complete today’s check-in & daily mission.'}
+                                    <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium truncate mt-0.5">
+                                        {moment().format('ddd, DD MMM')} • Attendance {attendancePct}%
                                     </p>
                                 </div>
-
-                                <div className="px-2.5 py-1.5 rounded-xl bg-amber-500/[0.10] border border-amber-300/50 dark:border-amber-500/25 flex items-center gap-1.5 shrink-0 whitespace-nowrap">
+                                <span className="sm:hidden px-2.5 py-1 rounded-xl bg-amber-500/[0.10] border border-amber-300/50 dark:border-amber-500/25 flex items-center gap-1 shrink-0 whitespace-nowrap">
                                     <Icon name="flame" className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                                     <span className="text-xs font-numbers font-bold text-gray-900 dark:text-white">{liveStreakCount}d</span>
-                                </div>
+                                </span>
                             </div>
 
-                            {/* Daily Attendance Action Bar */}
-                            <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-colors ${
-                                checkedInToday
-                                    ? 'bg-emerald-500/[0.08] dark:bg-emerald-500/[0.13] border-emerald-300/60 dark:border-emerald-500/30'
-                                    : 'bg-blue-500/[0.07] dark:bg-blue-500/[0.12] border-blue-200/70 dark:border-blue-500/25'
-                            }`}>
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                                        checkedInToday ? 'bg-emerald-600 text-white' : 'bg-[#005fb8] text-white'
-                                    }`}>
-                                        <Icon name={checkedInToday ? 'check-circle' : 'calendar-check'} className="w-4 h-4" />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white leading-tight truncate">
-                                            {checkedInToday ? 'আজকের হাজিরা সম্পন্ন (Present)' : 'আজকের হাজিরা দিন (Daily Attendance)'}
-                                        </p>
-                                        <p className="text-[10px] sm:text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                                            {checkedInToday
-                                                ? `Attendance: ${attendancePct}% (${presentDays}/${totalAttDays}d) • Synced to Rank`
-                                                : 'Present দিলে Attendance, Streak ও Skill (+2%) অটো বাড়বে'}
-                                        </p>
-                                    </div>
-                                </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <span className="hidden sm:inline-flex px-2.5 h-9 rounded-xl bg-amber-500/[0.10] border border-amber-300/50 dark:border-amber-500/25 items-center gap-1.5 whitespace-nowrap">
+                                    <Icon name="flame" className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <span className="text-xs font-numbers font-bold text-gray-900 dark:text-white">{liveStreakCount}d Streak</span>
+                                </span>
 
                                 <button
                                     type="button"
@@ -22019,12 +22113,12 @@ const SmartPhoneAction = ({ phone }) => {
                                     onClick={() => handleDailyCheckIn(false)}
                                     className={`w-full sm:w-auto h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-all win-button ${
                                         checkedInToday
-                                            ? 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 cursor-default'
+                                            ? 'bg-emerald-500/[0.12] text-emerald-700 dark:text-emerald-300 border border-emerald-400/40 cursor-default'
                                             : 'bg-[#005fb8] hover:bg-[#004a94] text-white shadow-sm disabled:opacity-60'
                                     }`}
                                 >
                                     <Icon
-                                        name={isCheckingIn ? 'loader' : (checkedInToday ? 'check' : 'fingerprint')}
+                                        name={isCheckingIn ? 'loader' : (checkedInToday ? 'check-circle' : 'fingerprint')}
                                         className={`w-4 h-4 shrink-0 ${isCheckingIn ? 'animate-spin' : ''}`}
                                     />
                                     <span>{isCheckingIn ? 'Saving...' : (checkedInToday ? 'Present Today ✓' : 'Mark Present')}</span>
@@ -22094,8 +22188,8 @@ const SmartPhoneAction = ({ phone }) => {
                     {/* ===================================================== */}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
 
-                        {/* RIGHT ON DESKTOP / FIRST ON MOBILE: Profile Card + Learning Statistics */}
-                        <div className="lg:col-span-4 order-1 lg:order-2 space-y-4 lg:sticky lg:top-4 min-w-0">
+                        {/* RIGHT ON DESKTOP / FIRST ON MOBILE: Profile Card + Learning Statistics + Desktop Assignments */}
+                        <div className="lg:col-span-4 order-1 lg:order-2 space-y-4 min-w-0">
                             {(() => {
                                 const levelTier = overallPct >= 85
                                     ? { lv: 5, title: 'Elite Master', nextTarget: 100, color: 'text-amber-600 dark:text-amber-300', bar: 'bg-amber-500' }
@@ -22274,6 +22368,11 @@ const SmartPhoneAction = ({ phone }) => {
                                         <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed italic">"{myRecord.recentReview}"</p>
                                     </div>
                                 )}
+                            </div>
+
+                            {/* 💻 Desktop-Only: Right Below Learning Statistics (Zero Empty Gap!) */}
+                            <div className="hidden lg:block">
+                                {renderMyAssignmentsCard()}
                             </div>
                         </div>
 
@@ -22488,18 +22587,10 @@ const SmartPhoneAction = ({ phone }) => {
                                             </button>
                                         </div>
                                     </div>
-                                </div>
+                               </div>
                             </LazySection>
-                        </div>
-                    </div>
 
-                    {/* ===================================================== */}
-                    {/* BAND 3 (BOTTOM SECTION ON MOBILE & DESKTOP): VIDEOS + MY ASSIGNMENTS */}
-                    {/* ===================================================== */}
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
-
-                        {/* Continue Learning Videos (Bottom-Left on Desktop, Second-to-Last on Mobile) */}
-                        <div className="lg:col-span-8 min-w-0">
+                            {/* 🎬 4. Continue Learning Videos (Inside Left Column — Zero Empty Space on Desktop!) */}
                             <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
                                 <div className="flex items-center justify-between gap-2 mb-3.5 flex-nowrap">
                                     <div className="min-w-0">
@@ -22586,114 +22677,12 @@ const SmartPhoneAction = ({ phone }) => {
                                     </a>
                                 </div>
                             </div>
+
+                            {/* 📱 Mobile-Only: My Assignments Stays at the Very Bottom */}
+                            <div className="lg:hidden">
+                                {renderMyAssignmentsCard()}
+                            </div>
                         </div>
-
-                        {/* My Assignments (Bottom-Right on Desktop, Very Last on Mobile!) */}
-                        <div className="lg:col-span-4 min-w-0">
-                            {(() => {
-                                const gradedList = mySubmittedAssignments.filter(a => a.status === 'Graded');
-                                const pendingList = mySubmittedAssignments.filter(a => a.status !== 'Graded');
-                                const shownAsn = asnSidebarTab === 'Graded'
-                                    ? gradedList
-                                    : asnSidebarTab === 'Pending'
-                                        ? pendingList
-                                        : mySubmittedAssignments;
-
-                                return (
-                                    <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
-                                        <div className="flex items-center justify-between gap-2 mb-3 flex-nowrap">
-                                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 whitespace-nowrap truncate">
-                                                <Icon name="file-code" className="w-4 h-4 text-emerald-500 shrink-0" />
-                                                <span className="truncate">My Assignments</span>
-                                            </h3>
-                                            <a href="#assignments" onClick={() => playAudio('click')} className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline whitespace-nowrap shrink-0">
-                                                View All →
-                                            </a>
-                                        </div>
-
-                                        <div className="grid grid-cols-3 gap-1 bg-gray-100/90 dark:bg-dark-800 p-0.5 rounded-lg border border-gray-200/60 dark:border-white/10 mb-3">
-                                            {[
-                                                { id: 'All', label: `All (${mySubmittedAssignments.length})` },
-                                                { id: 'Graded', label: `Graded (${gradedList.length})` },
-                                                { id: 'Pending', label: `Pending (${pendingList.length})` }
-                                            ].map(t => (
-                                                <button
-                                                    key={t.id}
-                                                    type="button"
-                                                    onClick={() => { playAudio('click'); setAsnSidebarTab(t.id); }}
-                                                    style={{ WebkitTapHighlightColor: 'transparent' }}
-                                                    className={`py-1 px-1.5 text-[10px] font-bold rounded-md whitespace-nowrap truncate transition-colors outline-none focus:outline-none ${
-                                                        asnSidebarTab === t.id
-                                                            ? 'bg-white dark:bg-dark-700 text-gray-900 dark:text-white shadow-sm'
-                                                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-                                                    }`}
-                                                >
-                                                    {t.label}
-                                                </button>
-                                            ))}
-                                        </div>
-
-                                        <div className="divide-y divide-gray-100 dark:divide-white/10">
-                                            {shownAsn.length === 0 ? (
-                                                <div className="py-6 text-center">
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                        {asnSidebarTab === 'Graded'
-                                                            ? 'No graded assignments yet.'
-                                                            : asnSidebarTab === 'Pending'
-                                                                ? 'No pending assignments right now.'
-                                                                : 'No assignments submitted yet.'}
-                                                    </p>
-                                                    <a href="#assignments" onClick={() => playAudio('click')} className="inline-block mt-1.5 text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">
-                                                        Submit an Assignment →
-                                                    </a>
-                                                </div>
-                                            ) : shownAsn.slice(0, 11).map((asn, idx) => {
-                                                const isGraded = asn.status === 'Graded';
-                                                const isResub = asn.status === 'Resubmit';
-                                                return (
-                                                    <div key={asn.id || idx} className="py-2.5 first:pt-1 last:pb-0">
-                                                        <div className="flex items-start justify-between gap-2">
-                                                            <div className="min-w-0 flex-1">
-                                                                <p className="text-xs font-semibold text-gray-900 dark:text-white leading-snug break-words">{asn.taskTitle}</p>
-                                                                <p className="text-[10px] text-gray-400 font-numbers mt-0.5">
-                                                                    {asn.timestamp ? moment(asn.timestamp).format('DD MMM YYYY') : 'Submitted'}
-                                                                </p>
-                                                            </div>
-                                                            <div className="flex items-center shrink-0">
-                                                                {isGraded ? (
-                                                                    <span className="text-xs font-numbers font-bold text-emerald-600 dark:text-emerald-400">{asn.mark || 0}/100</span>
-                                                                ) : (
-                                                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${isResub ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                                                                        {asn.status || 'Pending'}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                        {asn.feedback && (
-                                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 italic leading-relaxed">"{asn.feedback}"</p>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {shownAsn.length > 11 && (
-                                            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-white/10">
-                                                <a
-                                                    href="#assignments"
-                                                    onClick={() => playAudio('click')}
-                                                    className="w-full py-2 px-3 rounded-xl bg-blue-500/[0.08] hover:bg-[#005fb8] text-[#005fb8] hover:text-white dark:bg-blue-500/[0.14] dark:text-[#60cdff] dark:hover:bg-[#005fb8] dark:hover:text-white border border-blue-200/60 dark:border-blue-500/25 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors win-button"
-                                                >
-                                                    <span>See More from Assignments (+{shownAsn.length - 11})</span>
-                                                    <Icon name="arrow-right" className="w-3.5 h-3.5 shrink-0" />
-                                                </a>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })()}
-                        </div>
-
                     </div>
                 </div>
             );
