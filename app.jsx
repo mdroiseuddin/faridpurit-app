@@ -20553,18 +20553,124 @@ const SmartPhoneAction = ({ phone }) => {
         // ==========================================
         // ✅ ROLE-BASED DAILY ROUTINE CHECKLIST + DAILY COMPLETION RECORD CALENDAR + ADMIN MANAGER
         // ==========================================
+       // ⏱️ Zero-Lag Live Midnight Countdown Timer (Updates every 1s without re-rendering calendar/tasks)
+        const DailyLockTimer = ({ variant = 'pill', allDone = false, remainingCount = 0, onMidnight }) => {
+            const getRemaining = () => {
+                const now = moment();
+                const end = moment().endOf('day');
+                const diffSec = Math.max(0, end.diff(now, 'seconds'));
+                const h = Math.floor(diffSec / 3600);
+                const m = Math.floor((diffSec % 3600) / 60);
+                const s = diffSec % 60;
+                return {
+                    h, m, s, diffSec,
+                    dayStr: now.format('YYYY-MM-DD'),
+                    hh: String(h).padStart(2, '0'),
+                    mm: String(m).padStart(2, '0'),
+                    ss: String(s).padStart(2, '0')
+                };
+            };
+
+            const [t, setT] = useState(getRemaining);
+            const dayRef = useRef(t.dayStr);
+
+            useEffect(() => {
+                const timer = setInterval(() => {
+                    const next = getRemaining();
+                    if (next.dayStr !== dayRef.current) {
+                        dayRef.current = next.dayStr;
+                        if (typeof onMidnight === 'function') onMidnight(next.dayStr);
+                    }
+                    setT(next);
+                }, 1000);
+                return () => clearInterval(timer);
+            }, [onMidnight]);
+
+            if (allDone) {
+                if (variant === 'hero') {
+                    return (
+                        <div className="px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-400/50 text-emerald-700 dark:text-emerald-300 flex items-center gap-2 shrink-0">
+                            <Icon name="check-circle" className="w-4 h-4 shrink-0" />
+                            <div className="leading-tight">
+                                <span className="text-[9px] font-bold uppercase tracking-wider block opacity-80">Today Completed</span>
+                                <span className="text-xs sm:text-sm font-bold">100% Score Locked ✓</span>
+                            </div>
+                        </div>
+                    );
+                }
+                return null;
+            }
+
+            const isCritical = t.diffSec < 3600;      // শেষ ১ ঘণ্টা -> লাল
+            const isWarning = t.diffSec < 14400;      // শেষ ৪ ঘণ্টা -> অ্যাম্বার
+
+            const toneBox = isCritical
+                ? 'bg-rose-500/15 border-rose-400/60 text-rose-700 dark:text-rose-300'
+                : isWarning
+                    ? 'bg-amber-500/15 border-amber-400/60 text-amber-800 dark:text-amber-300'
+                    : 'bg-blue-500/[0.10] border-blue-300/60 dark:border-blue-500/30 text-[#005fb8] dark:text-[#60cdff]';
+
+            const dotCls = isCritical ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-[#005fb8] dark:bg-[#60cdff]';
+
+            // ১. বড় ডিজিটাল হিরো টাইমার (উপরের হেডারে)
+            if (variant === 'hero') {
+                return (
+                    <div className={`px-3 sm:px-3.5 py-2 rounded-xl border flex items-center gap-2.5 shrink-0 ${toneBox}`}>
+                        <div className="relative flex items-center justify-center shrink-0">
+                            <span className={`w-2 h-2 rounded-full animate-ping absolute opacity-60 ${dotCls}`} />
+                            <Icon name="clock" className="w-4 h-4 relative z-10" />
+                        </div>
+                        <div className="leading-tight">
+                            <span className="text-[9px] font-bold uppercase tracking-wider block opacity-80">
+                                {remainingCount > 0 ? `${remainingCount}টি বাকি • সময় আছে` : 'সময় বাকি আছে'}
+                            </span>
+                            <span className={`text-sm sm:text-base font-mono-code font-extrabold tracking-tight ${isCritical ? 'animate-pulse' : ''}`}>
+                                {t.hh}:{t.mm}:{t.ss}
+                            </span>
+                        </div>
+                    </div>
+                );
+            }
+
+            // ২. প্রতিটি টাস্কের পাশে ছোট ক্লিন টাইমার ব্যাজ
+            if (variant === 'task') {
+                return (
+                    <span
+                        title="আজকের দিন শেষ হওয়ার বাকি সময়"
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-mono-code font-bold whitespace-nowrap shrink-0 ${toneBox}`}
+                    >
+                        <Icon name="clock" className="w-2.5 h-2.5 shrink-0" />
+                        <span>{t.h}h {t.mm}m বাকি</span>
+                    </span>
+                );
+            }
+
+            // ৩. প্রগ্রেস বারের ঠিক পাশে লাইভ পিল টাইমার
+            return (
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-mono-code font-bold whitespace-nowrap shrink-0 ${toneBox}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${dotCls}`} />
+                    <span>{t.hh}:{t.mm}:{t.ss} বাকি</span>
+                </span>
+            );
+        };
+
         const RoleDailyChecklistWidget = ({ auth, routineTasks = [], routineLogs = [], setRoutineLogs, executeAPI, fetchOrders, addToast }) => {
             const playAudio = (t) => { if (typeof window.playSound === 'function') window.playSound(t); };
             const isAdmin = auth?.role === 'Admin';
             const myRole = String(auth?.role || 'Student').trim();
-            const todayYMD = moment().format('YYYY-MM-DD');
+            const [todayYMD, setTodayYMD] = useState(() => moment().format('YYYY-MM-DD'));
 
             const [viewTab, setViewTab] = useState('my-tasks'); // 'my-tasks' | 'manage' (Admin only)
             const [manageRole, setManageRole] = useState('Student');
             const [taskModal, setTaskModal] = useState({ isOpen: false, id: null, role: 'Student', serial: '1', title: '', description: '', saving: false });
             const [calMonth, setCalMonth] = useState(() => moment().startOf('month'));
-            const [selectedCalDate, setSelectedCalDate] = useState(todayYMD);
+            const [selectedCalDate, setSelectedCalDate] = useState(() => moment().format('YYYY-MM-DD'));
             const [savingCheck, setSavingCheck] = useState(false);
+
+            const handleMidnightRollover = useCallback((newDayStr) => {
+                setTodayYMD(newDayStr);
+                setSelectedCalDate(newDayStr);
+            }, []);
 
             const parseSerial = (t, fallback = 999) => {
                 const n = parseInt(String(t?.timeSlot ?? '').replace(/[^0-9]/g, ''), 10);
@@ -20599,10 +20705,20 @@ const SmartPhoneAction = ({ phone }) => {
             const checkedSet = new Set(Array.isArray(todayLog.completedIds) ? todayLog.completedIds : []);
             const todayCompletedCount = myRoleTasks.filter(t => checkedSet.has(t.id)).length;
             const todayTotalCount = myRoleTasks.length;
+            const remainingTasksCount = Math.max(0, todayTotalCount - todayCompletedCount);
             const todayPct = todayTotalCount > 0 ? Math.round((todayCompletedCount / todayTotalCount) * 100) : 0;
+            const isAllDoneToday = todayTotalCount > 0 && todayCompletedCount === todayTotalCount;
 
             const handleToggleTask = async (taskId) => {
                 if (savingCheck) return;
+                const liveDay = moment().format('YYYY-MM-DD');
+                if (liveDay !== todayYMD) {
+                    setTodayYMD(liveDay);
+                    setSelectedCalDate(liveDay);
+                    playAudio('cancel');
+                    if (typeof addToast === 'function') addToast('দিন শেষ হয়ে গেছে! পূর্বের দিনের কোনো টাস্ক আর চেক করা যাবে না।', 'error');
+                    return;
+                }
                 playAudio('click');
                 const nextIds = checkedSet.has(taskId)
                     ? Array.from(checkedSet).filter(id => id !== taskId)
@@ -20691,7 +20807,7 @@ const SmartPhoneAction = ({ phone }) => {
                             id: taskModal.id,
                             role: taskModal.role,
                             title: taskModal.title.trim(),
-                            timeSlot: cleanSerial, // Serial Number সংরক্ষিত হচ্ছে (কোনো শিট পরিবর্তন ছাড়াই)
+                            timeSlot: cleanSerial,
                             description: taskModal.description.trim()
                         }
                     });
@@ -20725,304 +20841,538 @@ const SmartPhoneAction = ({ phone }) => {
                 } catch (err) {}
             };
 
-            const monthCells = useMemo(() => {
+            const trackingStartYMD = useMemo(() => {
+                const candidates = [];
+                (myRoleTasks || []).forEach(t => {
+                    if (t.timestamp) {
+                        const m = moment(t.timestamp);
+                        if (m.isValid()) candidates.push(m.format('YYYY-MM-DD'));
+                    }
+                });
+                (routineLogs || []).forEach(l => {
+                    if (l.date && /^\d{4}-\d{2}-\d{2}$/.test(l.date)) candidates.push(l.date);
+                });
+                candidates.sort();
+                return candidates.length > 0 && candidates[0] < todayYMD ? candidates[0] : todayYMD;
+            }, [myRoleTasks, routineLogs, todayYMD]);
+
+            const { monthCells, monthlyStats } = useMemo(() => {
                 const start = moment(calMonth).startOf('month');
                 const daysInM = start.daysInMonth();
                 const pad = start.day();
                 const cells = [];
+                let totalAll = 0;
+                let doneAll = 0;
+
                 for (let i = 0; i < pad; i++) cells.push(null);
                 for (let d = 1; d <= daysInM; d++) {
                     const ymd = moment(start).date(d).format('YYYY-MM-DD');
-                    cells.push({ day: d, ymd, log: logsByDate[ymd] || null });
-                }
-                return cells;
-            }, [calMonth, logsByDate]);
+                    const log = logsByDate[ymd] || null;
+                    const isFuture = ymd > todayYMD;
+                    const isPast = ymd < todayYMD;
+                    const isToday = ymd === todayYMD;
+                    const isTracked = !isFuture && (Boolean(log) || (ymd >= trackingStartYMD && myRoleTasks.length > 0));
 
-            const selectedDayLog = logsByDate[selectedCalDate] || null;
+                    let totC = 0;
+                    let doneC = 0;
+                    if (isTracked) {
+                        totC = log ? Math.max(Number(log.totalTasks || 0), Number(log.completedCount || 0), myRoleTasks.length) : myRoleTasks.length;
+                        doneC = log ? Math.min(totC, Number(log.completedCount || 0)) : 0;
+                        totalAll += totC;
+                        doneAll += doneC;
+                    }
+                    const missedC = Math.max(0, totC - doneC);
+                    cells.push({ day: d, ymd, log, isFuture, isPast, isToday, isTracked, totC, doneC, missedC });
+                }
+
+                const missedAll = Math.max(0, totalAll - doneAll);
+                const score100 = totalAll > 0 ? Math.round((doneAll / totalAll) * 100) : 0;
+                return {
+                    monthCells: cells,
+                    monthlyStats: { total: totalAll, completed: doneAll, missed: missedAll, score: score100 }
+                };
+            }, [calMonth, logsByDate, todayYMD, trackingStartYMD, myRoleTasks.length]);
+
+            const selectedDayCell = monthCells.find(c => c && c.ymd === selectedCalDate) || null;
             const ROLES_LIST = ['Student', 'Manager', 'Admin', 'Trainer', 'Team'];
 
             return (
-                <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-4">
-                    {/* Header + Admin Switcher */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-gray-100 dark:border-white/10">
-                        <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <Icon name="check-square" className="w-5 h-5 text-emerald-600 shrink-0" />
-                                <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
-                                    Daily Assigned Tasks ({myRole})
-                                </h3>
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-numbers font-bold ${
-                                    todayTotalCount > 0 && todayCompletedCount === todayTotalCount
+                <div className={`glass-panel rounded-2xl border overflow-hidden shadow-sm transition-all ${
+                    isAllDoneToday
+                        ? 'border-emerald-300/80 dark:border-emerald-500/35'
+                        : 'border-blue-200/80 dark:border-blue-500/25'
+                }`}>
+                    {/* 🌟 Eye-Catching Top Mission Header + Live Countdown Clock */}
+                    <div className={`p-4 sm:p-5 border-b border-gray-200/60 dark:border-white/10 ${
+                        isAllDoneToday
+                            ? 'bg-gradient-to-r from-emerald-500/[0.12] via-teal-500/[0.06] to-transparent'
+                            : 'bg-gradient-to-r from-[#005fb8]/[0.10] via-indigo-500/[0.05] to-transparent'
+                    }`}>
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
+                                <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
+                                    isAllDoneToday
                                         ? 'bg-emerald-600 text-white'
-                                        : 'bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff]'
+                                        : 'bg-[#005fb8] text-white'
                                 }`}>
-                                    {todayCompletedCount}/{todayTotalCount} Done Today
-                                </span>
+                                    <Icon name={isAllDoneToday ? 'award' : 'target'} className="w-5 h-5" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h3 className="text-base sm:text-lg font-extrabold text-gray-900 dark:text-white tracking-tight">
+                                            Today’s Daily Mission
+                                        </h3>
+                                        <span className="px-2 py-0.5 rounded-md bg-gray-900/10 dark:bg-white/10 text-gray-800 dark:text-gray-200 text-[10px] font-bold uppercase tracking-wider">
+                                            {myRole}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 leading-snug">
+                                        {isAllDoneToday
+                                            ? 'অভিনন্দন! আজকের সব কাজ সম্পন্ন হয়েছে — আপনার ক্যালেন্ডার গ্রিন হয়েছে!'
+                                            : remainingTasksCount > 0
+                                                ? `আজকের ${remainingTasksCount}টি কাজ বাকি আছে — রাত ১২টায় লক হওয়ার আগেই টিক দিন!`
+                                                : 'প্রতিদিনের নির্ধারিত কাজ সম্পন্ন করে আপনার ধারাবাহিকতা বজায় রাখুন।'}
+                                    </p>
+                                </div>
                             </div>
-                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                                সিরিয়াল অনুযায়ী প্রতিদিনের নির্ধারিত কাজ সম্পন্ন করে টিক দিন ও নিচের ক্যালেন্ডারে রেকর্ড দেখুন।
-                            </p>
-                        </div>
 
-                        {isAdmin && (
-                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-dark-900 p-1 rounded-xl border border-gray-200/70 dark:border-white/10 shrink-0 self-start sm:self-auto">
-                                <button
-                                    type="button"
-                                    onClick={() => { playAudio('click'); setViewTab('my-tasks'); }}
-                                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap ${viewTab === 'my-tasks' ? 'bg-[#005fb8] text-white' : 'text-gray-600 dark:text-gray-300'}`}
-                                >
-                                    My Checklist
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => { playAudio('click'); setViewTab('manage'); }}
-                                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap flex items-center gap-1 ${viewTab === 'manage' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'text-gray-600 dark:text-gray-300'}`}
-                                >
-                                    <Icon name="sliders" className="w-3 h-3" /> Manage All Roles
-                                </button>
+                            <div className="flex items-center justify-between md:justify-end gap-2 flex-wrap shrink-0">
+                                {viewTab === 'my-tasks' && (
+                                    <DailyLockTimer
+                                        variant="hero"
+                                        allDone={isAllDoneToday}
+                                        remainingCount={remainingTasksCount}
+                                        onMidnight={handleMidnightRollover}
+                                    />
+                                )}
+
+                                {isAdmin && (
+                                    <div className="flex items-center gap-1 bg-white/80 dark:bg-dark-900 p-1 rounded-xl border border-gray-200/80 dark:border-white/10 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => { playAudio('click'); setViewTab('my-tasks'); }}
+                                            className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors ${viewTab === 'my-tasks' ? 'bg-[#005fb8] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}
+                                        >
+                                            My Tasks
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { playAudio('click'); setViewTab('manage'); }}
+                                            className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap flex items-center gap-1 transition-colors ${viewTab === 'manage' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}
+                                        >
+                                            <Icon name="sliders" className="w-3 h-3" /> Manage Roles
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Main Body */}
+                    <div className="p-3.5 sm:p-5 space-y-4">
+                        {/* MODE A: ADMIN ROLE TASK MANAGER */}
+                        {isAdmin && viewTab === 'manage' ? (
+                            <div className="space-y-3.5">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap pb-0.5">
+                                        {ROLES_LIST.map(r => (
+                                            <button
+                                                key={r}
+                                                type="button"
+                                                onClick={() => { playAudio('click'); setManageRole(r); }}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 border transition-colors ${
+                                                    manageRole === r
+                                                        ? 'bg-[#005fb8] text-white border-[#005fb8] shadow-sm'
+                                                        : 'bg-white dark:bg-dark-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10'
+                                                }`}
+                                            >
+                                                {r} ({(routineTasks || []).filter(t => String(t.role).toLowerCase() === r.toLowerCase()).length})
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            playAudio('click');
+                                            setTaskModal({
+                                                isOpen: true,
+                                                id: null,
+                                                role: manageRole,
+                                                serial: getNextSerialForRole(manageRole),
+                                                title: '',
+                                                description: '',
+                                                saving: false
+                                            });
+                                        }}
+                                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 shadow-sm win-button"
+                                    >
+                                        <Icon name="plus" className="w-3.5 h-3.5" /> Add {manageRole} Task
+                                    </button>
+                                </div>
+
+                                {manageRoleTasks.length === 0 ? (
+                                    <div className="py-8 text-center rounded-xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
+                                        {manageRole} রোলের জন্য এখনো কোনো ডেইলি টাস্ক সেট করা হয়নি।
+                                    </div>
+                                ) : (
+                                    <div className="divide-y divide-gray-100 dark:divide-white/10 rounded-xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#141417] overflow-hidden">
+                                        {manageRoleTasks.map((t, idx) => {
+                                            const serNum = parseSerial(t, idx + 1);
+                                            return (
+                                                <div key={t.id} className="p-3 sm:p-3.5 flex items-start justify-between gap-3">
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="px-2 py-0.5 rounded-md bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-numbers font-bold shrink-0">
+                                                                #{serNum}
+                                                            </span>
+                                                            <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white break-words">{t.title}</p>
+                                                        </div>
+                                                        {t.description && (
+                                                            <div className="text-xs text-gray-600 dark:text-gray-300 mt-1.5 pl-2 border-l-2 border-gray-200 dark:border-white/15 whitespace-pre-wrap break-words leading-relaxed">
+                                                                <LinkifyText text={t.description} />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        <button type="button" onClick={(e) => handleCopyTaskText(e, t)} className="p-1.5 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:bg-emerald-600 hover:text-white transition-colors" title="Copy Task">
+                                                            <Icon name="copy" className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button type="button" onClick={(e) => handleDuplicateTask(e, t)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors" title="Duplicate & Customize">
+                                                            <Icon name="files" className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button type="button" onClick={(e) => handleEditTask(e, t, idx)} className="p-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors" title="Edit Task">
+                                                            <Icon name="edit-2" className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button type="button" onClick={(e) => handleDeleteAdminTask(e, t)} className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors" title="Delete Task">
+                                                            <Icon name="trash-2" className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            /* MODE B: ULTRA-FRIENDLY INTERACTIVE CHECKLIST + TIMER BESIDE BAR & TASKS + HEATMAP CALENDAR */
+                            <div className="space-y-4">
+                                {/* 📊 Task Progress Bar + Live Timer Right Beside It */}
+                                <div className="p-3 sm:p-3.5 rounded-xl bg-gray-50/90 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 space-y-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-xs sm:text-sm font-extrabold text-gray-900 dark:text-white">
+                                                {todayCompletedCount} / {todayTotalCount} Done
+                                            </span>
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-numbers font-bold ${
+                                                isAllDoneToday
+                                                    ? 'bg-emerald-600 text-white'
+                                                    : 'bg-[#005fb8]/15 text-[#005fb8] dark:text-[#60cdff]'
+                                            }`}>
+                                                {todayPct}%
+                                            </span>
+                                        </div>
+
+                                        {/* ⏱️ Live Countdown Pill Right Beside the Progress Bar */}
+                                        <DailyLockTimer
+                                            variant="pill"
+                                            allDone={isAllDoneToday}
+                                            remainingCount={remainingTasksCount}
+                                            onMidnight={handleMidnightRollover}
+                                        />
+                                    </div>
+
+                                    <div className="w-full h-2.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full rounded-full transition-all duration-500 ${
+                                                isAllDoneToday
+                                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                                                    : 'bg-gradient-to-r from-[#005fb8] to-cyan-500'
+                                            }`}
+                                            style={{ width: `${todayPct}%` }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* ✅ Super Easy, Tap-Friendly Task Cards With Timer Beside Every Pending Task & Description */}
+                                {myRoleTasks.length === 0 ? (
+                                    <div className="py-8 px-4 text-center rounded-xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
+                                        আপনার ({myRole}) জন্য এখনো কোনো নির্ধারিত ডেইলি টাস্ক যুক্ত করা হয়নি।
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2.5">
+                                        {myRoleTasks.map((task, idx) => {
+                                            const isDone = checkedSet.has(task.id);
+                                            const serNum = parseSerial(task, idx + 1);
+
+                                            return (
+                                                <div
+                                                    key={task.id}
+                                                    onClick={() => handleToggleTask(task.id)}
+                                                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                                                    className={`p-3.5 sm:p-4 rounded-2xl border cursor-pointer flex items-start gap-3 sm:gap-3.5 transition-all select-none active:scale-[0.995] ${
+                                                        isDone
+                                                            ? 'bg-emerald-500/[0.08] dark:bg-emerald-500/[0.13] border-emerald-400/60 dark:border-emerald-500/35'
+                                                            : 'bg-white dark:bg-[#16161a] border-gray-200/90 dark:border-white/10 hover:border-[#005fb8] hover:shadow-md shadow-sm'
+                                                    }`}
+                                                >
+                                                    {/* Big Easy-to-Tap Checkbox */}
+                                                    <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border-2 transition-all ${
+                                                        isDone
+                                                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                                                            : 'bg-gray-50 dark:bg-dark-800 border-gray-300 dark:border-white/25 hover:border-[#005fb8]'
+                                                    }`}>
+                                                        {isDone ? <Icon name="check" className="w-4 h-4 stroke-[3]" /> : <span className="text-[10px] font-numbers font-bold text-gray-400">{serNum}</span>}
+                                                    </div>
+
+                                                    {/* Task Title + Description + Live Countdown Timer Beside It */}
+                                                    <div className="min-w-0 flex-1 space-y-1.5">
+                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                                                            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                                                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-numbers font-bold shrink-0 ${
+                                                                    isDone
+                                                                        ? 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300'
+                                                                        : 'bg-[#005fb8]/10 text-[#005fb8] dark:text-[#60cdff]'
+                                                                }`}>
+                                                                    Step #{serNum}
+                                                                </span>
+                                                                <h4 className={`text-sm sm:text-[15px] font-bold leading-snug break-words ${
+                                                                    isDone
+                                                                        ? 'line-through text-emerald-900/75 dark:text-emerald-200/75'
+                                                                        : 'text-gray-900 dark:text-white'
+                                                                }`}>
+                                                                    {task.title}
+                                                                </h4>
+                                                            </div>
+
+                                                            {/* Right Side of Task: Done Badge OR Live Time Remaining + Quick Actions */}
+                                                            <div className="flex items-center justify-between sm:justify-end gap-1.5 shrink-0 flex-wrap">
+                                                                {isDone ? (
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold whitespace-nowrap">
+                                                                        <Icon name="check-circle" className="w-3 h-3" /> সম্পন্ন
+                                                                    </span>
+                                                                ) : (
+                                                                    <DailyLockTimer variant="task" allDone={false} />
+                                                                )}
+
+                                                                <div className="flex items-center gap-1">
+                                                                    <button type="button" onClick={(e) => handleCopyTaskText(e, task)} className="p-1.5 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-500 hover:bg-emerald-600 hover:text-white transition-colors" title="Copy">
+                                                                        <Icon name="copy" className="w-3 h-3" />
+                                                                    </button>
+                                                                    {isAdmin && (
+                                                                        <>
+                                                                            <button type="button" onClick={(e) => handleDuplicateTask(e, task)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors" title="Duplicate">
+                                                                                <Icon name="files" className="w-3 h-3" />
+                                                                            </button>
+                                                                            <button type="button" onClick={(e) => handleEditTask(e, task, idx)} className="p-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors" title="Edit">
+                                                                                <Icon name="edit-2" className="w-3 h-3" />
+                                                                            </button>
+                                                                            <button type="button" onClick={(e) => handleDeleteAdminTask(e, task)} className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors" title="Delete">
+                                                                                <Icon name="trash-2" className="w-3 h-3" />
+                                                                            </button>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Task Description with Clickable Hyperlinks (Safe Tap — Never Toggles Checkbox) */}
+                                                        {task.description && (
+                                                            <div
+                                                                onClick={(e) => { if (e.target.closest('a')) e.stopPropagation(); }}
+                                                                className={`text-xs sm:text-[13px] pl-2.5 border-l-2 whitespace-pre-wrap break-words leading-relaxed ${
+                                                                    isDone
+                                                                        ? 'border-emerald-400/50 text-emerald-900/65 dark:text-emerald-200/65'
+                                                                        : 'border-[#005fb8]/40 text-gray-600 dark:text-gray-300'
+                                                                }`}
+                                                            >
+                                                                <LinkifyText text={task.description} />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* 📊 Monthly Performance KPI Cards (Above Calendar) */}
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+                                    <div className="p-3 rounded-xl bg-blue-500/[0.07] dark:bg-blue-500/[0.12] border border-blue-200/70 dark:border-blue-500/20">
+                                        <p className="text-[10px] font-bold uppercase text-[#005fb8] dark:text-[#60cdff]">Total Tasks</p>
+                                        <p className="text-lg sm:text-xl font-numbers font-bold text-gray-900 dark:text-white mt-0.5">{monthlyStats.total}</p>
+                                        <p className="text-[10px] text-gray-500">মোট নির্ধারিত ছিল</p>
+                                    </div>
+
+                                    <div className="p-3 rounded-xl bg-emerald-500/[0.08] dark:bg-emerald-500/[0.13] border border-emerald-200/70 dark:border-emerald-500/25">
+                                        <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">Completed</p>
+                                        <p className="text-lg sm:text-xl font-numbers font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">{monthlyStats.completed}</p>
+                                        <p className="text-[10px] text-gray-500">সম্পন্ন করেছে</p>
+                                    </div>
+
+                                    <div className="p-3 rounded-xl bg-rose-500/[0.08] dark:bg-rose-500/[0.13] border border-rose-200/70 dark:border-rose-500/25">
+                                        <p className="text-[10px] font-bold uppercase text-rose-600 dark:text-rose-300">Not Done</p>
+                                        <p className="text-lg sm:text-xl font-numbers font-bold text-rose-600 dark:text-rose-400 mt-0.5">{monthlyStats.missed}</p>
+                                        <p className="text-[10px] text-gray-500">করে নাই / বাকি</p>
+                                    </div>
+
+                                    <div className={`p-3 rounded-xl border ${
+                                        monthlyStats.score >= 80
+                                            ? 'bg-emerald-500/[0.10] border-emerald-300/70 dark:border-emerald-500/30'
+                                            : monthlyStats.score >= 50
+                                                ? 'bg-amber-500/[0.10] border-amber-300/70 dark:border-amber-500/30'
+                                                : 'bg-rose-500/[0.10] border-rose-300/70 dark:border-rose-500/30'
+                                    }`}>
+                                        <p className="text-[10px] font-bold uppercase text-gray-600 dark:text-gray-300">Overall Score</p>
+                                        <p className={`text-lg sm:text-xl font-numbers font-bold mt-0.5 ${
+                                            monthlyStats.score >= 80
+                                                ? 'text-emerald-600 dark:text-emerald-400'
+                                                : monthlyStats.score >= 50
+                                                    ? 'text-amber-600 dark:text-amber-400'
+                                                    : 'text-rose-600 dark:text-rose-400'
+                                        }`}>
+                                            {monthlyStats.score}<span className="text-xs font-semibold opacity-70">/100</span>
+                                        </p>
+                                        <div className="w-full h-1.5 bg-black/10 dark:bg-white/10 rounded-full overflow-hidden mt-1">
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-300 ${
+                                                    monthlyStats.score >= 80 ? 'bg-emerald-500' : monthlyStats.score >= 50 ? 'bg-amber-500' : 'bg-rose-500'
+                                                }`}
+                                                style={{ width: `${monthlyStats.score}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 📅 Daily Task Record Heatmap Calendar (Dynamic Green/Red Opacity + Past Locked) */}
+                                <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 space-y-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                                            <Icon name="calendar-check" className="w-4 h-4 text-emerald-600" />
+                                            <span>Daily Task Record — {calMonth.format('MMMM YYYY')}</span>
+                                        </h4>
+                                        <div className="flex items-center gap-1">
+                                            <button type="button" onClick={() => setCalMonth(m => moment(m).subtract(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center"><Icon name="chevron-left" className="w-4 h-4" /></button>
+                                            <button type="button" onClick={() => { setCalMonth(moment().startOf('month')); setSelectedCalDate(todayYMD); }} className="px-2 h-7 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold">Today</button>
+                                            <button type="button" onClick={() => setCalMonth(m => moment(m).add(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center"><Icon name="chevron-right" className="w-4 h-4" /></button>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-7 gap-1 text-center text-[9.5px] font-bold uppercase text-gray-400">
+                                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-0.5">{d}</div>)}
+                                    </div>
+
+                                    <div className="grid grid-cols-7 gap-1.5">
+                                        {monthCells.map((cell, idx) => {
+                                            if (!cell) return <div key={`pad-${idx}`} className="h-12 sm:h-14" />;
+                                            const isSel = cell.ymd === selectedCalDate;
+                                            const { totC, doneC, isTracked, isPast, isToday } = cell;
+                                            const ratio = totC > 0 ? Math.min(1, doneC / totC) : 0;
+
+                                            let cellStyle = {};
+                                            let textCls = 'text-gray-500 dark:text-gray-400';
+                                            let subCls = 'opacity-45';
+                                            let defaultCls = 'bg-white dark:bg-dark-800/50 border-gray-200/70 dark:border-white/10';
+
+                                            if (isTracked && totC > 0) {
+                                                if (doneC > 0) {
+                                                    const bgAlpha = (0.10 + ratio * 0.36).toFixed(2);
+                                                    const bdAlpha = (0.32 + ratio * 0.58).toFixed(2);
+                                                    cellStyle = {
+                                                        backgroundColor: `rgba(16, 185, 129, ${bgAlpha})`,
+                                                        borderColor: `rgba(16, 185, 129, ${bdAlpha})`
+                                                    };
+                                                    textCls = 'text-emerald-950 dark:text-emerald-100';
+                                                    subCls = 'text-emerald-800 dark:text-emerald-200';
+                                                    defaultCls = '';
+                                                } else if (isPast) {
+                                                    cellStyle = {
+                                                        backgroundColor: 'rgba(239, 68, 68, 0.24)',
+                                                        borderColor: 'rgba(239, 68, 68, 0.65)'
+                                                    };
+                                                    textCls = 'text-rose-800 dark:text-rose-200';
+                                                    subCls = 'text-rose-700 dark:text-rose-300';
+                                                    defaultCls = '';
+                                                } else if (isToday) {
+                                                    defaultCls = 'bg-blue-500/[0.08] border-[#005fb8]/60';
+                                                    textCls = 'text-gray-900 dark:text-white';
+                                                    subCls = 'text-[#005fb8] dark:text-[#60cdff]';
+                                                }
+                                            }
+
+                                            return (
+                                                <button
+                                                    key={cell.ymd}
+                                                    type="button"
+                                                    onClick={() => { playAudio('click'); setSelectedCalDate(cell.ymd); }}
+                                                    style={cellStyle}
+                                                    className={`h-12 sm:h-14 p-1 rounded-xl border flex flex-col items-center justify-between transition-all ${defaultCls} ${
+                                                        isSel ? 'ring-2 ring-[#005fb8] dark:ring-[#60cdff] ring-offset-1 dark:ring-offset-[#141417] shadow-sm' : ''
+                                                    }`}
+                                                >
+                                                    <div className="w-full flex items-center justify-between px-0.5">
+                                                        <span className={`text-[11px] font-numbers font-bold leading-none ${textCls}`}>{cell.day}</span>
+                                                        {isPast && isTracked && (
+                                                            <Icon name="lock" className="w-2.5 h-2.5 opacity-45 shrink-0" />
+                                                        )}
+                                                    </div>
+                                                    <span className={`text-[9.5px] font-numbers font-bold leading-none ${subCls}`}>
+                                                        {isTracked && totC > 0 ? `${doneC}/${totC}` : '—'}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-500 dark:text-gray-400 pt-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="inline-flex items-center gap-1">
+                                                <span className="w-3 h-3 rounded border" style={{ backgroundColor: 'rgba(239, 68, 68, 0.24)', borderColor: 'rgba(239, 68, 68, 0.65)' }} />
+                                                Missed (0)
+                                            </span>
+                                            <span className="inline-flex items-center gap-1">
+                                                <span>Less</span>
+                                                {[0.14, 0.24, 0.34, 0.46].map(op => (
+                                                    <span key={op} className="w-3 h-3 rounded border" style={{ backgroundColor: `rgba(16, 185, 129, ${op})`, borderColor: 'rgba(16, 185, 129, 0.6)' }} />
+                                                ))}
+                                                <span>More</span>
+                                            </span>
+                                        </div>
+                                        <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
+                                            <Icon name="lock" className="w-3 h-3" /> রাত ১২টায় দিন লক হয়
+                                        </span>
+                                    </div>
+
+                                    <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-bold text-gray-800 dark:text-gray-200">
+                                                {moment(selectedCalDate).format('DD MMM YYYY')}
+                                            </span>
+                                            {selectedCalDate < todayYMD && (
+                                                <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 text-[9.5px] font-bold inline-flex items-center gap-1">
+                                                    <Icon name="lock" className="w-2.5 h-2.5" /> Locked
+                                                </span>
+                                            )}
+                                        </div>
+                                        {selectedDayCell && selectedDayCell.isTracked && selectedDayCell.totC > 0 ? (
+                                            <div className="flex flex-wrap items-center gap-2 font-semibold">
+                                                <span className="text-gray-600 dark:text-gray-300">মোট: <strong>{selectedDayCell.totC}</strong></span>
+                                                <span className="text-emerald-700 dark:text-emerald-300">করেছে: <strong>{selectedDayCell.doneC}</strong></span>
+                                                <span className="text-rose-600 dark:text-rose-400">করে নাই: <strong>{selectedDayCell.missedC}</strong></span>
+                                                <span className="px-2 py-0.5 rounded bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] font-numbers font-bold">
+                                                    {Math.round((selectedDayCell.doneC / selectedDayCell.totC) * 100)}/100
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-gray-400">এই তারিখে কোনো টাস্ক রেকর্ড নেই।</span>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
 
-                    {/* MODE A: ADMIN ROLE TASK MANAGER (With Serial, Copy, Duplicate, Edit, Delete) */}
-                    {isAdmin && viewTab === 'manage' ? (
-                        <div className="space-y-3.5">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
-                                    {ROLES_LIST.map(r => (
-                                        <button
-                                            key={r}
-                                            type="button"
-                                            onClick={() => { playAudio('click'); setManageRole(r); }}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 border ${
-                                                manageRole === r
-                                                    ? 'bg-[#005fb8] text-white border-[#005fb8]'
-                                                    : 'bg-white dark:bg-dark-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10'
-                                            }`}
-                                        >
-                                            {r} ({(routineTasks || []).filter(t => String(t.role).toLowerCase() === r.toLowerCase()).length})
-                                        </button>
-                                    ))}
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        playAudio('click');
-                                        setTaskModal({
-                                            isOpen: true,
-                                            id: null,
-                                            role: manageRole,
-                                            serial: getNextSerialForRole(manageRole),
-                                            title: '',
-                                            description: '',
-                                            saving: false
-                                        });
-                                    }}
-                                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 win-button"
-                                >
-                                    <Icon name="plus" className="w-3.5 h-3.5" /> Add {manageRole} Task
-                                </button>
-                            </div>
-
-                            {manageRoleTasks.length === 0 ? (
-                                <div className="py-8 text-center rounded-xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
-                                    {manageRole} রোলের জন্য এখনো কোনো ডেইলি টাস্ক সেট করা হয়নি।
-                                </div>
-                            ) : (
-                                <div className="divide-y divide-gray-100 dark:divide-white/10 rounded-xl border border-gray-200/70 dark:border-white/10 bg-white dark:bg-[#141417] overflow-hidden">
-                                    {manageRoleTasks.map((t, idx) => {
-                                        const serNum = parseSerial(t, idx + 1);
-                                        return (
-                                            <div key={t.id} className="p-3 flex items-start justify-between gap-3">
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className="px-2 py-0.5 rounded-md bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-numbers font-bold shrink-0">
-                                                            #{serNum}
-                                                        </span>
-                                                        <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white break-words">{t.title}</p>
-                                                    </div>
-                                                    {t.description && (
-                                                        <div className="text-[11.5px] text-gray-600 dark:text-gray-300 mt-1 pl-1 whitespace-pre-wrap break-words leading-relaxed">
-                                                            <LinkifyText text={t.description} />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-1 shrink-0">
-                                                    <button type="button" onClick={(e) => handleCopyTaskText(e, t)} className="p-1.5 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:bg-emerald-600 hover:text-white transition-colors" title="Copy Task Text">
-                                                        <Icon name="copy" className="w-3.5 h-3.5" />
-                                                    </button>
-                                                    <button type="button" onClick={(e) => handleDuplicateTask(e, t)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors" title="Duplicate & Customize">
-                                                        <Icon name="files" className="w-3.5 h-3.5" />
-                                                    </button>
-                                                    <button type="button" onClick={(e) => handleEditTask(e, t, idx)} className="p-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors" title="Edit Task">
-                                                        <Icon name="edit-2" className="w-3.5 h-3.5" />
-                                                    </button>
-                                                    <button type="button" onClick={(e) => handleDeleteAdminTask(e, t)} className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors" title="Delete Task">
-                                                        <Icon name="trash-2" className="w-3.5 h-3.5" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        /* MODE B: USER'S OWN DAILY CHECKLIST (SERIAL ORDERED + CLICKABLE LINKS + COPY/EDIT/DELETE) */
-                        <div className="space-y-4">
-                            <div className="space-y-1.5">
-                                <div className="flex items-center justify-between text-xs font-bold">
-                                    <span className="text-gray-600 dark:text-gray-300">Today’s Progress ({moment().format('DD MMM YYYY')})</span>
-                                    <span className="font-numbers text-emerald-600 dark:text-emerald-400">{todayPct}%</span>
-                                </div>
-                                <div className="w-full h-2 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
-                                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${todayPct}%` }} />
-                                </div>
-                            </div>
-
-                            {myRoleTasks.length === 0 ? (
-                                <div className="py-6 px-4 text-center rounded-xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
-                                    আপনার ({myRole}) জন্য এখনো কোনো নির্ধারিত ডেইলি টাস্ক যুক্ত করা হয়নি।
-                                </div>
-                            ) : (
-                                <div className="space-y-2">
-                                    {myRoleTasks.map((task, idx) => {
-                                        const isDone = checkedSet.has(task.id);
-                                        const serNum = parseSerial(task, idx + 1);
-                                        return (
-                                            <div
-                                                key={task.id}
-                                                onClick={() => handleToggleTask(task.id)}
-                                                className={`p-3 rounded-xl border cursor-pointer flex items-start gap-3 transition-all group ${
-                                                    isDone
-                                                        ? 'bg-emerald-500/[0.09] dark:bg-emerald-500/[0.14] border-emerald-400/60 dark:border-emerald-500/35'
-                                                        : 'bg-white dark:bg-[#141417] border-gray-200/80 dark:border-white/10 hover:border-[#005fb8]/60'
-                                                }`}
-                                            >
-                                                <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 mt-0.5 border transition-colors ${
-                                                    isDone ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white dark:bg-dark-800 border-gray-300 dark:border-white/25'
-                                                }`}>
-                                                    {isDone && <Icon name="check" className="w-3.5 h-3.5" />}
-                                                </div>
-
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-start justify-between gap-2">
-                                                        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                                                            <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-numbers font-bold shrink-0">
-                                                                #{serNum}
-                                                            </span>
-                                                            <span className={`text-xs sm:text-sm font-bold leading-snug break-words ${isDone ? 'line-through text-emerald-800 dark:text-emerald-300 opacity-80' : 'text-gray-900 dark:text-white'}`}>
-                                                                {task.title}
-                                                            </span>
-                                                        </div>
-
-                                                        <div className="flex items-center gap-1 shrink-0">
-                                                            <button type="button" onClick={(e) => handleCopyTaskText(e, task)} className="p-1 rounded-md bg-gray-100 dark:bg-dark-800 text-gray-500 hover:bg-emerald-600 hover:text-white transition-colors" title="Copy Task">
-                                                                <Icon name="copy" className="w-3 h-3" />
-                                                            </button>
-                                                            {isAdmin && (
-                                                                <>
-                                                                    <button type="button" onClick={(e) => handleDuplicateTask(e, task)} className="p-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors" title="Duplicate & Customize">
-                                                                        <Icon name="files" className="w-3 h-3" />
-                                                                    </button>
-                                                                    <button type="button" onClick={(e) => handleEditTask(e, task, idx)} className="p-1 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors" title="Edit">
-                                                                        <Icon name="edit-2" className="w-3 h-3" />
-                                                                    </button>
-                                                                    <button type="button" onClick={(e) => handleDeleteAdminTask(e, task)} className="p-1 rounded-md bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors" title="Delete">
-                                                                        <Icon name="trash-2" className="w-3 h-3" />
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    {task.description && (
-                                                        <div className="text-[11.5px] text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap break-words leading-relaxed">
-                                                            <LinkifyText text={task.description} />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-
-                            {/* 📅 Daily Task Completion Record Calendar */}
-                            <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 space-y-3">
-                                <div className="flex items-center justify-between gap-2">
-                                    <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                                        <Icon name="calendar-check" className="w-4 h-4 text-emerald-600" />
-                                        <span>Daily Task Record — {calMonth.format('MMMM YYYY')}</span>
-                                    </h4>
-                                    <div className="flex items-center gap-1">
-                                        <button type="button" onClick={() => setCalMonth(m => moment(m).subtract(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center"><Icon name="chevron-left" className="w-4 h-4" /></button>
-                                        <button type="button" onClick={() => { setCalMonth(moment().startOf('month')); setSelectedCalDate(todayYMD); }} className="px-2 h-7 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold">Today</button>
-                                        <button type="button" onClick={() => setCalMonth(m => moment(m).add(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center"><Icon name="chevron-right" className="w-4 h-4" /></button>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-7 gap-1 text-center text-[9.5px] font-bold uppercase text-gray-400">
-                                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-0.5">{d}</div>)}
-                                </div>
-
-                                <div className="grid grid-cols-7 gap-1">
-                                    {monthCells.map((cell, idx) => {
-                                        if (!cell) return <div key={`pad-${idx}`} className="h-11 sm:h-12" />;
-                                        const isSel = cell.ymd === selectedCalDate;
-                                        const isTdy = cell.ymd === todayYMD;
-                                        const rec = cell.log;
-                                        const doneC = rec ? Number(rec.completedCount || 0) : 0;
-                                        const totC = rec ? Number(rec.totalTasks || 0) : (isTdy ? todayTotalCount : 0);
-                                        const isFull = totC > 0 && doneC >= totC;
-                                        const isPart = doneC > 0 && doneC < totC;
-
-                                        return (
-                                            <button
-                                                key={cell.ymd}
-                                                type="button"
-                                                onClick={() => { playAudio('click'); setSelectedCalDate(cell.ymd); }}
-                                                className={`h-11 sm:h-12 p-1 rounded-xl border flex flex-col items-center justify-between transition-all ${
-                                                    isSel
-                                                        ? 'bg-[#005fb8] text-white border-[#005fb8] shadow-sm'
-                                                        : isFull
-                                                            ? 'bg-emerald-500/15 border-emerald-400/60 text-emerald-900 dark:text-emerald-200'
-                                                            : isPart
-                                                                ? 'bg-amber-500/15 border-amber-400/60 text-amber-900 dark:text-amber-200'
-                                                                : isTdy
-                                                                    ? 'bg-blue-500/10 border-[#005fb8]/50 text-gray-900 dark:text-white'
-                                                                    : 'bg-white dark:bg-dark-800/50 border-gray-200/70 dark:border-white/10 text-gray-600 dark:text-gray-400'
-                                                }`}
-                                            >
-                                                <span className="text-[11px] font-numbers font-bold leading-none">{cell.day}</span>
-                                                <span className={`text-[9px] font-numbers font-bold leading-none ${
-                                                    isSel ? 'text-blue-100' : isFull ? 'text-emerald-700 dark:text-emerald-300' : isPart ? 'text-amber-700 dark:text-amber-300' : 'opacity-45'
-                                                }`}>
-                                                    {totC > 0 ? `${doneC}/${totC}` : '—'}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-
-                                <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
-                                    <span className="font-bold text-gray-800 dark:text-gray-200">
-                                        {moment(selectedCalDate).format('DD MMM YYYY')}
-                                    </span>
-                                    {selectedDayLog ? (
-                                        <span className="font-semibold text-emerald-700 dark:text-emerald-300">
-                                            মোট টাস্ক: <strong>{selectedDayLog.totalTasks}টি</strong> • সম্পন্ন হয়েছে: <strong>{selectedDayLog.completedCount}টি</strong>
-                                        </span>
-                                    ) : (
-                                        <span className="text-gray-400">এই তারিখে কোনো টাস্ক রেকর্ড নেই।</span>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Admin Add / Edit / Duplicate Role Routine Task Modal (With Serial Number & Clickable Note Links) */}
+                    {/* Admin Add / Edit / Duplicate Routine Task Modal */}
                     <Modal isOpen={taskModal.isOpen} onClose={() => setTaskModal(p => ({ ...p, isOpen: false }))} title={taskModal.id ? 'Edit Daily Routine Task' : 'Add Daily Routine Task'} maxWidth="max-w-md" compact={true}>
                         <form onSubmit={handleSaveAdminTask} className="space-y-3">
                             <div className="grid grid-cols-2 gap-2.5">
