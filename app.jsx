@@ -20550,11 +20550,8 @@ const SmartPhoneAction = ({ phone }) => {
             );
         };
 
-        // ==========================================
-        // ✅ ROLE-BASED DAILY ROUTINE CHECKLIST + DAILY COMPLETION RECORD CALENDAR + ADMIN MANAGER
-        // ==========================================
-       // ⏱️ Zero-Lag Live Midnight Countdown Timer (Updates every 1s without re-rendering calendar/tasks)
-        const DailyLockTimer = ({ variant = 'pill', allDone = false, remainingCount = 0, onMidnight }) => {
+       // ⏱️ Single Zero-Lag Midnight Countdown Timer (Only Beside Progress Bar)
+        const DailyLockTimer = ({ allDone = false, onMidnight }) => {
             const getRemaining = () => {
                 const now = moment();
                 const end = moment().endOf('day');
@@ -20563,7 +20560,7 @@ const SmartPhoneAction = ({ phone }) => {
                 const m = Math.floor((diffSec % 3600) / 60);
                 const s = diffSec % 60;
                 return {
-                    h, m, s, diffSec,
+                    diffSec,
                     dayStr: now.format('YYYY-MM-DD'),
                     hh: String(h).padStart(2, '0'),
                     mm: String(m).padStart(2, '0'),
@@ -20587,69 +20584,30 @@ const SmartPhoneAction = ({ phone }) => {
             }, [onMidnight]);
 
             if (allDone) {
-                if (variant === 'hero') {
-                    return (
-                        <div className="px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-400/50 text-emerald-700 dark:text-emerald-300 flex items-center gap-2 shrink-0">
-                            <Icon name="check-circle" className="w-4 h-4 shrink-0" />
-                            <div className="leading-tight">
-                                <span className="text-[9px] font-bold uppercase tracking-wider block opacity-80">Today Completed</span>
-                                <span className="text-xs sm:text-sm font-bold">100% Score Locked ✓</span>
-                            </div>
-                        </div>
-                    );
-                }
-                return null;
-            }
-
-            const isCritical = t.diffSec < 3600;      // শেষ ১ ঘণ্টা -> লাল
-            const isWarning = t.diffSec < 14400;      // শেষ ৪ ঘণ্টা -> অ্যাম্বার
-
-            const toneBox = isCritical
-                ? 'bg-rose-500/15 border-rose-400/60 text-rose-700 dark:text-rose-300'
-                : isWarning
-                    ? 'bg-amber-500/15 border-amber-400/60 text-amber-800 dark:text-amber-300'
-                    : 'bg-blue-500/[0.10] border-blue-300/60 dark:border-blue-500/30 text-[#005fb8] dark:text-[#60cdff]';
-
-            const dotCls = isCritical ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-[#005fb8] dark:bg-[#60cdff]';
-
-            // ১. বড় ডিজিটাল হিরো টাইমার (উপরের হেডারে)
-            if (variant === 'hero') {
                 return (
-                    <div className={`px-3 sm:px-3.5 py-2 rounded-xl border flex items-center gap-2.5 shrink-0 ${toneBox}`}>
-                        <div className="relative flex items-center justify-center shrink-0">
-                            <span className={`w-2 h-2 rounded-full animate-ping absolute opacity-60 ${dotCls}`} />
-                            <Icon name="clock" className="w-4 h-4 relative z-10" />
-                        </div>
-                        <div className="leading-tight">
-                            <span className="text-[9px] font-bold uppercase tracking-wider block opacity-80">
-                                {remainingCount > 0 ? `${remainingCount}টি বাকি • সময় আছে` : 'সময় বাকি আছে'}
-                            </span>
-                            <span className={`text-sm sm:text-base font-mono-code font-extrabold tracking-tight ${isCritical ? 'animate-pulse' : ''}`}>
-                                {t.hh}:{t.mm}:{t.ss}
-                            </span>
-                        </div>
-                    </div>
-                );
-            }
-
-            // ২. প্রতিটি টাস্কের পাশে ছোট ক্লিন টাইমার ব্যাজ
-            if (variant === 'task') {
-                return (
-                    <span
-                        title="আজকের দিন শেষ হওয়ার বাকি সময়"
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-mono-code font-bold whitespace-nowrap shrink-0 ${toneBox}`}
-                    >
-                        <Icon name="clock" className="w-2.5 h-2.5 shrink-0" />
-                        <span>{t.h}h {t.mm}m বাকি</span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-400/50 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold whitespace-nowrap shrink-0">
+                        <Icon name="check-circle" className="w-3.5 h-3.5 shrink-0" />
+                        <span>100% Completed</span>
                     </span>
                 );
             }
 
-            // ৩. প্রগ্রেস বারের ঠিক পাশে লাইভ পিল টাইমার
+            const isCritical = t.diffSec < 3600;
+            const isWarning = t.diffSec < 14400;
+            const toneCls = isCritical
+                ? 'bg-rose-500/15 border-rose-400/60 text-rose-700 dark:text-rose-300'
+                : isWarning
+                    ? 'bg-amber-500/15 border-amber-400/60 text-amber-800 dark:text-amber-300'
+                    : 'bg-blue-500/[0.10] border-blue-300/60 dark:border-blue-500/30 text-[#005fb8] dark:text-[#60cdff]';
+            const dotCls = isCritical ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-[#005fb8] dark:bg-[#60cdff]';
+
             return (
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-mono-code font-bold whitespace-nowrap shrink-0 ${toneBox}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${dotCls}`} />
-                    <span>{t.hh}:{t.mm}:{t.ss} বাকি</span>
+                <span
+                    title="রাত ১২টার পর আজকের টাস্ক লক হয়ে যাবে"
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-mono-code font-bold whitespace-nowrap shrink-0 ${toneCls}`}
+                >
+                    <span className={`w-1.5 h-1.5 rounded-full animate-pulse shrink-0 ${dotCls}`} />
+                    <span>{t.hh}:{t.mm}:{t.ss} left</span>
                 </span>
             );
         };
@@ -20902,69 +20860,55 @@ const SmartPhoneAction = ({ phone }) => {
                         ? 'border-emerald-300/80 dark:border-emerald-500/35'
                         : 'border-blue-200/80 dark:border-blue-500/25'
                 }`}>
-                    {/* 🌟 Eye-Catching Top Mission Header + Live Countdown Clock */}
-                    <div className={`p-4 sm:p-5 border-b border-gray-200/60 dark:border-white/10 ${
+                    {/* 🎯 Crisp Single-Row No-Wrap Header (Never Breaks on Mobile) */}
+                    <div className={`px-3.5 sm:px-5 py-3 sm:py-3.5 border-b border-gray-200/60 dark:border-white/10 ${
                         isAllDoneToday
-                            ? 'bg-gradient-to-r from-emerald-500/[0.12] via-teal-500/[0.06] to-transparent'
-                            : 'bg-gradient-to-r from-[#005fb8]/[0.10] via-indigo-500/[0.05] to-transparent'
+                            ? 'bg-gradient-to-r from-emerald-500/[0.10] via-teal-500/[0.04] to-transparent'
+                            : 'bg-gradient-to-r from-[#005fb8]/[0.09] via-indigo-500/[0.04] to-transparent'
                     }`}>
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                            <div className="flex items-start gap-3 min-w-0">
-                                <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
+                        <div className="flex items-center justify-between gap-2 flex-nowrap">
+                            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 flex-nowrap">
+                                <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
+                                    isAllDoneToday ? 'bg-emerald-600 text-white' : 'bg-[#005fb8] text-white'
+                                }`}>
+                                    <Icon name={isAllDoneToday ? 'award' : 'target'} className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
+                                </div>
+                                <div className="min-w-0 flex items-center gap-1.5 flex-nowrap">
+                                    <h3 className="text-[13px] sm:text-base font-extrabold text-gray-900 dark:text-white tracking-tight whitespace-nowrap truncate">
+                                        Today’s Daily Mission
+                                    </h3>
+                                    <span className="px-1.5 py-0.5 rounded bg-gray-900/10 dark:bg-white/10 text-gray-800 dark:text-gray-200 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider whitespace-nowrap shrink-0">
+                                        {myRole}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {isAdmin ? (
+                                <div className="flex items-center gap-1 bg-white/80 dark:bg-dark-900 p-0.5 rounded-lg border border-gray-200/80 dark:border-white/10 shrink-0 flex-nowrap">
+                                    <button
+                                        type="button"
+                                        onClick={() => { playAudio('click'); setViewTab('my-tasks'); }}
+                                        className={`px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-bold whitespace-nowrap transition-colors ${viewTab === 'my-tasks' ? 'bg-[#005fb8] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}
+                                    >
+                                        Tasks
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { playAudio('click'); setViewTab('manage'); }}
+                                        className={`px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-bold whitespace-nowrap flex items-center gap-1 transition-colors ${viewTab === 'manage' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}
+                                    >
+                                        <Icon name="sliders" className="w-3 h-3 shrink-0" /> Manage
+                                    </button>
+                                </div>
+                            ) : (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-numbers font-bold whitespace-nowrap shrink-0 ${
                                     isAllDoneToday
                                         ? 'bg-emerald-600 text-white'
-                                        : 'bg-[#005fb8] text-white'
+                                        : 'bg-[#005fb8]/15 text-[#005fb8] dark:text-[#60cdff]'
                                 }`}>
-                                    <Icon name={isAllDoneToday ? 'award' : 'target'} className="w-5 h-5" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <h3 className="text-base sm:text-lg font-extrabold text-gray-900 dark:text-white tracking-tight">
-                                            Today’s Daily Mission
-                                        </h3>
-                                        <span className="px-2 py-0.5 rounded-md bg-gray-900/10 dark:bg-white/10 text-gray-800 dark:text-gray-200 text-[10px] font-bold uppercase tracking-wider">
-                                            {myRole}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 leading-snug">
-                                        {isAllDoneToday
-                                            ? 'অভিনন্দন! আজকের সব কাজ সম্পন্ন হয়েছে — আপনার ক্যালেন্ডার গ্রিন হয়েছে!'
-                                            : remainingTasksCount > 0
-                                                ? `আজকের ${remainingTasksCount}টি কাজ বাকি আছে — রাত ১২টায় লক হওয়ার আগেই টিক দিন!`
-                                                : 'প্রতিদিনের নির্ধারিত কাজ সম্পন্ন করে আপনার ধারাবাহিকতা বজায় রাখুন।'}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-between md:justify-end gap-2 flex-wrap shrink-0">
-                                {viewTab === 'my-tasks' && (
-                                    <DailyLockTimer
-                                        variant="hero"
-                                        allDone={isAllDoneToday}
-                                        remainingCount={remainingTasksCount}
-                                        onMidnight={handleMidnightRollover}
-                                    />
-                                )}
-
-                                {isAdmin && (
-                                    <div className="flex items-center gap-1 bg-white/80 dark:bg-dark-900 p-1 rounded-xl border border-gray-200/80 dark:border-white/10 shrink-0">
-                                        <button
-                                            type="button"
-                                            onClick={() => { playAudio('click'); setViewTab('my-tasks'); }}
-                                            className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors ${viewTab === 'my-tasks' ? 'bg-[#005fb8] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}
-                                        >
-                                            My Tasks
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => { playAudio('click'); setViewTab('manage'); }}
-                                            className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap flex items-center gap-1 transition-colors ${viewTab === 'manage' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}
-                                        >
-                                            <Icon name="sliders" className="w-3 h-3" /> Manage Roles
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
+                                    {todayPct}%
+                                </span>
+                            )}
                         </div>
                     </div>
 
@@ -21020,13 +20964,13 @@ const SmartPhoneAction = ({ phone }) => {
                                         {manageRoleTasks.map((t, idx) => {
                                             const serNum = parseSerial(t, idx + 1);
                                             return (
-                                                <div key={t.id} className="p-3 sm:p-3.5 flex items-start justify-between gap-3">
+                                                <div key={t.id} className="p-3 sm:p-3.5 flex items-start justify-between gap-2.5">
                                                     <div className="min-w-0 flex-1">
-                                                        <div className="flex items-center gap-2 flex-wrap">
-                                                            <span className="px-2 py-0.5 rounded-md bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-numbers font-bold shrink-0">
+                                                        <div className="flex items-center gap-2 flex-nowrap">
+                                                            <span className="px-2 py-0.5 rounded-md bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-numbers font-bold whitespace-nowrap shrink-0">
                                                                 #{serNum}
                                                             </span>
-                                                            <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white break-words">{t.title}</p>
+                                                            <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white break-words min-w-0">{t.title}</p>
                                                         </div>
                                                         {t.description && (
                                                             <div className="text-xs text-gray-600 dark:text-gray-300 mt-1.5 pl-2 border-l-2 border-gray-200 dark:border-white/15 whitespace-pre-wrap break-words leading-relaxed">
@@ -21034,17 +20978,17 @@ const SmartPhoneAction = ({ phone }) => {
                                                             </div>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-1 shrink-0">
+                                                    <div className="flex items-center gap-1 shrink-0 flex-nowrap">
                                                         <button type="button" onClick={(e) => handleCopyTaskText(e, t)} className="p-1.5 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:bg-emerald-600 hover:text-white transition-colors" title="Copy Task">
                                                             <Icon name="copy" className="w-3.5 h-3.5" />
                                                         </button>
-                                                        <button type="button" onClick={(e) => handleDuplicateTask(e, t)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors" title="Duplicate & Customize">
+                                                        <button type="button" onClick={(e) => handleDuplicateTask(e, t)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors" title="Duplicate">
                                                             <Icon name="files" className="w-3.5 h-3.5" />
                                                         </button>
-                                                        <button type="button" onClick={(e) => handleEditTask(e, t, idx)} className="p-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors" title="Edit Task">
+                                                        <button type="button" onClick={(e) => handleEditTask(e, t, idx)} className="p-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors" title="Edit">
                                                             <Icon name="edit-2" className="w-3.5 h-3.5" />
                                                         </button>
-                                                        <button type="button" onClick={(e) => handleDeleteAdminTask(e, t)} className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors" title="Delete Task">
+                                                        <button type="button" onClick={(e) => handleDeleteAdminTask(e, t)} className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors" title="Delete">
                                                             <Icon name="trash-2" className="w-3.5 h-3.5" />
                                                         </button>
                                                     </div>
@@ -21055,16 +20999,16 @@ const SmartPhoneAction = ({ phone }) => {
                                 )}
                             </div>
                         ) : (
-                            /* MODE B: ULTRA-FRIENDLY INTERACTIVE CHECKLIST + TIMER BESIDE BAR & TASKS + HEATMAP CALENDAR */
+                            /* MODE B: CLEAN USER CHECKLIST (SINGLE TIMER BESIDE PROGRESS BAR + CLEAN TASK CARDS) */
                             <div className="space-y-4">
-                                {/* 📊 Task Progress Bar + Live Timer Right Beside It */}
+                                {/* 📊 Progress Bar Row + ONLY Live Countdown Timer (Single-Line No-Wrap) */}
                                 <div className="p-3 sm:p-3.5 rounded-xl bg-gray-50/90 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 space-y-2">
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <span className="text-xs sm:text-sm font-extrabold text-gray-900 dark:text-white">
+                                    <div className="flex items-center justify-between gap-2 flex-nowrap">
+                                        <div className="flex items-center gap-1.5 min-w-0 flex-nowrap">
+                                            <span className="text-xs sm:text-sm font-extrabold text-gray-900 dark:text-white font-numbers whitespace-nowrap">
                                                 {todayCompletedCount} / {todayTotalCount} Done
                                             </span>
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-numbers font-bold ${
+                                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-numbers font-bold whitespace-nowrap shrink-0 ${
                                                 isAllDoneToday
                                                     ? 'bg-emerald-600 text-white'
                                                     : 'bg-[#005fb8]/15 text-[#005fb8] dark:text-[#60cdff]'
@@ -21073,11 +21017,9 @@ const SmartPhoneAction = ({ phone }) => {
                                             </span>
                                         </div>
 
-                                        {/* ⏱️ Live Countdown Pill Right Beside the Progress Bar */}
+                                        {/* ⏱️ THE ONLY LIVE TIMER */}
                                         <DailyLockTimer
-                                            variant="pill"
                                             allDone={isAllDoneToday}
-                                            remainingCount={remainingTasksCount}
                                             onMidnight={handleMidnightRollover}
                                         />
                                     </div>
@@ -21094,13 +21036,13 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 </div>
 
-                                {/* ✅ Super Easy, Tap-Friendly Task Cards With Timer Beside Every Pending Task & Description */}
+                                {/* ✅ Clean, Modern, Super Readable Task Cards (Zero Extra Timer Clutter) */}
                                 {myRoleTasks.length === 0 ? (
                                     <div className="py-8 px-4 text-center rounded-xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
                                         আপনার ({myRole}) জন্য এখনো কোনো নির্ধারিত ডেইলি টাস্ক যুক্ত করা হয়নি।
                                     </div>
                                 ) : (
-                                    <div className="space-y-2.5">
+                                    <div className="space-y-2">
                                         {myRoleTasks.map((task, idx) => {
                                             const isDone = checkedSet.has(task.id);
                                             const serNum = parseSerial(task, idx + 1);
@@ -21110,80 +21052,67 @@ const SmartPhoneAction = ({ phone }) => {
                                                     key={task.id}
                                                     onClick={() => handleToggleTask(task.id)}
                                                     style={{ WebkitTapHighlightColor: 'transparent' }}
-                                                    className={`p-3.5 sm:p-4 rounded-2xl border cursor-pointer flex items-start gap-3 sm:gap-3.5 transition-all select-none active:scale-[0.995] ${
+                                                    className={`p-3 sm:p-3.5 rounded-xl border border-l-4 cursor-pointer flex items-start gap-3 transition-all select-none active:scale-[0.995] ${
                                                         isDone
-                                                            ? 'bg-emerald-500/[0.08] dark:bg-emerald-500/[0.13] border-emerald-400/60 dark:border-emerald-500/35'
-                                                            : 'bg-white dark:bg-[#16161a] border-gray-200/90 dark:border-white/10 hover:border-[#005fb8] hover:shadow-md shadow-sm'
+                                                            ? 'bg-emerald-500/[0.07] dark:bg-emerald-500/[0.12] border-emerald-200/80 dark:border-emerald-500/30 border-l-emerald-500'
+                                                            : 'bg-white dark:bg-[#16161a] border-gray-200/80 dark:border-white/10 border-l-[#005fb8] hover:border-[#005fb8]/60 hover:shadow-sm'
                                                     }`}
                                                 >
-                                                    {/* Big Easy-to-Tap Checkbox */}
-                                                    <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border-2 transition-all ${
+                                                    {/* Easy-to-Tap Checkbox */}
+                                                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border-2 transition-all ${
                                                         isDone
-                                                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
-                                                            : 'bg-gray-50 dark:bg-dark-800 border-gray-300 dark:border-white/25 hover:border-[#005fb8]'
+                                                            ? 'bg-emerald-600 border-emerald-600 text-white'
+                                                            : 'bg-gray-50 dark:bg-dark-800 border-gray-300 dark:border-white/25'
                                                     }`}>
-                                                        {isDone ? <Icon name="check" className="w-4 h-4 stroke-[3]" /> : <span className="text-[10px] font-numbers font-bold text-gray-400">{serNum}</span>}
+                                                        {isDone
+                                                            ? <Icon name="check" className="w-3.5 h-3.5 stroke-[3]" />
+                                                            : <span className="text-[10px] font-numbers font-bold text-gray-400">{serNum}</span>
+                                                        }
                                                     </div>
 
-                                                    {/* Task Title + Description + Live Countdown Timer Beside It */}
-                                                    <div className="min-w-0 flex-1 space-y-1.5">
-                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                                                            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                                                                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-numbers font-bold shrink-0 ${
-                                                                    isDone
-                                                                        ? 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300'
-                                                                        : 'bg-[#005fb8]/10 text-[#005fb8] dark:text-[#60cdff]'
-                                                                }`}>
-                                                                    Step #{serNum}
-                                                                </span>
-                                                                <h4 className={`text-sm sm:text-[15px] font-bold leading-snug break-words ${
-                                                                    isDone
-                                                                        ? 'line-through text-emerald-900/75 dark:text-emerald-200/75'
-                                                                        : 'text-gray-900 dark:text-white'
-                                                                }`}>
-                                                                    {task.title}
-                                                                </h4>
-                                                            </div>
+                                                    {/* Clean Task Title + Description */}
+                                                    <div className="min-w-0 flex-1 space-y-1">
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <h4 className={`text-[13.5px] sm:text-[15px] font-bold leading-snug break-words min-w-0 flex-1 ${
+                                                                isDone
+                                                                    ? 'line-through text-emerald-900/70 dark:text-emerald-200/70'
+                                                                    : 'text-gray-900 dark:text-white'
+                                                            }`}>
+                                                                {task.title}
+                                                            </h4>
 
-                                                            {/* Right Side of Task: Done Badge OR Live Time Remaining + Quick Actions */}
-                                                            <div className="flex items-center justify-between sm:justify-end gap-1.5 shrink-0 flex-wrap">
-                                                                {isDone ? (
-                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold whitespace-nowrap">
-                                                                        <Icon name="check-circle" className="w-3 h-3" /> সম্পন্ন
+                                                            <div className="flex items-center gap-1 shrink-0 flex-nowrap">
+                                                                {isDone && (
+                                                                    <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-bold uppercase whitespace-nowrap">
+                                                                        Done ✓
                                                                     </span>
-                                                                ) : (
-                                                                    <DailyLockTimer variant="task" allDone={false} />
                                                                 )}
-
-                                                                <div className="flex items-center gap-1">
-                                                                    <button type="button" onClick={(e) => handleCopyTaskText(e, task)} className="p-1.5 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-500 hover:bg-emerald-600 hover:text-white transition-colors" title="Copy">
-                                                                        <Icon name="copy" className="w-3 h-3" />
-                                                                    </button>
-                                                                    {isAdmin && (
-                                                                        <>
-                                                                            <button type="button" onClick={(e) => handleDuplicateTask(e, task)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors" title="Duplicate">
-                                                                                <Icon name="files" className="w-3 h-3" />
-                                                                            </button>
-                                                                            <button type="button" onClick={(e) => handleEditTask(e, task, idx)} className="p-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors" title="Edit">
-                                                                                <Icon name="edit-2" className="w-3 h-3" />
-                                                                            </button>
-                                                                            <button type="button" onClick={(e) => handleDeleteAdminTask(e, task)} className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors" title="Delete">
-                                                                                <Icon name="trash-2" className="w-3 h-3" />
-                                                                            </button>
-                                                                        </>
-                                                                    )}
-                                                                </div>
+                                                                <button type="button" onClick={(e) => handleCopyTaskText(e, task)} className="p-1 rounded-md bg-gray-100 dark:bg-dark-800 text-gray-500 hover:bg-emerald-600 hover:text-white transition-colors" title="Copy">
+                                                                    <Icon name="copy" className="w-3 h-3" />
+                                                                </button>
+                                                                {isAdmin && (
+                                                                    <>
+                                                                        <button type="button" onClick={(e) => handleDuplicateTask(e, task)} className="p-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors" title="Duplicate">
+                                                                            <Icon name="files" className="w-3 h-3" />
+                                                                        </button>
+                                                                        <button type="button" onClick={(e) => handleEditTask(e, task, idx)} className="p-1 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors" title="Edit">
+                                                                            <Icon name="edit-2" className="w-3 h-3" />
+                                                                        </button>
+                                                                        <button type="button" onClick={(e) => handleDeleteAdminTask(e, task)} className="p-1 rounded-md bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors" title="Delete">
+                                                                            <Icon name="trash-2" className="w-3 h-3" />
+                                                                        </button>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         </div>
 
-                                                        {/* Task Description with Clickable Hyperlinks (Safe Tap — Never Toggles Checkbox) */}
                                                         {task.description && (
                                                             <div
                                                                 onClick={(e) => { if (e.target.closest('a')) e.stopPropagation(); }}
-                                                                className={`text-xs sm:text-[13px] pl-2.5 border-l-2 whitespace-pre-wrap break-words leading-relaxed ${
+                                                                className={`text-xs leading-relaxed whitespace-pre-wrap break-words ${
                                                                     isDone
-                                                                        ? 'border-emerald-400/50 text-emerald-900/65 dark:text-emerald-200/65'
-                                                                        : 'border-[#005fb8]/40 text-gray-600 dark:text-gray-300'
+                                                                        ? 'text-emerald-900/60 dark:text-emerald-200/60'
+                                                                        : 'text-gray-600 dark:text-gray-300'
                                                                 }`}
                                                             >
                                                                 <LinkifyText text={task.description} />
@@ -21197,34 +21126,34 @@ const SmartPhoneAction = ({ phone }) => {
                                 )}
 
                                 {/* 📊 Monthly Performance KPI Cards (Above Calendar) */}
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
-                                    <div className="p-3 rounded-xl bg-blue-500/[0.07] dark:bg-blue-500/[0.12] border border-blue-200/70 dark:border-blue-500/20">
-                                        <p className="text-[10px] font-bold uppercase text-[#005fb8] dark:text-[#60cdff]">Total Tasks</p>
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-1">
+                                    <div className="p-3 rounded-xl bg-blue-500/[0.07] dark:bg-blue-500/[0.12] border border-blue-200/70 dark:border-blue-500/20 min-w-0">
+                                        <p className="text-[10px] font-bold uppercase text-[#005fb8] dark:text-[#60cdff] whitespace-nowrap truncate">Total Tasks</p>
                                         <p className="text-lg sm:text-xl font-numbers font-bold text-gray-900 dark:text-white mt-0.5">{monthlyStats.total}</p>
-                                        <p className="text-[10px] text-gray-500">মোট নির্ধারিত ছিল</p>
+                                        <p className="text-[10px] text-gray-500 whitespace-nowrap truncate">মোট নির্ধারিত ছিল</p>
                                     </div>
 
-                                    <div className="p-3 rounded-xl bg-emerald-500/[0.08] dark:bg-emerald-500/[0.13] border border-emerald-200/70 dark:border-emerald-500/25">
-                                        <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">Completed</p>
+                                    <div className="p-3 rounded-xl bg-emerald-500/[0.08] dark:bg-emerald-500/[0.13] border border-emerald-200/70 dark:border-emerald-500/25 min-w-0">
+                                        <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300 whitespace-nowrap truncate">Completed</p>
                                         <p className="text-lg sm:text-xl font-numbers font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">{monthlyStats.completed}</p>
-                                        <p className="text-[10px] text-gray-500">সম্পন্ন করেছে</p>
+                                        <p className="text-[10px] text-gray-500 whitespace-nowrap truncate">সম্পন্ন করেছে</p>
                                     </div>
 
-                                    <div className="p-3 rounded-xl bg-rose-500/[0.08] dark:bg-rose-500/[0.13] border border-rose-200/70 dark:border-rose-500/25">
-                                        <p className="text-[10px] font-bold uppercase text-rose-600 dark:text-rose-300">Not Done</p>
+                                    <div className="p-3 rounded-xl bg-rose-500/[0.08] dark:bg-rose-500/[0.13] border border-rose-200/70 dark:border-rose-500/25 min-w-0">
+                                        <p className="text-[10px] font-bold uppercase text-rose-600 dark:text-rose-300 whitespace-nowrap truncate">Not Done</p>
                                         <p className="text-lg sm:text-xl font-numbers font-bold text-rose-600 dark:text-rose-400 mt-0.5">{monthlyStats.missed}</p>
-                                        <p className="text-[10px] text-gray-500">করে নাই / বাকি</p>
+                                        <p className="text-[10px] text-gray-500 whitespace-nowrap truncate">করে নাই / বাকি</p>
                                     </div>
 
-                                    <div className={`p-3 rounded-xl border ${
+                                    <div className={`p-3 rounded-xl border min-w-0 ${
                                         monthlyStats.score >= 80
                                             ? 'bg-emerald-500/[0.10] border-emerald-300/70 dark:border-emerald-500/30'
                                             : monthlyStats.score >= 50
                                                 ? 'bg-amber-500/[0.10] border-amber-300/70 dark:border-amber-500/30'
                                                 : 'bg-rose-500/[0.10] border-rose-300/70 dark:border-rose-500/30'
                                     }`}>
-                                        <p className="text-[10px] font-bold uppercase text-gray-600 dark:text-gray-300">Overall Score</p>
-                                        <p className={`text-lg sm:text-xl font-numbers font-bold mt-0.5 ${
+                                        <p className="text-[10px] font-bold uppercase text-gray-600 dark:text-gray-300 whitespace-nowrap truncate">Overall Score</p>
+                                        <p className={`text-lg sm:text-xl font-numbers font-bold mt-0.5 whitespace-nowrap ${
                                             monthlyStats.score >= 80
                                                 ? 'text-emerald-600 dark:text-emerald-400'
                                                 : monthlyStats.score >= 50
@@ -21244,16 +21173,16 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 </div>
 
-                                {/* 📅 Daily Task Record Heatmap Calendar (Dynamic Green/Red Opacity + Past Locked) */}
-                                <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 space-y-3">
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                                            <Icon name="calendar-check" className="w-4 h-4 text-emerald-600" />
-                                            <span>Daily Task Record — {calMonth.format('MMMM YYYY')}</span>
+                                {/* 📅 Daily Task Record Heatmap Calendar (No-Wrap Header) */}
+                                <div className="p-3 sm:p-4 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 space-y-3">
+                                    <div className="flex items-center justify-between gap-2 flex-nowrap">
+                                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5 min-w-0 flex-nowrap">
+                                            <Icon name="calendar-check" className="w-4 h-4 text-emerald-600 shrink-0" />
+                                            <span className="whitespace-nowrap truncate">{calMonth.format('MMMM YYYY')}</span>
                                         </h4>
-                                        <div className="flex items-center gap-1">
+                                        <div className="flex items-center gap-1 shrink-0 flex-nowrap">
                                             <button type="button" onClick={() => setCalMonth(m => moment(m).subtract(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center"><Icon name="chevron-left" className="w-4 h-4" /></button>
-                                            <button type="button" onClick={() => { setCalMonth(moment().startOf('month')); setSelectedCalDate(todayYMD); }} className="px-2 h-7 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold">Today</button>
+                                            <button type="button" onClick={() => { setCalMonth(moment().startOf('month')); setSelectedCalDate(todayYMD); }} className="px-2 h-7 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold whitespace-nowrap">Today</button>
                                             <button type="button" onClick={() => setCalMonth(m => moment(m).add(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center"><Icon name="chevron-right" className="w-4 h-4" /></button>
                                         </div>
                                     </div>
@@ -21262,9 +21191,9 @@ const SmartPhoneAction = ({ phone }) => {
                                         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-0.5">{d}</div>)}
                                     </div>
 
-                                    <div className="grid grid-cols-7 gap-1.5">
+                                    <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
                                         {monthCells.map((cell, idx) => {
-                                            if (!cell) return <div key={`pad-${idx}`} className="h-12 sm:h-14" />;
+                                            if (!cell) return <div key={`pad-${idx}`} className="h-11 sm:h-13" />;
                                             const isSel = cell.ymd === selectedCalDate;
                                             const { totC, doneC, isTracked, isPast, isToday } = cell;
                                             const ratio = totC > 0 ? Math.min(1, doneC / totC) : 0;
@@ -21306,7 +21235,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                     type="button"
                                                     onClick={() => { playAudio('click'); setSelectedCalDate(cell.ymd); }}
                                                     style={cellStyle}
-                                                    className={`h-12 sm:h-14 p-1 rounded-xl border flex flex-col items-center justify-between transition-all ${defaultCls} ${
+                                                    className={`h-11 sm:h-13 p-1 rounded-xl border flex flex-col items-center justify-between transition-all ${defaultCls} ${
                                                         isSel ? 'ring-2 ring-[#005fb8] dark:ring-[#60cdff] ring-offset-1 dark:ring-offset-[#141417] shadow-sm' : ''
                                                     }`}
                                                 >
@@ -21316,7 +21245,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                             <Icon name="lock" className="w-2.5 h-2.5 opacity-45 shrink-0" />
                                                         )}
                                                     </div>
-                                                    <span className={`text-[9.5px] font-numbers font-bold leading-none ${subCls}`}>
+                                                    <span className={`text-[9px] font-numbers font-bold leading-none ${subCls}`}>
                                                         {isTracked && totC > 0 ? `${doneC}/${totC}` : '—'}
                                                     </span>
                                                 </button>
@@ -21324,47 +21253,45 @@ const SmartPhoneAction = ({ phone }) => {
                                         })}
                                     </div>
 
-                                    <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-500 dark:text-gray-400 pt-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="inline-flex items-center gap-1">
-                                                <span className="w-3 h-3 rounded border" style={{ backgroundColor: 'rgba(239, 68, 68, 0.24)', borderColor: 'rgba(239, 68, 68, 0.65)' }} />
-                                                Missed (0)
+                                    <div className="flex items-center justify-between gap-2 text-[10px] text-gray-500 dark:text-gray-400 pt-1 overflow-x-auto hide-scrollbar flex-nowrap">
+                                        <div className="flex items-center gap-2 shrink-0 flex-nowrap">
+                                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                                <span className="w-2.5 h-2.5 rounded border" style={{ backgroundColor: 'rgba(239, 68, 68, 0.24)', borderColor: 'rgba(239, 68, 68, 0.65)' }} />
+                                                Missed
                                             </span>
-                                            <span className="inline-flex items-center gap-1">
+                                            <span className="inline-flex items-center gap-1 whitespace-nowrap">
                                                 <span>Less</span>
                                                 {[0.14, 0.24, 0.34, 0.46].map(op => (
-                                                    <span key={op} className="w-3 h-3 rounded border" style={{ backgroundColor: `rgba(16, 185, 129, ${op})`, borderColor: 'rgba(16, 185, 129, 0.6)' }} />
+                                                    <span key={op} className="w-2.5 h-2.5 rounded border" style={{ backgroundColor: `rgba(16, 185, 129, ${op})`, borderColor: 'rgba(16, 185, 129, 0.6)' }} />
                                                 ))}
                                                 <span>More</span>
                                             </span>
                                         </div>
-                                        <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
-                                            <Icon name="lock" className="w-3 h-3" /> রাত ১২টায় দিন লক হয়
+                                        <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap shrink-0">
+                                            <Icon name="lock" className="w-3 h-3" /> রাত ১২টায় লক
                                         </span>
                                     </div>
 
                                     <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-bold text-gray-800 dark:text-gray-200">
-                                                {moment(selectedCalDate).format('DD MMM YYYY')}
-                                            </span>
+                                        <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                            <span className="font-bold text-gray-800 dark:text-gray-200">{moment(selectedCalDate).format('DD MMM YYYY')}</span>
                                             {selectedCalDate < todayYMD && (
-                                                <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 text-[9.5px] font-bold inline-flex items-center gap-1">
+                                                <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 text-[9px] font-bold inline-flex items-center gap-0.5">
                                                     <Icon name="lock" className="w-2.5 h-2.5" /> Locked
                                                 </span>
                                             )}
                                         </div>
                                         {selectedDayCell && selectedDayCell.isTracked && selectedDayCell.totC > 0 ? (
-                                            <div className="flex flex-wrap items-center gap-2 font-semibold">
+                                            <div className="flex items-center gap-2 font-semibold whitespace-nowrap">
                                                 <span className="text-gray-600 dark:text-gray-300">মোট: <strong>{selectedDayCell.totC}</strong></span>
-                                                <span className="text-emerald-700 dark:text-emerald-300">করেছে: <strong>{selectedDayCell.doneC}</strong></span>
-                                                <span className="text-rose-600 dark:text-rose-400">করে নাই: <strong>{selectedDayCell.missedC}</strong></span>
-                                                <span className="px-2 py-0.5 rounded bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] font-numbers font-bold">
+                                                <span className="text-emerald-700 dark:text-emerald-300">Done: <strong>{selectedDayCell.doneC}</strong></span>
+                                                <span className="text-rose-600 dark:text-rose-400">Miss: <strong>{selectedDayCell.missedC}</strong></span>
+                                                <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] font-numbers font-bold">
                                                     {Math.round((selectedDayCell.doneC / selectedDayCell.totC) * 100)}/100
                                                 </span>
                                             </div>
                                         ) : (
-                                            <span className="text-gray-400">এই তারিখে কোনো টাস্ক রেকর্ড নেই।</span>
+                                            <span className="text-gray-400">এই তারিখে কোনো রেকর্ড নেই।</span>
                                         )}
                                     </div>
                                 </div>
@@ -22031,158 +21958,556 @@ const SmartPhoneAction = ({ phone }) => {
                 : `${String(focusMins).padStart(2, '0')}:${String(focusSecs).padStart(2, '0')}`;
 
             return (
-                <div className="w-full max-w-full overflow-x-hidden pb-12">
+                <div className="w-full max-w-full overflow-x-hidden pb-12 space-y-4 sm:space-y-5">
+
+                    {/* ===================================================== */}
+                    {/* BAND 1 (TOP HIGHLIGHTED): WELCOME + ATTENDANCE + 5 KPI CARDS */}
+                    {/* ===================================================== */}
+                    <div className="space-y-3.5 sm:space-y-4">
+                        {/* 1. Smart Welcome + Daily Attendance Bar */}
+                        <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-3.5">
+                            <div className="flex items-start justify-between gap-2.5 flex-nowrap">
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff] whitespace-nowrap">
+                                        {moment().format('ddd, DD MMM YYYY')}
+                                    </p>
+                                    <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white tracking-tight truncate mt-0.5">
+                                        Welcome, {displayName.split(' ')[0]}!
+                                    </h2>
+                                    <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                                        {nextRankEntry
+                                            ? `Rank #${myRankNum} • ${pointsToNextRank} pts to pass ${nextRankEntry.name}`
+                                            : myRankNum === 1
+                                                ? 'Ranked #1 — Keep your daily streak alive!'
+                                                : 'Complete today’s check-in & daily mission.'}
+                                    </p>
+                                </div>
+
+                                <div className="px-2.5 py-1.5 rounded-xl bg-amber-500/[0.10] border border-amber-300/50 dark:border-amber-500/25 flex items-center gap-1.5 shrink-0 whitespace-nowrap">
+                                    <Icon name="flame" className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <span className="text-xs font-numbers font-bold text-gray-900 dark:text-white">{liveStreakCount}d</span>
+                                </div>
+                            </div>
+
+                            {/* Daily Attendance Action Bar */}
+                            <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-colors ${
+                                checkedInToday
+                                    ? 'bg-emerald-500/[0.08] dark:bg-emerald-500/[0.13] border-emerald-300/60 dark:border-emerald-500/30'
+                                    : 'bg-blue-500/[0.07] dark:bg-blue-500/[0.12] border-blue-200/70 dark:border-blue-500/25'
+                            }`}>
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                        checkedInToday ? 'bg-emerald-600 text-white' : 'bg-[#005fb8] text-white'
+                                    }`}>
+                                        <Icon name={checkedInToday ? 'check-circle' : 'calendar-check'} className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white leading-tight truncate">
+                                            {checkedInToday ? 'আজকের হাজিরা সম্পন্ন (Present)' : 'আজকের হাজিরা দিন (Daily Attendance)'}
+                                        </p>
+                                        <p className="text-[10px] sm:text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                            {checkedInToday
+                                                ? `Attendance: ${attendancePct}% (${presentDays}/${totalAttDays}d) • Synced to Rank`
+                                                : 'Present দিলে Attendance, Streak ও Skill (+2%) অটো বাড়বে'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    disabled={checkedInToday || isCheckingIn}
+                                    onClick={() => handleDailyCheckIn(false)}
+                                    className={`w-full sm:w-auto h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-all win-button ${
+                                        checkedInToday
+                                            ? 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 cursor-default'
+                                            : 'bg-[#005fb8] hover:bg-[#004a94] text-white shadow-sm disabled:opacity-60'
+                                    }`}
+                                >
+                                    <Icon
+                                        name={isCheckingIn ? 'loader' : (checkedInToday ? 'check' : 'fingerprint')}
+                                        className={`w-4 h-4 shrink-0 ${isCheckingIn ? 'animate-spin' : ''}`}
+                                    />
+                                    <span>{isCheckingIn ? 'Saving...' : (checkedInToday ? 'Present Today ✓' : 'Mark Present')}</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 2. Top 5 Student Metric Cards */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
+                            <a href="#courses" onClick={() => playAudio('click')} className="p-3.5 rounded-2xl bg-blue-500/[0.06] dark:bg-blue-500/[0.10] border border-blue-200/60 dark:border-blue-500/20 hover:border-[#005fb8] transition-colors min-w-0 block">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff] whitespace-nowrap truncate">Courses</span>
+                                    <Icon name="graduation-cap" className="w-4 h-4 text-[#005fb8] dark:text-[#60cdff] shrink-0" />
+                                </div>
+                                <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white">{courseCount}</p>
+                                <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-1" title={enrolledCourses.join(', ')}>{enrolledCourses[0]}</p>
+                            </a>
+
+                            <a href="#courses" onClick={() => playAudio('click')} className="p-3.5 rounded-2xl bg-cyan-500/[0.06] dark:bg-cyan-500/[0.10] border border-cyan-200/60 dark:border-cyan-500/20 hover:border-cyan-500 transition-colors min-w-0 block">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-400 whitespace-nowrap truncate">Videos</span>
+                                    <Icon name="play-circle" className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                                </div>
+                                <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white">
+                                    {completedVideosCount}<span className="text-xs text-gray-400 font-medium">/{myCourseVideos.length}</span>
+                                </p>
+                                <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-1">{videosPct}% watched</p>
+                            </a>
+
+                            <a href="#modules" onClick={() => playAudio('click')} className="p-3.5 rounded-2xl bg-purple-500/[0.06] dark:bg-purple-500/[0.10] border border-purple-200/60 dark:border-purple-500/20 hover:border-purple-500 transition-colors min-w-0 block">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 dark:text-purple-400 whitespace-nowrap truncate">Modules</span>
+                                    <Icon name="book-open" className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                                </div>
+                                <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white">
+                                    {completedModulesCount}<span className="text-xs text-gray-400 font-medium">/{totalModulesCount}</span>
+                                </p>
+                                <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-1">{modulesPct}% complete</p>
+                            </a>
+
+                            <a href="#assignments" onClick={() => playAudio('click')} className="p-3.5 rounded-2xl bg-emerald-500/[0.06] dark:bg-emerald-500/[0.10] border border-emerald-200/60 dark:border-emerald-500/20 hover:border-emerald-500 transition-colors min-w-0 block">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 whitespace-nowrap truncate">Grade</span>
+                                    <Icon name="award" className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                </div>
+                                <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white">{letterGrade}</p>
+                                <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-1">{avgGradeScore > 0 ? `Avg ${avgGradeScore}/100` : 'No grades yet'}</p>
+                            </a>
+
+                            <a href="#leaderboard" onClick={() => playAudio('click')} className="col-span-2 sm:col-span-2 lg:col-span-1 p-3.5 rounded-2xl bg-amber-500/[0.08] dark:bg-amber-500/[0.12] border border-amber-300/60 dark:border-amber-500/25 hover:border-amber-500 transition-colors min-w-0 block">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 whitespace-nowrap truncate">Leaderboard</span>
+                                    <Icon name="trophy" className="w-4 h-4 text-amber-500 shrink-0" />
+                                </div>
+                                <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white">
+                                    {myRankNum ? `#${String(myRankNum).padStart(2, '0')}` : '—'}
+                                </p>
+                                <p className="text-[10px] text-gray-600 dark:text-gray-400 truncate mt-1">
+                                    {myRankEntry ? `${myRankEntry.score}/100 pts • Top 10 →` : 'View ranking →'}
+                                </p>
+                            </a>
+                        </div>
+                    </div>
+
+                    {/* ===================================================== */}
+                    {/* BAND 2 (CORE ACTION): PROFILE + LEARNING STATS -> RIGHT INTO TODAY'S DAILY MISSION */}
+                    {/* ===================================================== */}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
 
-                        {/* ===================================================== */}
-                        {/* LEFT MAIN WORKSPACE (8 Cols on Desktop) */}
-                        {/* ===================================================== */}
+                        {/* RIGHT ON DESKTOP / FIRST ON MOBILE: Profile Card + Learning Statistics */}
+                        <div className="lg:col-span-4 order-1 lg:order-2 space-y-4 lg:sticky lg:top-4 min-w-0">
+                            {(() => {
+                                const levelTier = overallPct >= 85
+                                    ? { lv: 5, title: 'Elite Master', nextTarget: 100, color: 'text-amber-600 dark:text-amber-300', bar: 'bg-amber-500' }
+                                    : overallPct >= 65
+                                        ? { lv: 4, title: 'Pro Trainee', nextTarget: 85, color: 'text-emerald-600 dark:text-emerald-300', bar: 'bg-emerald-500' }
+                                        : overallPct >= 40
+                                            ? { lv: 3, title: 'Skill Builder', nextTarget: 65, color: 'text-purple-600 dark:text-purple-300', bar: 'bg-purple-500' }
+                                            : overallPct >= 15
+                                                ? { lv: 2, title: 'Rising Learner', nextTarget: 40, color: 'text-[#005fb8] dark:text-[#60cdff]', bar: 'bg-[#005fb8]' }
+                                                : { lv: 1, title: 'Starter', nextTarget: 15, color: 'text-cyan-600 dark:text-cyan-300', bar: 'bg-cyan-500' };
+
+                                return (
+                                    <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 relative">
+                                        <div className="flex flex-row lg:flex-col items-center lg:text-center gap-3.5 lg:gap-2.5">
+                                            <div className="relative shrink-0">
+                                                <img
+                                                    src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
+                                                    alt={displayName}
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                    className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 object-cover border-[3px] border-white dark:border-[#181818] shadow-sm bg-gray-100"
+                                                    style={{ borderRadius: '9999px' }}
+                                                />
+                                                <span
+                                                    className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#181818] shadow-[0_0_8px_rgba(16,185,129,0.75)]"
+                                                    style={{ borderRadius: '9999px' }}
+                                                    title="Active"
+                                                />
+                                            </div>
+
+                                            <div className="min-w-0 flex-1 lg:w-full text-left lg:text-center">
+                                                <div className="flex items-center justify-start lg:justify-center gap-1.5 flex-nowrap relative">
+                                                    <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gray-900 dark:text-white leading-tight truncate">
+                                                        {displayName}
+                                                    </h3>
+
+                                                    <div
+                                                        className="relative inline-flex items-center group shrink-0"
+                                                        onMouseEnter={() => { if (!isPaymentVerified) setShowVerifyTip(true); }}
+                                                        onMouseLeave={() => setShowVerifyTip(false)}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                playAudio('click');
+                                                                if (isPaymentVerified) {
+                                                                    if (typeof addToast === 'function') addToast('Verified Student Account — All payments cleared!', 'success');
+                                                                } else {
+                                                                    setShowVerifyTip(prev => !prev);
+                                                                }
+                                                            }}
+                                                            style={{ WebkitTapHighlightColor: 'transparent' }}
+                                                            className={`inline-flex items-center justify-center p-0.5 rounded-full outline-none focus:outline-none transition-all ${
+                                                                isPaymentVerified
+                                                                    ? 'text-[#0095F6]'
+                                                                    : 'text-gray-400 dark:text-gray-500 opacity-35 blur-[0.5px] hover:opacity-80 hover:blur-0 cursor-pointer'
+                                                            }`}
+                                                            title={isPaymentVerified ? 'Verified Student (Payment Complete)' : 'Payment Due — Click for details'}
+                                                        >
+                                                            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 drop-shadow-sm" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                                <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                                <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                                            </svg>
+                                                        </button>
+
+                                                        {!isPaymentVerified && showVerifyTip && (
+                                                            <div className="absolute right-0 lg:left-1/2 lg:-translate-x-1/2 top-full mt-2 w-60 p-3 rounded-xl bg-gray-900 dark:bg-[#1f1f1f] text-white text-left shadow-xl border border-white/15 z-50">
+                                                                <div className="flex items-start gap-2">
+                                                                    <Icon name="alert-circle" className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-[11px] font-bold text-amber-300">ভেরিফাইড নয় (Payment Due)</p>
+                                                                        <p className="text-[11px] text-gray-200 leading-relaxed mt-0.5">
+                                                                            আপনার <strong className="text-white font-numbers">{CURRENCY_SYMBOL}{myDueAmount.toLocaleString()}</strong> পেমেন্ট বাকি আছে। ভেরিফাইড হতে পেমেন্ট কমপ্লিট করুন।
+                                                                        </p>
+                                                                        <a href="#orders" onClick={() => { playAudio('click'); setShowVerifyTip(false); }} className="inline-block mt-2 text-[10px] font-bold text-[#60cdff] hover:underline">
+                                                                            পেমেন্ট বিবরণ দেখুন →
+                                                                        </a>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <p className="text-xs font-mono-code text-gray-500 dark:text-gray-400 mt-0.5 truncate">{handleUsername}</p>
+
+                                                <div className="flex flex-wrap justify-start lg:justify-center gap-1.5 mt-2">
+                                                    {enrolledCourses.map(c => (
+                                                        <span key={c} className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-500/20">
+                                                            {c}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-3 gap-2 w-full mt-4 pt-3.5 border-t border-gray-200/60 dark:border-white/10">
+                                            <a href="#leaderboard" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-amber-500/[0.08] dark:bg-amber-500/[0.12] border border-amber-200/60 dark:border-amber-500/20 hover:border-amber-500 transition-colors text-center">
+                                                <p className="text-base sm:text-lg font-numbers font-bold text-amber-700 dark:text-amber-300 leading-none">{myRankNum ? `#${myRankNum}` : '#—'}</p>
+                                                <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">Rank</p>
+                                            </a>
+                                            <a href="#assignments" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] border border-emerald-200/60 dark:border-emerald-500/20 hover:border-emerald-500 transition-colors text-center">
+                                                <p className="text-base sm:text-lg font-numbers font-bold text-emerald-700 dark:text-emerald-300 leading-none">{fixedCompletedCount}</p>
+                                                <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">Assignments</p>
+                                            </a>
+                                            <a href="#courses" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-blue-500/[0.07] dark:bg-blue-500/[0.11] border border-blue-200/60 dark:border-blue-500/20 hover:border-[#005fb8] transition-colors text-center">
+                                                <p className="text-base sm:text-lg font-numbers font-bold text-[#005fb8] dark:text-[#60cdff] leading-none">{courseCount}</p>
+                                                <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">{courseCount === 1 ? 'Course' : 'Courses'}</p>
+                                            </a>
+                                        </div>
+
+                                        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-white/5 space-y-1.5">
+                                            <div className="flex items-center justify-between text-[11px] flex-nowrap gap-2">
+                                                <span className={`font-bold flex items-center gap-1 whitespace-nowrap truncate ${levelTier.color}`}>
+                                                    <Icon name="zap" className="w-3.5 h-3.5 shrink-0" />
+                                                    Lv.{levelTier.lv} • {levelTier.title}
+                                                </span>
+                                                <span className="font-numbers font-bold text-gray-500 dark:text-gray-400 whitespace-nowrap shrink-0">
+                                                    {overallPct}/{levelTier.nextTarget} XP
+                                                </span>
+                                            </div>
+                                            <div className="w-full h-1.5 bg-gray-200/80 dark:bg-white/[0.08] rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-500 ${levelTier.bar}`}
+                                                    style={{ width: `${Math.min(100, Math.round((overallPct / levelTier.nextTarget) * 100))}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Learning Statistics Card (Immediately Above Daily Mission on Mobile!) */}
+                            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
+                                <div className="flex items-center justify-between gap-2 mb-3.5 flex-nowrap">
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 whitespace-nowrap truncate">
+                                        <Icon name="pie-chart" className="w-4 h-4 text-[#005fb8] shrink-0" />
+                                        <span>Learning Statistics</span>
+                                    </h3>
+                                    <span className="text-[11px] font-numbers font-bold px-2 py-0.5 rounded bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] whitespace-nowrap shrink-0">
+                                        {overallPct}% Overall
+                                    </span>
+                                </div>
+
+                                <div className="relative w-36 h-36 sm:w-44 sm:h-44 mx-auto my-2 p-1.5 rounded-full bg-gray-50/70 dark:bg-white/[0.03] border border-gray-200/50 dark:border-white/[0.06]">
+                                    <canvas ref={statPieRef} />
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                        <span className="text-2xl sm:text-3xl font-numbers font-bold text-gray-900 dark:text-white leading-none">{overallPct}%</span>
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mt-1">Completed</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2.5 mt-4 pt-3 border-t border-gray-100 dark:border-white/5">
+                                    {statMetrics.map(item => (
+                                        <div key={item.label} className="space-y-1">
+                                            <div className="flex items-center justify-between text-xs gap-2 flex-nowrap">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                                                    <span className="font-semibold text-gray-700 dark:text-gray-300 truncate">{item.label}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 font-numbers shrink-0 whitespace-nowrap">
+                                                    <span className="text-[10px] text-gray-400">({item.detail})</span>
+                                                    <span className="font-bold text-gray-900 dark:text-white w-9 text-right">{item.pct}%</span>
+                                                </div>
+                                            </div>
+                                            <div className="w-full h-1.5 bg-gray-200/80 dark:bg-white/[0.08] rounded-full overflow-hidden">
+                                                <div className="h-full rounded-full transition-all duration-300" style={{ width: `${item.pct}%`, backgroundColor: item.color }} />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {myRecord?.recentReview && (
+                                    <div className="mt-4 p-3 rounded-xl bg-purple-500/[0.06] dark:bg-purple-500/[0.10] border border-purple-200/60 dark:border-purple-500/20">
+                                        <p className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 mb-1">Mentor Note</p>
+                                        <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed italic">"{myRecord.recentReview}"</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* LEFT ON DESKTOP / SECOND ON MOBILE (Right After Learning Statistics): Daily Mission + Routine + Study Coach */}
                         <div className="lg:col-span-8 order-2 lg:order-1 space-y-4 sm:space-y-5 min-w-0">
 
-                            {/* 1. Smart Welcome + Clear Mobile-Friendly Daily Attendance Card */}
-                            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-3.5">
-                                <div className="flex items-start justify-between gap-2.5">
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">
-                                            {moment().format('ddd, DD MMM YYYY')}
-                                        </p>
-                                        <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white tracking-tight truncate mt-0.5">
-                                            Welcome, {displayName.split(' ')[0]}!
-                                        </h2>
-                                        <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">
-                                            {nextRankEntry
-                                                ? `Rank #${myRankNum} • ${pointsToNextRank} pts to pass ${nextRankEntry.name}`
-                                                : myRankNum === 1
-                                                    ? 'Ranked #1 — Keep your daily streak alive!'
-                                                    : 'Complete today’s check-in & study tasks.'}
-                                        </p>
-                                    </div>
+                            {/* ✅ 1. Today's Daily Mission (Right After Learning Statistics!) */}
+                            <RoleDailyChecklistWidget
+                                auth={auth}
+                                routineTasks={routineTasks}
+                                routineLogs={routineLogs}
+                                setRoutineLogs={setRoutineLogs}
+                                executeAPI={executeAPI}
+                                fetchOrders={fetchOrders}
+                                addToast={addToast}
+                            />
 
-                                    <div className="px-2.5 py-1.5 rounded-xl bg-amber-500/[0.10] border border-amber-300/50 dark:border-amber-500/25 flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-                                        <Icon name="flame" className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                        <span className="text-xs font-numbers font-bold text-gray-900 dark:text-white">{liveStreakCount}d</span>
-                                    </div>
-                                </div>
-
-                                {/* Clear Attendance Action Bar (Easy to Understand on Mobile & Desktop) */}
-                                <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-colors ${
-                                    checkedInToday
-                                        ? 'bg-emerald-500/[0.08] dark:bg-emerald-500/[0.13] border-emerald-300/60 dark:border-emerald-500/30'
-                                        : 'bg-blue-500/[0.07] dark:bg-blue-500/[0.12] border-blue-200/70 dark:border-blue-500/25'
-                                }`}>
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                                            checkedInToday
-                                                ? 'bg-emerald-600 text-white'
-                                                : 'bg-[#005fb8] text-white'
-                                        }`}>
-                                            <Icon name={checkedInToday ? 'check-circle' : 'calendar-check'} className="w-4 h-4" />
-                                        </div>
+                            {/* 📅 2. Weekly Class Routine Calendar */}
+                            <LazySection minHeight={210}>
+                                <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                                         <div className="min-w-0">
-                                            <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white leading-tight truncate">
-                                                {checkedInToday ? 'আজকের হাজিরা সম্পন্ন (Present)' : 'আজকের হাজিরা দিন (Daily Attendance)'}
+                                            <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 whitespace-nowrap">
+                                                <Icon name="calendar-days" className="w-4 h-4 text-[#005fb8] shrink-0" />
+                                                <span>Weekly Class Routine</span>
+                                            </h3>
+                                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                                                {myBatch
+                                                    ? `${myBatch.name} • ${formatTime12(myBatch.startTime)} – ${formatTime12(myBatch.endTime)} • Seat ${myBooking?.seatId || 'N/A'}`
+                                                    : 'Your scheduled class days for this week.'}
                                             </p>
-                                            <p className="text-[10px] sm:text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                                                {checkedInToday
-                                                    ? `Attendance: ${attendancePct}% (${presentDays}/${totalAttDays}d) • Synced to Rank`
-                                                    : 'Present দিলে Attendance, Streak ও Skill (+2%) অটো বাড়বে'}
-                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2 self-start sm:self-auto flex-nowrap">
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Class ({classDaysThisWeekCount})
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-400 whitespace-nowrap">
+                                                <span className="w-2 h-2 rounded-full border border-dashed border-gray-400" /> Off
+                                            </span>
                                         </div>
                                     </div>
 
-                                    <button
-                                        type="button"
-                                        disabled={checkedInToday || isCheckingIn}
-                                        onClick={() => handleDailyCheckIn(false)}
-                                        className={`w-full sm:w-auto h-9 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-all win-button ${
-                                            checkedInToday
-                                                ? 'bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 cursor-default'
-                                                : 'bg-[#005fb8] hover:bg-[#004a94] text-white shadow-sm disabled:opacity-60'
-                                        }`}
-                                    >
-                                        <Icon
-                                            name={isCheckingIn ? 'loader' : (checkedInToday ? 'check' : 'fingerprint')}
-                                            className={`w-4 h-4 shrink-0 ${isCheckingIn ? 'animate-spin' : ''}`}
-                                        />
-                                        <span>{isCheckingIn ? 'Saving...' : (checkedInToday ? 'Present Today ✓' : 'Mark Present')}</span>
-                                    </button>
+                                    <div ref={dashRoutineScrollRef} className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto hide-scrollbar pb-1 snap-x scroll-smooth">
+                                        {weeklyDays.map(day => {
+                                            const isSel = selectedWeekDayIdx === day.idx;
+                                            return (
+                                                <button
+                                                    key={day.ymd}
+                                                    ref={el => { dashRoutineDayRefs.current[day.idx] = el; }}
+                                                    type="button"
+                                                    onClick={() => { playAudio('click'); setSelectedWeekDayIdx(day.idx); }}
+                                                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                                                    className={`min-w-[66px] sm:min-w-0 shrink-0 snap-center py-2.5 px-2 sm:p-2.5 rounded-xl text-center flex flex-col items-center justify-between gap-1.5 transition-all outline-none focus:outline-none relative ${
+                                                        day.hasClass
+                                                            ? (isSel
+                                                                ? 'bg-emerald-600 text-white border border-emerald-500 shadow-md scale-[1.03]'
+                                                                : 'bg-emerald-500/[0.12] dark:bg-emerald-500/[0.18] border border-emerald-400/70 dark:border-emerald-500/40 text-emerald-950 dark:text-white hover:bg-emerald-500/20')
+                                                            : (isSel
+                                                                ? 'bg-gray-800 dark:bg-dark-700 text-white border border-gray-700 dark:border-white/20'
+                                                                : 'bg-transparent border border-dashed border-gray-200 dark:border-white/10 text-gray-400 dark:text-gray-500 opacity-60 hover:opacity-90')
+                                                    } ${day.isToday && !isSel ? 'ring-1 ring-[#005fb8] dark:ring-[#facc15]' : ''}`}
+                                                >
+                                                    <span className={`text-[9px] sm:text-[10px] font-bold uppercase ${isSel ? 'text-white/85' : day.hasClass ? 'text-emerald-700 dark:text-emerald-300' : ''}`}>
+                                                        {day.dayShort}
+                                                    </span>
+                                                    <span className="text-xs sm:text-base font-numbers font-bold leading-none">{day.dateNum}</span>
+                                                    {day.hasClass ? (
+                                                        <span className={`px-1 sm:px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider leading-none ${isSel ? 'bg-white/20 text-white' : 'bg-emerald-500 text-white'}`}>
+                                                            Class
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[8px] font-semibold uppercase leading-none opacity-65">Off</span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {activeWeekDay && (
+                                        <div className="mt-3 p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/50 border border-gray-200/60 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-xs font-bold text-gray-900 dark:text-white">
+                                                        {activeWeekDay.dayFull}, {activeWeekDay.dateNum} {activeWeekDay.monthShort}
+                                                    </span>
+                                                    {activeWeekDay.isToday && (
+                                                        <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded bg-[#facc15] text-gray-900">Today</span>
+                                                    )}
+                                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                                                        activeWeekDay.hasClass
+                                                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                                            : 'bg-gray-200/80 dark:bg-dark-700 text-gray-600 dark:text-gray-400'
+                                                    }`}>
+                                                        {activeWeekDay.hasClass ? 'Scheduled Class' : 'Self-Practice Day'}
+                                                    </span>
+                                                    {activeWeekDay.attendanceStatus === 'present' && (
+                                                        <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-600 text-white">✓ Present</span>
+                                                    )}
+                                                    {activeWeekDay.attendanceStatus === 'absent' && (
+                                                        <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-rose-500/15 text-rose-600 dark:text-rose-300">Absent</span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                    {activeWeekDay.hasClass && myBatch
+                                                        ? `${myBatch.name} • ${formatTime12(myBatch.startTime)} – ${formatTime12(myBatch.endTime)} • Lab Seat ${myBooking?.seatId || 'N/A'}`
+                                                        : !myBatch
+                                                            ? 'No lab batch assigned yet — contact admin or check Seat Manager.'
+                                                            : 'Great day to review recorded videos, complete pending modules, or submit an assignment.'}
+                                                </p>
+                                            </div>
+                                            <a href="#seats" onClick={() => playAudio('click')} className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline whitespace-nowrap shrink-0">
+                                                My Batch Details →
+                                            </a>
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
+                            </LazySection>
 
-                            {/* 2. Top 5 Student Metric Cards (Courses, Videos, Modules Complete, Grade, Leaderboard) */}
-                            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2.5 sm:gap-3">
-                                {/* Courses */}
-                                <a href="#courses" onClick={() => playAudio('click')} className="p-3.5 rounded-2xl bg-blue-500/[0.06] dark:bg-blue-500/[0.10] border border-blue-200/60 dark:border-blue-500/20 hover:border-[#005fb8] transition-colors min-w-0 block">
-                                    <div className="flex items-center justify-between mb-1.5">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff] truncate">Courses</span>
-                                        <Icon name="graduation-cap" className="w-4 h-4 text-[#005fb8] dark:text-[#60cdff] shrink-0" />
+                            {/* 🎯 3. Next Study Mission & Built-in Focus Timer */}
+                            <LazySection minHeight={210}>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 flex flex-col justify-between gap-3">
+                                        <div>
+                                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-2.5 whitespace-nowrap">
+                                                <Icon name="target" className="w-4 h-4 text-purple-500 shrink-0" />
+                                                <span>Next Study Mission</span>
+                                            </h3>
+                                            <div className="space-y-2">
+                                                <a href="#modules" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-purple-500/[0.06] dark:bg-purple-500/[0.10] border border-purple-200/60 dark:border-purple-500/20 flex items-center justify-between gap-2 hover:border-purple-500 transition-colors">
+                                                    <div className="min-w-0">
+                                                        <span className="text-[9px] font-bold uppercase text-purple-600 dark:text-purple-400 block">Next Module</span>
+                                                        <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                                                            {nextModule ? `Module ${nextModule.serial}: ${nextModule.title}` : 'All course modules completed!'}
+                                                        </p>
+                                                    </div>
+                                                    <Icon name="arrow-right" className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                                                </a>
+                                                <a href="#assignments" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-emerald-500/[0.06] dark:bg-emerald-500/[0.10] border border-emerald-200/60 dark:border-emerald-500/20 flex items-center justify-between gap-2 hover:border-emerald-500 transition-colors">
+                                                    <div className="min-w-0">
+                                                        <span className="text-[9px] font-bold uppercase text-emerald-600 dark:text-emerald-400 block">Pending Assignment</span>
+                                                        <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                                                            {nextAssignment ? `Task ${nextAssignment.serial}: ${nextAssignment.title}` : 'All fixed assignments submitted!'}
+                                                        </p>
+                                                    </div>
+                                                    <Icon name="arrow-right" className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                                </a>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-gray-100 dark:border-white/5 text-[11px] font-bold">
+                                            <a href="#skill-exam" onClick={() => playAudio('click')} className="py-1.5 px-2 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-center hover:bg-[#005fb8] hover:text-white transition-colors truncate">Skill Exam</a>
+                                            <a href="#resources" onClick={() => playAudio('click')} className="py-1.5 px-2 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-700 dark:text-gray-200 text-center hover:bg-gray-200 dark:hover:bg-dark-700 transition-colors truncate">Materials</a>
+                                            <a href="#id-card" onClick={() => playAudio('click')} className="py-1.5 px-2 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-700 dark:text-gray-200 text-center hover:bg-gray-200 dark:hover:bg-dark-700 transition-colors truncate">ID Card</a>
+                                            <a href="#community" onClick={() => playAudio('click')} className="py-1.5 px-2 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-700 dark:text-gray-200 text-center hover:bg-gray-200 dark:hover:bg-dark-700 transition-colors truncate">Community</a>
+                                        </div>
                                     </div>
-                                    <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white">{courseCount}</p>
-                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-1" title={enrolledCourses.join(', ')}>
-                                        {enrolledCourses[0]}
-                                    </p>
-                                </a>
 
-                                {/* Videos */}
-                                <a href="#courses" onClick={() => playAudio('click')} className="p-3.5 rounded-2xl bg-cyan-500/[0.06] dark:bg-cyan-500/[0.10] border border-cyan-200/60 dark:border-cyan-500/20 hover:border-cyan-500 transition-colors min-w-0 block">
-                                    <div className="flex items-center justify-between mb-1.5">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-400 truncate">Videos</span>
-                                        <Icon name="play-circle" className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                                    <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 flex flex-col justify-between gap-3">
+                                        <div className="flex items-center justify-between gap-2 flex-nowrap">
+                                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 whitespace-nowrap truncate">
+                                                <Icon name="clock" className="w-4 h-4 text-[#005fb8] shrink-0" />
+                                                <span>Study Focus Timer</span>
+                                            </h3>
+                                            <div className="flex items-center gap-1 shrink-0 flex-nowrap">
+                                                {[
+                                                    { mins: 25, label: '25m' },
+                                                    { mins: 45, label: '45m' },
+                                                    { mins: 60, label: '1h' },
+                                                    { mins: 120, label: '2h' }
+                                                ].map(p => (
+                                                    <button
+                                                        key={p.mins}
+                                                        type="button"
+                                                        onClick={() => { playAudio('click'); setFocusRunning(false); setFocusPreset(p.mins); setFocusSecondsLeft(p.mins * 60); }}
+                                                        className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${
+                                                            focusPreset === p.mins
+                                                                ? 'bg-[#005fb8] text-white'
+                                                                : 'bg-gray-100 dark:bg-dark-800 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+                                                        }`}
+                                                    >
+                                                        {p.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="text-center py-2">
+                                            <p className="text-3xl sm:text-4xl font-mono-code font-bold text-gray-900 dark:text-white tracking-wider">{focusDisplayTime}</p>
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
+                                                {focusRunning ? 'Stay focused — avoid distractions!' : `Completed today: ${studyStreak.sessionsToday || 0} focus session(s)`}
+                                            </p>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => { playAudio('action'); setFocusRunning(prev => !prev); }}
+                                                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors win-button ${
+                                                    focusRunning ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-[#005fb8] hover:bg-[#004a94] text-white'
+                                                }`}
+                                            >
+                                                <Icon name={focusRunning ? 'pause' : 'play'} className="w-3.5 h-3.5" />
+                                                <span>{focusRunning ? 'Pause' : 'Start Focus'}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { playAudio('click'); setFocusRunning(false); setFocusSecondsLeft(focusPreset * 60); }}
+                                                className="px-3 py-2 rounded-xl bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-dark-700 text-xs font-bold win-button"
+                                                title="Reset Timer"
+                                            >
+                                                <Icon name="rotate-ccw" className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
                                     </div>
-                                    <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white">
-                                        {completedVideosCount}<span className="text-xs text-gray-400 font-medium">/{myCourseVideos.length}</span>
-                                    </p>
-                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-1">{videosPct}% watched</p>
-                                </a>
+                                </div>
+                            </LazySection>
+                        </div>
+                    </div>
 
-                                {/* Modules Complete */}
-                                <a href="#modules" onClick={() => playAudio('click')} className="p-3.5 rounded-2xl bg-purple-500/[0.06] dark:bg-purple-500/[0.10] border border-purple-200/60 dark:border-purple-500/20 hover:border-purple-500 transition-colors min-w-0 block">
-                                    <div className="flex items-center justify-between mb-1.5">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 dark:text-purple-400 truncate">Modules</span>
-                                        <Icon name="book-open" className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
-                                    </div>
-                                    <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white">
-                                        {completedModulesCount}<span className="text-xs text-gray-400 font-medium">/{totalModulesCount}</span>
-                                    </p>
-                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-1">{modulesPct}% complete</p>
-                                </a>
+                    {/* ===================================================== */}
+                    {/* BAND 3 (BOTTOM SECTION ON MOBILE & DESKTOP): VIDEOS + MY ASSIGNMENTS */}
+                    {/* ===================================================== */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
 
-                                {/* Grade */}
-                                <a href="#assignments" onClick={() => playAudio('click')} className="p-3.5 rounded-2xl bg-emerald-500/[0.06] dark:bg-emerald-500/[0.10] border border-emerald-200/60 dark:border-emerald-500/20 hover:border-emerald-500 transition-colors min-w-0 block">
-                                    <div className="flex items-center justify-between mb-1.5">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 truncate">Grade</span>
-                                        <Icon name="award" className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                    </div>
-                                    <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white">{letterGrade}</p>
-                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-1">
-                                        {avgGradeScore > 0 ? `Avg ${avgGradeScore}/100` : 'No grades yet'}
-                                    </p>
-                                </a>
-
-                                {/* Leaderboard (Exact Synced Rank — Click to open Leaderboard page) */}
-                                <a href="#leaderboard" onClick={() => playAudio('click')} className="col-span-2 sm:col-span-2 xl:col-span-1 p-3.5 rounded-2xl bg-amber-500/[0.08] dark:bg-amber-500/[0.12] border border-amber-300/60 dark:border-amber-500/25 hover:border-amber-500 transition-colors min-w-0 block">
-                                    <div className="flex items-center justify-between mb-1.5">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 truncate">Leaderboard</span>
-                                        <Icon name="trophy" className="w-4 h-4 text-amber-500 shrink-0" />
-                                    </div>
-                                    <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white">
-                                        {myRankNum ? `#${String(myRankNum).padStart(2, '0')}` : '—'}
-                                    </p>
-                                    <p className="text-[10px] text-gray-600 dark:text-gray-400 truncate mt-1">
-                                        {myRankEntry ? `${myRankEntry.score}/100 pts • Top 10 →` : 'View ranking →'}
-                                    </p>
-                                </a>
-                            </div>
-
-                            {/* 3. Continue Watching — Course Videos Section */}
+                        {/* Continue Learning Videos (Bottom-Left on Desktop, Second-to-Last on Mobile) */}
+                        <div className="lg:col-span-8 min-w-0">
                             <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
-                                <div className="flex items-center justify-between gap-2 mb-3.5">
+                                <div className="flex items-center justify-between gap-2 mb-3.5 flex-nowrap">
                                     <div className="min-w-0">
-                                        <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 truncate">
+                                        <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 whitespace-nowrap truncate">
                                             <Icon name="play-circle" className="w-4 h-4 text-[#005fb8] shrink-0" />
-                                            <span>Continue Learning Videos</span>
+                                            <span className="truncate">Continue Learning Videos</span>
                                         </h3>
-                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Pick up right where you left off in your enrolled courses.</p>
+                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">Pick up right where you left off in your enrolled courses.</p>
                                     </div>
                                     <a href="#courses" onClick={() => playAudio('click')} className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline whitespace-nowrap shrink-0 flex items-center gap-1">
                                         All Videos <Icon name="arrow-right" className="w-3.5 h-3.5" />
@@ -22261,448 +22586,10 @@ const SmartPhoneAction = ({ phone }) => {
                                     </a>
                                 </div>
                             </div>
-
-                            {/* 4. Weekly Class Routine Calendar (Lazy Loaded When Scrolled Into View) */}
-                            <LazySection minHeight={210}>
-                            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-                                    <div className="min-w-0">
-                                        <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                            <Icon name="calendar-days" className="w-4 h-4 text-[#005fb8] shrink-0" />
-                                            <span>Weekly Class Routine</span>
-                                        </h3>
-                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                                            {myBatch
-                                                ? `${myBatch.name} • ${formatTime12(myBatch.startTime)} – ${formatTime12(myBatch.endTime)} • Seat ${myBooking?.seatId || 'N/A'}`
-                                                : 'Your scheduled class days for this week.'}
-                                        </p>
-                                    </div>
-                                   <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
-                                            <span className="w-2 h-2 rounded-full bg-emerald-500" /> Class ({classDaysThisWeekCount})
-                                        </span>
-                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-400">
-                                            <span className="w-2 h-2 rounded-full border border-dashed border-gray-400" /> Off
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {/* 7-Day Mobile-Scrollable Calendar Strip (Auto-Centers Today on Mobile) */}
-                                <div ref={dashRoutineScrollRef} className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto hide-scrollbar pb-1 snap-x scroll-smooth">
-                                    {weeklyDays.map(day => {
-                                        const isSel = selectedWeekDayIdx === day.idx;
-                                        return (
-                                            <button
-                                                key={day.ymd}
-                                                ref={el => { dashRoutineDayRefs.current[day.idx] = el; }}
-                                                type="button"
-                                                onClick={() => { playAudio('click'); setSelectedWeekDayIdx(day.idx); }}
-                                                style={{ WebkitTapHighlightColor: 'transparent' }}
-                                                className={`min-w-[66px] sm:min-w-0 shrink-0 snap-center py-2.5 px-2 sm:p-2.5 rounded-xl text-center flex flex-col items-center justify-between gap-1.5 transition-all outline-none focus:outline-none relative ${
-                                                    day.hasClass
-                                                        ? (isSel
-                                                            ? 'bg-emerald-600 text-white border border-emerald-500 shadow-md scale-[1.03]'
-                                                            : 'bg-emerald-500/[0.12] dark:bg-emerald-500/[0.18] border border-emerald-400/70 dark:border-emerald-500/40 text-emerald-950 dark:text-white hover:bg-emerald-500/20')
-                                                        : (isSel
-                                                            ? 'bg-gray-800 dark:bg-dark-700 text-white border border-gray-700 dark:border-white/20'
-                                                            : 'bg-transparent border border-dashed border-gray-200 dark:border-white/10 text-gray-400 dark:text-gray-500 opacity-60 hover:opacity-90')
-                                                } ${day.isToday && !isSel ? 'ring-1 ring-[#005fb8] dark:ring-[#facc15]' : ''}`}
-                                            >
-                                                <span className={`text-[9px] sm:text-[10px] font-bold uppercase ${
-                                                    isSel ? 'text-white/85' : day.hasClass ? 'text-emerald-700 dark:text-emerald-300' : ''
-                                                }`}>
-                                                    {day.dayShort}
-                                                </span>
-                                                <span className="text-xs sm:text-base font-numbers font-bold leading-none">
-                                                    {day.dateNum}
-                                                </span>
-                                                {day.hasClass ? (
-                                                    <span className={`px-1 sm:px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider leading-none ${
-                                                        isSel
-                                                            ? 'bg-white/20 text-white'
-                                                            : 'bg-emerald-500 text-white'
-                                                    }`}>
-                                                        Class
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-[8px] font-semibold uppercase leading-none opacity-65">Off</span>
-                                                )}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Selected Day Class Detail Card */}
-                                {activeWeekDay && (
-                                    <div className="mt-3 p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/50 border border-gray-200/60 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                                        <div className="min-w-0">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="text-xs font-bold text-gray-900 dark:text-white">
-                                                    {activeWeekDay.dayFull}, {activeWeekDay.dateNum} {activeWeekDay.monthShort}
-                                                </span>
-                                                {activeWeekDay.isToday && (
-                                                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded bg-[#facc15] text-gray-900">Today</span>
-                                                )}
-                                                <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
-                                                    activeWeekDay.hasClass
-                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                                        : 'bg-gray-200/80 dark:bg-dark-700 text-gray-600 dark:text-gray-400'
-                                                }`}>
-                                                    {activeWeekDay.hasClass ? 'Scheduled Class' : 'Self-Practice Day'}
-                                                </span>
-                                                {activeWeekDay.attendanceStatus === 'present' && (
-                                                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-600 text-white">
-                                                        ✓ Present
-                                                    </span>
-                                                )}
-                                                {activeWeekDay.attendanceStatus === 'absent' && (
-                                                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-rose-500/15 text-rose-600 dark:text-rose-300">
-                                                        Absent
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                                {activeWeekDay.hasClass && myBatch
-                                                    ? `${myBatch.name} • ${formatTime12(myBatch.startTime)} – ${formatTime12(myBatch.endTime)} • Lab Seat ${myBooking?.seatId || 'N/A'}`
-                                                    : !myBatch
-                                                        ? 'No lab batch assigned yet — contact admin or check Seat Manager.'
-                                                        : 'Great day to review recorded videos, complete pending modules, or submit an assignment.'}
-                                            </p>
-                                        </div>
-
-                                        <a href="#seats" onClick={() => playAudio('click')} className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline whitespace-nowrap shrink-0">
-                                            My Batch Details →
-                                        </a>
-                                    </div>
-                                )}
-                            </div>
-
-                            </LazySection>
-
-                            {/* 4.5 Role-Based Daily Assigned Tasks & Record Calendar */}
-                            <RoleDailyChecklistWidget
-                                auth={auth}
-                                routineTasks={routineTasks}
-                                routineLogs={routineLogs}
-                                setRoutineLogs={setRoutineLogs}
-                                executeAPI={executeAPI}
-                                fetchOrders={fetchOrders}
-                                addToast={addToast}
-                            />
-
-                            {/* 5. Smart Study Coach & Built-in Focus Timer (Lazy Loaded When Scrolled Into View) */}
-                            <LazySection minHeight={210}>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Next Recommended Study Action */}
-                                <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 flex flex-col justify-between gap-3">
-                                    <div>
-                                        <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-2.5">
-                                            <Icon name="target" className="w-4 h-4 text-purple-500 shrink-0" />
-                                            <span>Next Study Mission</span>
-                                        </h3>
-
-                                        <div className="space-y-2">
-                                            <a href="#modules" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-purple-500/[0.06] dark:bg-purple-500/[0.10] border border-purple-200/60 dark:border-purple-500/20 flex items-center justify-between gap-2 hover:border-purple-500 transition-colors">
-                                                <div className="min-w-0">
-                                                    <span className="text-[9px] font-bold uppercase text-purple-600 dark:text-purple-400 block">Next Module</span>
-                                                    <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
-                                                        {nextModule ? `Module ${nextModule.serial}: ${nextModule.title}` : 'All course modules completed!'}
-                                                    </p>
-                                                </div>
-                                                <Icon name="arrow-right" className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                                            </a>
-
-                                            <a href="#assignments" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-emerald-500/[0.06] dark:bg-emerald-500/[0.10] border border-emerald-200/60 dark:border-emerald-500/20 flex items-center justify-between gap-2 hover:border-emerald-500 transition-colors">
-                                                <div className="min-w-0">
-                                                    <span className="text-[9px] font-bold uppercase text-emerald-600 dark:text-emerald-400 block">Pending Assignment</span>
-                                                    <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
-                                                        {nextAssignment ? `Task ${nextAssignment.serial}: ${nextAssignment.title}` : 'All fixed assignments submitted!'}
-                                                    </p>
-                                                </div>
-                                                <Icon name="arrow-right" className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                            </a>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-gray-100 dark:border-white/5 text-[11px] font-bold">
-                                        <a href="#skill-exam" onClick={() => playAudio('click')} className="py-1.5 px-2 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-center hover:bg-[#005fb8] hover:text-white transition-colors truncate">Skill Exam</a>
-                                        <a href="#resources" onClick={() => playAudio('click')} className="py-1.5 px-2 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-700 dark:text-gray-200 text-center hover:bg-gray-200 dark:hover:bg-dark-700 transition-colors truncate">Materials</a>
-                                        <a href="#id-card" onClick={() => playAudio('click')} className="py-1.5 px-2 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-700 dark:text-gray-200 text-center hover:bg-gray-200 dark:hover:bg-dark-700 transition-colors truncate">ID Card</a>
-                                        <a href="#community" onClick={() => playAudio('click')} className="py-1.5 px-2 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-700 dark:text-gray-200 text-center hover:bg-gray-200 dark:hover:bg-dark-700 transition-colors truncate">Community</a>
-                                    </div>
-                                </div>
-
-                                {/* Built-in Study Focus Pomodoro Timer */}
-                                <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 flex flex-col justify-between gap-3">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                            <Icon name="clock" className="w-4 h-4 text-[#005fb8] shrink-0" />
-                                            <span>Study Focus Timer</span>
-                                        </h3>
-                                        <div className="flex items-center gap-1">
-                                            {[
-                                                { mins: 25, label: '25m' },
-                                                { mins: 45, label: '45m' },
-                                                { mins: 60, label: '1h' },
-                                                { mins: 120, label: '2h' }
-                                            ].map(p => (
-                                                <button
-                                                    key={p.mins}
-                                                    type="button"
-                                                    onClick={() => { playAudio('click'); setFocusRunning(false); setFocusPreset(p.mins); setFocusSecondsLeft(p.mins * 60); }}
-                                                    className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${
-                                                        focusPreset === p.mins
-                                                            ? 'bg-[#005fb8] text-white'
-                                                            : 'bg-gray-100 dark:bg-dark-800 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-                                                    }`}
-                                                >
-                                                    {p.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="text-center py-2">
-                                        <p className="text-3xl sm:text-4xl font-mono-code font-bold text-gray-900 dark:text-white tracking-wider">
-                                            {focusDisplayTime}
-                                        </p>
-                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                                            {focusRunning ? 'Stay focused — avoid distractions!' : `Completed today: ${studyStreak.sessionsToday || 0} focus session(s)`}
-                                        </p>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => { playAudio('action'); setFocusRunning(prev => !prev); }}
-                                            className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors win-button ${
-                                                focusRunning
-                                                    ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                                                    : 'bg-[#005fb8] hover:bg-[#004a94] text-white'
-                                            }`}
-                                        >
-                                            <Icon name={focusRunning ? 'pause' : 'play'} className="w-3.5 h-3.5" />
-                                            <span>{focusRunning ? 'Pause' : 'Start Focus'}</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => { playAudio('click'); setFocusRunning(false); setFocusSecondsLeft(focusPreset * 60); }}
-                                            className="px-3 py-2 rounded-xl bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-dark-700 text-xs font-bold win-button"
-                                            title="Reset Timer"
-                                        >
-                                            <Icon name="rotate-ccw" className="w-3.5 h-3.5" />
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            </LazySection>
                         </div>
 
-                        {/* ===================================================== */}
-                        {/* RIGHT PROFILE SIDEBAR (4 Cols on Desktop) */}
-                        {/* ===================================================== */}
-                        <div className="lg:col-span-4 order-1 lg:order-2 space-y-4 lg:sticky lg:top-4 min-w-0">
-
-                            {/* Profile Card: Mobile Horizontal (Left Photo + Right Info) | Desktop Sidebar */}
-                            {(() => {
-                                const levelTier = overallPct >= 85
-                                    ? { lv: 5, title: 'Elite Master', nextTarget: 100, color: 'text-amber-600 dark:text-amber-300', bar: 'bg-amber-500' }
-                                    : overallPct >= 65
-                                        ? { lv: 4, title: 'Pro Trainee', nextTarget: 85, color: 'text-emerald-600 dark:text-emerald-300', bar: 'bg-emerald-500' }
-                                        : overallPct >= 40
-                                            ? { lv: 3, title: 'Skill Builder', nextTarget: 65, color: 'text-purple-600 dark:text-purple-300', bar: 'bg-purple-500' }
-                                            : overallPct >= 15
-                                                ? { lv: 2, title: 'Rising Learner', nextTarget: 40, color: 'text-[#005fb8] dark:text-[#60cdff]', bar: 'bg-[#005fb8]' }
-                                                : { lv: 1, title: 'Starter', nextTarget: 15, color: 'text-cyan-600 dark:text-cyan-300', bar: 'bg-cyan-500' };
-
-                                return (
-                                    <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 relative">
-                                        {/* Top Identity Row: Left Photo + Right Info on Mobile, Centered on Desktop */}
-                                        <div className="flex flex-row lg:flex-col items-center lg:text-center gap-3.5 lg:gap-2.5">
-                                            {/* Clean Circular Profile Photo */}
-                                            <div className="relative shrink-0">
-                                                <img
-                                                    src={`https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=bbf7d0,bfdbfe,fef08a,fbcfe8,e2e8f0`}
-                                                    alt={displayName}
-                                                    loading="lazy"
-                                                    decoding="async"
-                                                    className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 object-cover border-[3px] border-white dark:border-[#181818] shadow-sm bg-gray-100"
-                                                    style={{ borderRadius: '9999px' }}
-                                                />
-                                                <span
-                                                    className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#181818] shadow-[0_0_8px_rgba(16,185,129,0.75)]"
-                                                    style={{ borderRadius: '9999px' }}
-                                                    title="Active"
-                                                />
-                                            </div>
-
-                                            {/* Right Column on Mobile / Below Photo on Desktop */}
-                                            <div className="min-w-0 flex-1 lg:w-full text-left lg:text-center">
-                                                <div className="flex items-center justify-start lg:justify-center gap-1.5 flex-wrap relative">
-                                                    <h3 className="text-base sm:text-lg lg:text-xl font-bold text-gray-900 dark:text-white leading-tight truncate max-w-full">
-                                                        {displayName}
-                                                    </h3>
-
-                                                    <div
-                                                        className="relative inline-flex items-center group shrink-0"
-                                                        onMouseEnter={() => { if (!isPaymentVerified) setShowVerifyTip(true); }}
-                                                        onMouseLeave={() => setShowVerifyTip(false)}
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                playAudio('click');
-                                                                if (isPaymentVerified) {
-                                                                    if (typeof addToast === 'function') addToast('Verified Student Account — All payments cleared!', 'success');
-                                                                } else {
-                                                                    setShowVerifyTip(prev => !prev);
-                                                                }
-                                                            }}
-                                                            style={{ WebkitTapHighlightColor: 'transparent' }}
-                                                            className={`inline-flex items-center justify-center p-0.5 rounded-full outline-none focus:outline-none transition-all ${
-                                                                isPaymentVerified
-                                                                    ? 'text-[#0095F6]'
-                                                                    : 'text-gray-400 dark:text-gray-500 opacity-35 blur-[0.5px] hover:opacity-80 hover:blur-0 cursor-pointer'
-                                                            }`}
-                                                            title={isPaymentVerified ? 'Verified Student (Payment Complete)' : 'Payment Due — Click for details'}
-                                                        >
-                                                           <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 drop-shadow-sm" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                                <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
-                                                                <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
-                                                            </svg>
-                                                        </button>
-
-                                                        {!isPaymentVerified && showVerifyTip && (
-                                                            <div className="absolute right-0 lg:left-1/2 lg:-translate-x-1/2 top-full mt-2 w-60 p-3 rounded-xl bg-gray-900 dark:bg-[#1f1f1f] text-white text-left shadow-xl border border-white/15 z-50">
-                                                                <div className="flex items-start gap-2">
-                                                                    <Icon name="alert-circle" className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                                                                    <div className="min-w-0">
-                                                                        <p className="text-[11px] font-bold text-amber-300">ভেরিফাইড নয় (Payment Due)</p>
-                                                                        <p className="text-[11px] text-gray-200 leading-relaxed mt-0.5">
-                                                                            আপনার <strong className="text-white font-numbers">{CURRENCY_SYMBOL}{myDueAmount.toLocaleString()}</strong> পেমেন্ট বাকি আছে। ভেরিফাইড হতে পেমেন্ট কমপ্লিট করুন।
-                                                                        </p>
-                                                                        <a href="#orders" onClick={() => { playAudio('click'); setShowVerifyTip(false); }} className="inline-block mt-2 text-[10px] font-bold text-[#60cdff] hover:underline">
-                                                                            পেমেন্ট বিবরণ দেখুন →
-                                                                        </a>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <p className="text-xs font-mono-code text-gray-500 dark:text-gray-400 mt-0.5 truncate">{handleUsername}</p>
-
-                                                <div className="flex flex-wrap justify-start lg:justify-center gap-1.5 mt-2">
-                                                    {enrolledCourses.map(c => (
-                                                        <span key={c} className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] border border-blue-200/50 dark:border-blue-500/20">
-                                                            {c}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* 3 Mini Profile Stat Cards */}
-                                        <div className="grid grid-cols-3 gap-2 w-full mt-4 pt-3.5 border-t border-gray-200/60 dark:border-white/10">
-                                            <a href="#leaderboard" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-amber-500/[0.08] dark:bg-amber-500/[0.12] border border-amber-200/60 dark:border-amber-500/20 hover:border-amber-500 transition-colors text-center">
-                                                <p className="text-base sm:text-lg font-numbers font-bold text-amber-700 dark:text-amber-300 leading-none">
-                                                    {myRankNum ? `#${myRankNum}` : '#—'}
-                                                </p>
-                                                <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">Rank</p>
-                                            </a>
-
-                                            <a href="#assignments" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] border border-emerald-200/60 dark:border-emerald-500/20 hover:border-emerald-500 transition-colors text-center">
-                                                <p className="text-base sm:text-lg font-numbers font-bold text-emerald-700 dark:text-emerald-300 leading-none">
-                                                    {fixedCompletedCount}
-                                                </p>
-                                                <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">Assignments</p>
-                                            </a>
-
-                                            <a href="#courses" onClick={() => playAudio('click')} className="p-2.5 rounded-xl bg-blue-500/[0.07] dark:bg-blue-500/[0.11] border border-blue-200/60 dark:border-blue-500/20 hover:border-[#005fb8] transition-colors text-center">
-                                                <p className="text-base sm:text-lg font-numbers font-bold text-[#005fb8] dark:text-[#60cdff] leading-none">
-                                                    {courseCount}
-                                                </p>
-                                                <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mt-1.5 truncate">
-                                                    {courseCount === 1 ? 'Course' : 'Courses'}
-                                                </p>
-                                            </a>
-                                        </div>
-
-                                        {/* Career Level & XP Bar */}
-                                        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-white/5 space-y-1.5">
-                                            <div className="flex items-center justify-between text-[11px]">
-                                                <span className={`font-bold flex items-center gap-1 ${levelTier.color}`}>
-                                                    <Icon name="zap" className="w-3.5 h-3.5 shrink-0" />
-                                                    Lv.{levelTier.lv} • {levelTier.title}
-                                                </span>
-                                                <span className="font-numbers font-bold text-gray-500 dark:text-gray-400">
-                                                    {overallPct}/{levelTier.nextTarget} XP
-                                                </span>
-                                            </div>
-                                            <div className="w-full h-1.5 bg-gray-200/80 dark:bg-white/[0.08] rounded-full overflow-hidden">
-                                                <div
-                                                    className={`h-full rounded-full transition-all duration-500 ${levelTier.bar}`}
-                                                    style={{ width: `${Math.min(100, Math.round((overallPct / levelTier.nextTarget) * 100))}%` }}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
-
-                            {/* Statistics Section with Zero-Blink Pie/Doughnut Chart */}
-                            <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
-                                <div className="flex items-center justify-between mb-3.5">
-                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                        <Icon name="pie-chart" className="w-4 h-4 text-[#005fb8]" />
-                                        <span>Learning Statistics</span>
-                                    </h3>
-                                    <span className="text-[11px] font-numbers font-bold px-2 py-0.5 rounded bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff]">
-                                        {overallPct}% Overall
-                                    </span>
-                                </div>
-
-                               {/* Responsive Minimal Doughnut Chart (Crisp in Light & Dark Mode) */}
-                                <div className="relative w-36 h-36 sm:w-44 sm:h-44 mx-auto my-2 p-1.5 rounded-full bg-gray-50/70 dark:bg-white/[0.03] border border-gray-200/50 dark:border-white/[0.06]">
-                                    <canvas ref={statPieRef} />
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                        <span className="text-2xl sm:text-3xl font-numbers font-bold text-gray-900 dark:text-white leading-none">{overallPct}%</span>
-                                        <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mt-1">Completed</span>
-                                    </div>
-                                </div>
-
-                                {/* Detailed Metric Breakdown Bars */}
-                                <div className="space-y-2.5 mt-4 pt-3 border-t border-gray-100 dark:border-white/5">
-                                    {statMetrics.map(item => (
-                                        <div key={item.label} className="space-y-1">
-                                            <div className="flex items-center justify-between text-xs">
-                                                <div className="flex items-center gap-2 min-w-0">
-                                                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                                                    <span className="font-semibold text-gray-700 dark:text-gray-300 truncate">{item.label}</span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5 font-numbers shrink-0">
-                                                    <span className="text-[10px] text-gray-400">({item.detail})</span>
-                                                    <span className="font-bold text-gray-900 dark:text-white w-9 text-right">{item.pct}%</span>
-                                                </div>
-                                            </div>
-                                            <div className="w-full h-1.5 bg-gray-200/80 dark:bg-white/[0.08] rounded-full overflow-hidden">
-                                                <div className="h-full rounded-full transition-all duration-300" style={{ width: `${item.pct}%`, backgroundColor: item.color }} />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* Mentor Latest Note (If available) */}
-                                {myRecord?.recentReview && (
-                                    <div className="mt-4 p-3 rounded-xl bg-purple-500/[0.06] dark:bg-purple-500/[0.10] border border-purple-200/60 dark:border-purple-500/20">
-                                        <p className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 mb-1">Mentor Note</p>
-                                        <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed italic">"{myRecord.recentReview}"</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* 🟢 Right Sidebar Assignments Status Card (Graded & Pending Tracker) */}
+                        {/* My Assignments (Bottom-Right on Desktop, Very Last on Mobile!) */}
+                        <div className="lg:col-span-4 min-w-0">
                             {(() => {
                                 const gradedList = mySubmittedAssignments.filter(a => a.status === 'Graded');
                                 const pendingList = mySubmittedAssignments.filter(a => a.status !== 'Graded');
@@ -22714,8 +22601,8 @@ const SmartPhoneAction = ({ phone }) => {
 
                                 return (
                                     <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10">
-                                        <div className="flex items-center justify-between gap-2 mb-3">
-                                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 truncate">
+                                        <div className="flex items-center justify-between gap-2 mb-3 flex-nowrap">
+                                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 whitespace-nowrap truncate">
                                                 <Icon name="file-code" className="w-4 h-4 text-emerald-500 shrink-0" />
                                                 <span className="truncate">My Assignments</span>
                                             </h3>
@@ -22724,7 +22611,6 @@ const SmartPhoneAction = ({ phone }) => {
                                             </a>
                                         </div>
 
-                                        {/* Filter Tabs: All / Graded / Pending */}
                                         <div className="grid grid-cols-3 gap-1 bg-gray-100/90 dark:bg-dark-800 p-0.5 rounded-lg border border-gray-200/60 dark:border-white/10 mb-3">
                                             {[
                                                 { id: 'All', label: `All (${mySubmittedAssignments.length})` },
@@ -22747,7 +22633,6 @@ const SmartPhoneAction = ({ phone }) => {
                                             ))}
                                         </div>
 
-                                        {/* Full Normal Assignments List (No Inner Scrollbox / No Nested Boxes) */}
                                         <div className="divide-y divide-gray-100 dark:divide-white/10">
                                             {shownAsn.length === 0 ? (
                                                 <div className="py-6 text-center">
@@ -22769,33 +22654,23 @@ const SmartPhoneAction = ({ phone }) => {
                                                     <div key={asn.id || idx} className="py-2.5 first:pt-1 last:pb-0">
                                                         <div className="flex items-start justify-between gap-2">
                                                             <div className="min-w-0 flex-1">
-                                                                <p className="text-xs font-semibold text-gray-900 dark:text-white leading-snug break-words">
-                                                                    {asn.taskTitle}
-                                                                </p>
+                                                                <p className="text-xs font-semibold text-gray-900 dark:text-white leading-snug break-words">{asn.taskTitle}</p>
                                                                 <p className="text-[10px] text-gray-400 font-numbers mt-0.5">
                                                                     {asn.timestamp ? moment(asn.timestamp).format('DD MMM YYYY') : 'Submitted'}
                                                                 </p>
                                                             </div>
                                                             <div className="flex items-center shrink-0">
                                                                 {isGraded ? (
-                                                                    <span className="text-xs font-numbers font-bold text-emerald-600 dark:text-emerald-400">
-                                                                        {asn.mark || 0}/100
-                                                                    </span>
+                                                                    <span className="text-xs font-numbers font-bold text-emerald-600 dark:text-emerald-400">{asn.mark || 0}/100</span>
                                                                 ) : (
-                                                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                                                                        isResub
-                                                                            ? 'text-rose-600 dark:text-rose-400'
-                                                                            : 'text-amber-600 dark:text-amber-400'
-                                                                    }`}>
+                                                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${isResub ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>
                                                                         {asn.status || 'Pending'}
                                                                     </span>
                                                                 )}
                                                             </div>
                                                         </div>
                                                         {asn.feedback && (
-                                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 italic leading-relaxed">
-                                                                "{asn.feedback}"
-                                                            </p>
+                                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 italic leading-relaxed">"{asn.feedback}"</p>
                                                         )}
                                                     </div>
                                                 );
@@ -22817,8 +22692,8 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 );
                             })()}
-
                         </div>
+
                     </div>
                 </div>
             );
