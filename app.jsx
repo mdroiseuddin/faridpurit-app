@@ -5645,13 +5645,12 @@
       // ==========================================
         // SMART FINANCIAL CALENDAR & MONEY MANAGEMENT (PRO UI - 100% BUG-FREE)
         // ==========================================
-        const SmartFinancialCalendar = ({ orders = [], expenses = [], onAddExpense, goTo }) => {
+       const SmartFinancialCalendar = ({ orders = [], expenses = [], onAddExpense, goTo }) => {
             const playAudio = (t) => { if (typeof window.playSound === 'function') window.playSound(t); };
             const [rangeFilter, setRangeFilter] = useState('7d'); // '7d' | '14d' | '30d' | '12m' | 'all'
-            const [calMonth, setCalMonth] = useState(() => moment().startOf('month'));
-            const [selectedDayYMD, setSelectedDayYMD] = useState(() => moment().format('YYYY-MM-DD'));
-            const barCanvasRef = useRef(null);
-            const barChartInst = useRef(null);
+            const [selectedKey, setSelectedKey] = useState(() => moment().format('YYYY-MM-DD'));
+            const lineCanvasRef = useRef(null);
+            const lineChartInst = useRef(null);
 
             const parseMoney = (v) => Math.max(0, parseFloat(String(v ?? 0).replace(/[^0-9.-]+/g, '')) || 0);
             const getPaidVal = (o) => {
@@ -5661,202 +5660,327 @@
                 return st === 'completed' ? parseMoney(o.Amount) : 0;
             };
 
-            // 📊 Grouped Bar Chart Buckets (7D, 14D, 30D, 12M, All Time) — Income & Expense Together
+            const isMonthMode = rangeFilter === '12m' || rangeFilter === 'all';
+
+            // ফিল্টার বদলালে ডিফল্ট সিলেকশন আজকের দিন বা চলতি মাসে সেট হবে
+            useEffect(() => {
+                if (rangeFilter === '12m' || rangeFilter === 'all') {
+                    setSelectedKey(moment().format('YYYY-MM'));
+                } else {
+                    setSelectedKey(moment().format('YYYY-MM-DD'));
+                }
+            }, [rangeFilter]);
+
+            // ১. সব ডেটা দিন ও মাস অনুযায়ী একবার ম্যাপ করা
+            const { dailyMap, monthlyMap } = useMemo(() => {
+                const dMap = {};
+                const mMap = {};
+                const ensure = (store, k) => {
+                    if (!store[k]) store[k] = { income: 0, expense: 0, items: [] };
+                    return store[k];
+                };
+
+                (orders || []).forEach(o => {
+                    const amt = getPaidVal(o);
+                    if (amt <= 0) return;
+                    const mObj = moment(parseCustomDate(o.Timestamp));
+                    if (!mObj.isValid()) return;
+                    const ymd = mObj.format('YYYY-MM-DD');
+                    const ym = mObj.format('YYYY-MM');
+                    const entry = { type: 'income', date: mObj.format('DD MMM'), title: `${o.Name || 'Income'} — ${o.CourseName || ''}`, amount: amt };
+                    const d = ensure(dMap, ymd); d.income += amt; d.items.push(entry);
+                    const m = ensure(mMap, ym); m.income += amt; m.items.push(entry);
+                });
+
+                (expenses || []).forEach(e => {
+                    const amt = parseMoney(e.Amount);
+                    if (amt <= 0) return;
+                    const mObj = moment(parseCustomDate(e.Date || e.Timestamp));
+                    if (!mObj.isValid()) return;
+                    const ymd = mObj.format('YYYY-MM-DD');
+                    const ym = mObj.format('YYYY-MM');
+                    const entry = { type: 'expense', date: mObj.format('DD MMM'), title: `${e.Category || 'Expense'}${e.Note ? ' — ' + e.Note : ''}`, amount: amt };
+                    const d = ensure(dMap, ymd); d.expense += amt; d.items.push(entry);
+                    const m = ensure(mMap, ym); m.expense += amt; m.items.push(entry);
+                });
+
+                return { dailyMap: dMap, monthlyMap: mMap };
+            }, [orders, expenses]);
+
+            // ২. চার্টের ডাটা ও ৪টি KPI কার্ড হিসাব (Safe Daily Spend / Daily Income Needed)
             const chartBundle = useMemo(() => {
                 const buckets = [];
-                const map = {};
                 const today = moment().startOf('day');
-
-                const addBucket = (key, label) => {
-                    const obj = { key, label, income: 0, expense: 0 };
-                    map[key] = obj;
-                    buckets.push(obj);
-                };
 
                 if (rangeFilter === '7d' || rangeFilter === '14d' || rangeFilter === '30d') {
                     const daysCount = rangeFilter === '7d' ? 7 : rangeFilter === '14d' ? 14 : 30;
                     for (let i = daysCount - 1; i >= 0; i--) {
                         const d = moment(today).subtract(i, 'days');
-                        addBucket(d.format('YYYY-MM-DD'), daysCount <= 14 ? d.format('DD MMM') : d.format('DD/MM'));
+                        const k = d.format('YYYY-MM-DD');
+                        const rec = dailyMap[k] || { income: 0, expense: 0 };
+                        buckets.push({
+                            key: k,
+                            label: daysCount <= 14 ? d.format('DD MMM') : d.format('DD/MM'),
+                            income: rec.income,
+                            expense: rec.expense
+                        });
                     }
-                    (orders || []).forEach(o => {
-                        const k = moment(parseCustomDate(o.Timestamp)).format('YYYY-MM-DD');
-                        if (map[k]) map[k].income += getPaidVal(o);
-                    });
-                    (expenses || []).forEach(e => {
-                        const k = moment(parseCustomDate(e.Date || e.Timestamp)).format('YYYY-MM-DD');
-                        if (map[k]) map[k].expense += parseMoney(e.Amount);
-                    });
                 } else if (rangeFilter === '12m') {
                     for (let i = 11; i >= 0; i--) {
                         const m = moment().subtract(i, 'months');
-                        addBucket(m.format('YYYY-MM'), m.format('MMM YY'));
+                        const k = m.format('YYYY-MM');
+                        const rec = monthlyMap[k] || { income: 0, expense: 0 };
+                        buckets.push({ key: k, label: m.format('MMM YY'), income: rec.income, expense: rec.expense });
                     }
-                    (orders || []).forEach(o => {
-                        const k = moment(parseCustomDate(o.Timestamp)).format('YYYY-MM');
-                        if (map[k]) map[k].income += getPaidVal(o);
-                    });
-                    (expenses || []).forEach(e => {
-                        const k = moment(parseCustomDate(e.Date || e.Timestamp)).format('YYYY-MM');
-                        if (map[k]) map[k].expense += parseMoney(e.Amount);
-                    });
                 } else {
-                    // All Time (Grouped by Month chronologically)
-                    const tempMap = {};
-                    const pushMonth = (ym) => {
-                        if (!ym || ym === 'Invalid date') return null;
-                        if (!tempMap[ym]) tempMap[ym] = { key: ym, label: moment(ym, 'YYYY-MM').format('MMM YY'), income: 0, expense: 0 };
-                        return tempMap[ym];
-                    };
-                    (orders || []).forEach(o => {
-                        const b = pushMonth(moment(parseCustomDate(o.Timestamp)).format('YYYY-MM'));
-                        if (b) b.income += getPaidVal(o);
+                    // All Time: শুধু যে মাসগুলোতে আয় বা ব্যয় হয়েছে
+                    Object.keys(monthlyMap).sort().forEach(k => {
+                        const rec = monthlyMap[k];
+                        if (rec.income > 0 || rec.expense > 0) {
+                            buckets.push({ key: k, label: moment(k, 'YYYY-MM').format('MMM YY'), income: rec.income, expense: rec.expense });
+                        }
                     });
-                    (expenses || []).forEach(e => {
-                        const b = pushMonth(moment(parseCustomDate(e.Date || e.Timestamp)).format('YYYY-MM'));
-                        if (b) b.expense += parseMoney(e.Amount);
-                    });
-                    Object.values(tempMap).sort((a, b) => a.key.localeCompare(b.key)).forEach(b => buckets.push(b));
-                    if (buckets.length === 0) addBucket(moment().format('YYYY-MM'), moment().format('MMM YY'));
+                    if (buckets.length === 0) {
+                        const k = moment().format('YYYY-MM');
+                        buckets.push({ key: k, label: moment().format('MMM YY'), income: 0, expense: 0 });
+                    }
                 }
 
                 const totalInc = buckets.reduce((s, b) => s + b.income, 0);
                 const totalExp = buckets.reduce((s, b) => s + b.expense, 0);
-                return { buckets, totalInc, totalExp, net: totalInc - totalExp };
-            }, [orders, expenses, rangeFilter]);
+                const net = totalInc - totalExp;
+                const horizonDays = rangeFilter === '7d' ? 7 : rangeFilter === '14d' ? 14 : 30;
+                const isLoss = net < 0;
+                const dailyGuidance = isLoss
+                    ? Math.ceil(Math.abs(net) / horizonDays)
+                    : Math.floor(net / horizonDays);
 
-            // Render / Update Grouped Bar Chart (Income + Expense Side by Side)
+                return { buckets, totalInc, totalExp, net, isLoss, dailyGuidance, horizonDays };
+            }, [dailyMap, monthlyMap, rangeFilter]);
+
+            // ৩. জিরো-ব্লিংক প্রিমিয়াম লাইন চার্ট (Instance Reuse -> 30s সিঙ্কে কখনো ফ্লিকার/ব্লিংক করবে না)
+            const chartSignature = useMemo(() => JSON.stringify({
+                l: chartBundle.buckets.map(b => b.label),
+                i: chartBundle.buckets.map(b => Math.round(b.income)),
+                e: chartBundle.buckets.map(b => Math.round(b.expense))
+            }), [chartBundle]);
+
             useEffect(() => {
-                if (!barCanvasRef.current || typeof Chart === 'undefined') return;
+                if (!lineCanvasRef.current || typeof Chart === 'undefined') return;
                 const isDark = document.documentElement.classList.contains('dark');
+                const ctx = lineCanvasRef.current.getContext('2d');
                 const labels = chartBundle.buckets.map(b => b.label);
                 const incData = chartBundle.buckets.map(b => Math.round(b.income));
                 const expData = chartBundle.buckets.map(b => Math.round(b.expense));
 
-                if (barChartInst.current) {
-                    barChartInst.current.destroy();
-                    barChartInst.current = null;
-                }
+                const incGrad = ctx.createLinearGradient(0, 0, 0, 260);
+                incGrad.addColorStop(0, isDark ? 'rgba(16, 185, 129, 0.28)' : 'rgba(16, 185, 129, 0.22)');
+                incGrad.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
 
-                barChartInst.current = new Chart(barCanvasRef.current, {
-                    type: 'bar',
-                    data: {
-                        labels,
-                        datasets: [
-                            {
-                                label: 'Income (৳)',
-                                data: incData,
-                                backgroundColor: 'rgba(16, 185, 129, 0.85)',
-                                hoverBackgroundColor: '#059669',
-                                borderRadius: 5,
-                                borderSkipped: false,
-                                maxBarThickness: 28
-                            },
-                            {
-                                label: 'Expense (৳)',
-                                data: expData,
-                                backgroundColor: 'rgba(244, 63, 94, 0.82)',
-                                hoverBackgroundColor: '#e11d48',
-                                borderRadius: 5,
-                                borderSkipped: false,
-                                maxBarThickness: 28
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: { mode: 'index', intersect: false },
-                        plugins: {
-                            legend: {
-                                position: 'top',
-                                align: 'end',
-                                labels: {
-                                    boxWidth: 10,
-                                    boxHeight: 10,
-                                    usePointStyle: true,
-                                    pointStyle: 'rectRounded',
-                                    color: isDark ? '#cbd5e1' : '#334155',
-                                    font: { size: 11, weight: 'bold' }
+                const expGrad = ctx.createLinearGradient(0, 0, 0, 260);
+                expGrad.addColorStop(0, isDark ? 'rgba(244, 63, 94, 0.24)' : 'rgba(244, 63, 94, 0.18)');
+                expGrad.addColorStop(1, 'rgba(244, 63, 94, 0.0)');
+
+                if (lineChartInst.current && lineChartInst.current.canvas === lineCanvasRef.current) {
+                    const ch = lineChartInst.current;
+                    ch.data.labels = labels;
+                    ch.data.datasets[0].data = incData;
+                    ch.data.datasets[0].backgroundColor = incGrad;
+                    ch.data.datasets[1].data = expData;
+                    ch.data.datasets[1].backgroundColor = expGrad;
+                    ch.update('none'); // ⚡ Zero-Blink Instant Update
+                } else {
+                    if (lineChartInst.current) lineChartInst.current.destroy();
+                    lineChartInst.current = new Chart(lineCanvasRef.current, {
+                        type: 'line',
+                        data: {
+                            labels,
+                            datasets: [
+                                {
+                                    label: 'Income (৳)',
+                                    data: incData,
+                                    borderColor: '#10b981',
+                                    backgroundColor: incGrad,
+                                    borderWidth: 2.5,
+                                    fill: true,
+                                    tension: 0.36,
+                                    pointRadius: labels.length <= 14 ? 3.5 : 2,
+                                    pointHoverRadius: 6,
+                                    pointBackgroundColor: '#10b981',
+                                    pointBorderColor: isDark ? '#141417' : '#ffffff',
+                                    pointBorderWidth: 2
+                                },
+                                {
+                                    label: 'Expense (৳)',
+                                    data: expData,
+                                    borderColor: '#f43f5e',
+                                    backgroundColor: expGrad,
+                                    borderWidth: 2.5,
+                                    fill: true,
+                                    tension: 0.36,
+                                    pointRadius: labels.length <= 14 ? 3.5 : 2,
+                                    pointHoverRadius: 6,
+                                    pointBackgroundColor: '#f43f5e',
+                                    pointBorderColor: isDark ? '#141417' : '#ffffff',
+                                    pointBorderWidth: 2
+                                }
+                            ]
+                        },
+                        options: {
+                            animation: false,
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: { mode: 'index', intersect: false },
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                    align: 'end',
+                                    labels: {
+                                        boxWidth: 10,
+                                        boxHeight: 10,
+                                        usePointStyle: true,
+                                        pointStyle: 'circle',
+                                        color: isDark ? '#cbd5e1' : '#334155',
+                                        font: { size: 11, weight: 'bold' }
+                                    }
+                                },
+                                tooltip: {
+                                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                                    titleColor: '#f8fafc',
+                                    bodyColor: '#e2e8f0',
+                                    borderColor: 'rgba(255,255,255,0.12)',
+                                    borderWidth: 1,
+                                    padding: 11,
+                                    cornerRadius: 10,
+                                    callbacks: {
+                                        label: (c) => ` ${c.dataset.label}: ৳${Number(c.raw || 0).toLocaleString()}`,
+                                        afterBody: (items) => {
+                                            const inc = Number(items[0]?.raw || 0);
+                                            const exp = Number(items[1]?.raw || 0);
+                                            const net = inc - exp;
+                                            return `\n Net: ${net >= 0 ? '+' : '-'}৳${Math.abs(net).toLocaleString()}`;
+                                        }
+                                    }
                                 }
                             },
-                            tooltip: {
-                                backgroundColor: 'rgba(15, 23, 42, 0.94)',
-                                titleColor: '#f8fafc',
-                                bodyColor: '#e2e8f0',
-                                padding: 10,
-                                cornerRadius: 8,
-                                callbacks: {
-                                    label: (ctx) => ` ${ctx.dataset.label}: ৳${Number(ctx.raw || 0).toLocaleString()}`,
-                                    afterBody: (items) => {
-                                        const inc = Number(items[0]?.raw || 0);
-                                        const exp = Number(items[1]?.raw || 0);
-                                        const net = inc - exp;
-                                        return `\n Net Balance: ${net >= 0 ? '+' : '-'}৳${Math.abs(net).toLocaleString()}`;
+                            scales: {
+                                x: {
+                                    grid: { display: false },
+                                    ticks: { color: isDark ? '#94a3b8' : '#64748b', font: { size: 10, weight: '600' }, maxRotation: 0, autoSkip: true }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    grid: { color: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)' },
+                                    ticks: {
+                                        color: isDark ? '#94a3b8' : '#64748b',
+                                        font: { size: 10 },
+                                        callback: (v) => v >= 1000 ? `৳${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `৳${v}`
                                     }
                                 }
                             }
-                        },
-                        scales: {
-                            x: {
-                                grid: { display: false },
-                                ticks: { color: isDark ? '#94a3b8' : '#64748b', font: { size: 10, weight: '600' }, maxRotation: 0, autoSkip: true }
-                            },
-                            y: {
-                                beginAtZero: true,
-                                grid: { color: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)' },
-                                ticks: {
-                                    color: isDark ? '#94a3b8' : '#64748b',
-                                    font: { size: 10 },
-                                    callback: (v) => v >= 1000 ? `৳${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `৳${v}`
-                                }
-                            }
                         }
-                    }
-                });
-
-                return () => {
-                    if (barChartInst.current) { barChartInst.current.destroy(); barChartInst.current = null; }
-                };
-            }, [chartBundle]);
-
-            // 📅 Monthly Daily Breakdown Calendar
-            const { calCells, dailyMap } = useMemo(() => {
-                const dMap = {};
-                const ensureDay = (ymd) => {
-                    if (!dMap[ymd]) dMap[ymd] = { income: 0, expense: 0, items: [] };
-                    return dMap[ymd];
-                };
-                (orders || []).forEach(o => {
-                    const amt = getPaidVal(o);
-                    if (amt <= 0) return;
-                    const ymd = moment(parseCustomDate(o.Timestamp)).format('YYYY-MM-DD');
-                    const d = ensureDay(ymd);
-                    d.income += amt;
-                    d.items.push({ type: 'income', title: `${o.Name || 'Income'} — ${o.CourseName || ''}`, amount: amt });
-                });
-                (expenses || []).forEach(e => {
-                    const amt = parseMoney(e.Amount);
-                    if (amt <= 0) return;
-                    const ymd = moment(parseCustomDate(e.Date || e.Timestamp)).format('YYYY-MM-DD');
-                    const d = ensureDay(ymd);
-                    d.expense += amt;
-                    d.items.push({ type: 'expense', title: `${e.Category || 'Expense'}${e.Note ? ' — ' + e.Note : ''}`, amount: amt });
-                });
-
-                const startOfMonth = moment(calMonth).startOf('month');
-                const daysInMonth = startOfMonth.daysInMonth();
-                const startPad = startOfMonth.day(); // 0=Sun ... 6=Sat
-                const cells = [];
-                for (let i = 0; i < startPad; i++) cells.push(null);
-                for (let d = 1; d <= daysInMonth; d++) {
-                    const ymd = moment(startOfMonth).date(d).format('YYYY-MM-DD');
-                    cells.push({ day: d, ymd, data: dMap[ymd] || { income: 0, expense: 0, items: [] } });
+                    });
                 }
-                return { calCells: cells, dailyMap: dMap };
-            }, [orders, expenses, calMonth]);
+            }, [chartSignature]);
 
-            const selectedDayData = dailyMap[selectedDayYMD] || { income: 0, expense: 0, items: [] };
+            useEffect(() => () => {
+                if (lineChartInst.current) { lineChartInst.current.destroy(); lineChartInst.current = null; }
+            }, []);
+
+            // ৪. ফিল্টার-সিঙ্কড ক্যালেন্ডার গ্রিড (7D = গত ৭ + আগামী ৭, 14D = গত ১৪ + আগামী ১৪, 30D = গত ৩০, 12M = ১২ মাস, All = অ্যাক্টিভ মাস)
+            const calendarItems = useMemo(() => {
+                const today = moment().startOf('day');
+                const todayStr = today.format('YYYY-MM-DD');
+
+                if (rangeFilter === '7d') {
+                    // গত ৭ দিন (আজসহ) + আগামী ৭ দিন = ১৪ ঘর
+                    return Array.from({ length: 14 }).map((_, idx) => {
+                        const d = moment(today).subtract(6, 'days').add(idx, 'days');
+                        const k = d.format('YYYY-MM-DD');
+                        return {
+                            key: k,
+                            topLabel: d.format('ddd'),
+                            mainNum: d.format('DD'),
+                            subMonth: d.format('MMM'),
+                            isToday: k === todayStr,
+                            isFuture: d.isAfter(today, 'day'),
+                            data: dailyMap[k] || { income: 0, expense: 0, items: [] }
+                        };
+                    });
+                }
+                if (rangeFilter === '14d') {
+                    // গত ১৪ দিন (আজসহ) + আগামী ১৪ দিন = ২৮ ঘর
+                    return Array.from({ length: 28 }).map((_, idx) => {
+                        const d = moment(today).subtract(13, 'days').add(idx, 'days');
+                        const k = d.format('YYYY-MM-DD');
+                        return {
+                            key: k,
+                            topLabel: d.format('ddd'),
+                            mainNum: d.format('DD'),
+                            subMonth: d.format('MMM'),
+                            isToday: k === todayStr,
+                            isFuture: d.isAfter(today, 'day'),
+                            data: dailyMap[k] || { income: 0, expense: 0, items: [] }
+                        };
+                    });
+                }
+                if (rangeFilter === '30d') {
+                    // গত ৩০ দিন
+                    return Array.from({ length: 30 }).map((_, idx) => {
+                        const d = moment(today).subtract(29, 'days').add(idx, 'days');
+                        const k = d.format('YYYY-MM-DD');
+                        return {
+                            key: k,
+                            topLabel: d.format('ddd'),
+                            mainNum: d.format('DD'),
+                            subMonth: d.format('MMM'),
+                            isToday: k === todayStr,
+                            isFuture: false,
+                            data: dailyMap[k] || { income: 0, expense: 0, items: [] }
+                        };
+                    });
+                }
+                if (rangeFilter === '12m') {
+                    const curYM = moment().format('YYYY-MM');
+                    return Array.from({ length: 12 }).map((_, idx) => {
+                        const m = moment().subtract(11 - idx, 'months');
+                        const k = m.format('YYYY-MM');
+                        return {
+                            key: k,
+                            topLabel: m.format('YYYY'),
+                            mainNum: m.format('MMM'),
+                            subMonth: '',
+                            isToday: k === curYM,
+                            isFuture: false,
+                            data: monthlyMap[k] || { income: 0, expense: 0, items: [] }
+                        };
+                    });
+                }
+                // All Time: শুধু যে মাসগুলোতে আয়-ব্যয় হয়েছে
+                const curYM = moment().format('YYYY-MM');
+                const activeMonths = Object.keys(monthlyMap).sort().filter(k => {
+                    const r = monthlyMap[k];
+                    return r && (r.income > 0 || r.expense > 0);
+                });
+                return activeMonths.map(k => {
+                    const m = moment(k, 'YYYY-MM');
+                    return {
+                        key: k,
+                        topLabel: m.format('YYYY'),
+                        mainNum: m.format('MMM'),
+                        subMonth: '',
+                        isToday: k === curYM,
+                        isFuture: false,
+                        data: monthlyMap[k]
+                    };
+                });
+            }, [rangeFilter, dailyMap, monthlyMap]);
+
+            const selectedData = (isMonthMode ? monthlyMap[selectedKey] : dailyMap[selectedKey]) || { income: 0, expense: 0, items: [] };
+            const selectedTitle = isMonthMode
+                ? (moment(selectedKey, 'YYYY-MM').isValid() ? moment(selectedKey, 'YYYY-MM').format('MMMM YYYY') : 'Selected Month')
+                : (moment(selectedKey, 'YYYY-MM-DD').isValid() ? moment(selectedKey, 'YYYY-MM-DD').format('dddd, DD MMM YYYY') : 'Selected Date');
+
             const filterTabs = [
                 { id: '7d', label: '7 Days' },
                 { id: '14d', label: '14 Days' },
@@ -5865,16 +5989,24 @@
                 { id: 'all', label: 'All Time' }
             ];
 
+            const calendarSubtitle = {
+                '7d': 'Last 7 Days + Next 7 Days (14-Day Window)',
+                '14d': 'Last 14 Days + Next 14 Days (28-Day Window)',
+                '30d': 'Last 30 Days Daily Cashflow',
+                '12m': 'Last 12 Months Monthly Breakdown',
+                'all': `Active Months With Income/Expense (${calendarItems.length} Months)`
+            }[rangeFilter];
+
             return (
                 <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-5">
-                    {/* Header + 5 Range Filter Pills */}
+                    {/* Header + 5 Filter Buttons */}
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                         <div className="min-w-0">
                             <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                <Icon name="bar-chart-2" className="w-5 h-5 text-[#005fb8] shrink-0" />
+                                <Icon name="trending-up" className="w-5 h-5 text-[#005fb8] shrink-0" />
                                 <span>Financial Overview (Income vs Expense)</span>
                             </h3>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Compare cashflow bars &amp; inspect daily records on the calendar.</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Live cashflow trend, daily budget safety guide &amp; synced calendar.</p>
                         </div>
 
                         <div className="flex items-center gap-1 bg-gray-100 dark:bg-dark-900 p-1 rounded-xl border border-gray-200/70 dark:border-white/10 overflow-x-auto hide-scrollbar flex-nowrap">
@@ -5895,121 +6027,187 @@
                         </div>
                     </div>
 
-                    {/* 3 Range Summary Strips */}
-                    <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
-                        <div className="p-3 rounded-xl bg-emerald-500/[0.08] border border-emerald-200/60 dark:border-emerald-500/20">
+                    {/* 4 KPI Summary Cards (Income, Expense, Net Cashflow, Safe Daily Spend / Daily Income Needed) */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+                        <div className="p-3.5 rounded-xl bg-emerald-500/[0.08] border border-emerald-200/70 dark:border-emerald-500/20">
                             <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">Income</p>
-                            <p className="text-base sm:text-xl font-numbers font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 truncate">৳{Math.round(chartBundle.totalInc).toLocaleString()}</p>
+                            <p className="text-lg sm:text-xl font-numbers font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 truncate">৳{Math.round(chartBundle.totalInc).toLocaleString()}</p>
+                            <p className="text-[10px] text-gray-500 mt-0.5">Selected period</p>
                         </div>
-                        <div className="p-3 rounded-xl bg-rose-500/[0.08] border border-rose-200/60 dark:border-rose-500/20">
+
+                        <div className="p-3.5 rounded-xl bg-rose-500/[0.08] border border-rose-200/70 dark:border-rose-500/20">
                             <p className="text-[10px] font-bold uppercase text-rose-600 dark:text-rose-300">Expense</p>
-                            <p className="text-base sm:text-xl font-numbers font-bold text-rose-600 dark:text-rose-400 mt-0.5 truncate">৳{Math.round(chartBundle.totalExp).toLocaleString()}</p>
+                            <p className="text-lg sm:text-xl font-numbers font-bold text-rose-600 dark:text-rose-400 mt-0.5 truncate">৳{Math.round(chartBundle.totalExp).toLocaleString()}</p>
+                            <p className="text-[10px] text-gray-500 mt-0.5">Selected period</p>
                         </div>
-                        <div className="p-3 rounded-xl bg-blue-500/[0.08] border border-blue-200/60 dark:border-blue-500/20">
+
+                        <div className="p-3.5 rounded-xl bg-blue-500/[0.08] border border-blue-200/70 dark:border-blue-500/20">
                             <p className="text-[10px] font-bold uppercase text-[#005fb8] dark:text-[#60cdff]">Net Cashflow</p>
-                            <p className={`text-base sm:text-xl font-numbers font-bold mt-0.5 truncate ${chartBundle.net >= 0 ? 'text-[#005fb8] dark:text-[#60cdff]' : 'text-rose-600'}`}>
+                            <p className={`text-lg sm:text-xl font-numbers font-bold mt-0.5 truncate ${chartBundle.net >= 0 ? 'text-[#005fb8] dark:text-[#60cdff]' : 'text-rose-600'}`}>
                                 {chartBundle.net >= 0 ? '+' : '-'}৳{Math.round(Math.abs(chartBundle.net)).toLocaleString()}
+                            </p>
+                            <p className="text-[10px] text-gray-500 mt-0.5">{chartBundle.net >= 0 ? 'Positive surplus' : 'Net deficit'}</p>
+                        </div>
+
+                        {/* 4th Card: Safe Daily Spend (Surplus) OR Daily Income Needed (Loss) */}
+                        <div className={`p-3.5 rounded-xl border ${
+                            chartBundle.isLoss
+                                ? 'bg-amber-500/[0.10] border-amber-300/70 dark:border-amber-500/30'
+                                : 'bg-teal-500/[0.08] border-teal-200/70 dark:border-teal-500/25'
+                        }`}>
+                            <p className={`text-[10px] font-bold uppercase ${chartBundle.isLoss ? 'text-amber-700 dark:text-amber-300' : 'text-teal-700 dark:text-teal-300'}`}>
+                                {chartBundle.isLoss ? 'Daily Income Needed' : 'Safe Daily Spend'}
+                            </p>
+                            <p className={`text-lg sm:text-xl font-numbers font-bold mt-0.5 truncate ${chartBundle.isLoss ? 'text-amber-700 dark:text-amber-300' : 'text-teal-700 dark:text-teal-400'}`}>
+                                ৳{chartBundle.dailyGuidance.toLocaleString()}<span className="text-xs font-semibold opacity-75">/day</span>
+                            </p>
+                            <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                                {chartBundle.isLoss
+                                    ? `To recover loss in ${chartBundle.horizonDays} days`
+                                    : `Safe daily limit (${chartBundle.horizonDays}d window)`}
                             </p>
                         </div>
                     </div>
 
-                    {/* Grouped Bar Chart Canvas */}
-                    <div className="w-full h-[250px] sm:h-[290px] p-3 rounded-2xl bg-white/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10">
-                        <canvas ref={barCanvasRef} />
+                    {/* Zero-Blink Polished Line Chart */}
+                    <div className="w-full h-[250px] sm:h-[290px] p-3.5 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 shadow-sm">
+                        <canvas ref={lineCanvasRef} />
                     </div>
 
-                    {/* Interactive Financial Calendar + Day Ledger */}
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-2 border-t border-gray-100 dark:border-white/10">
-                        <div className="lg:col-span-7 space-y-2.5">
-                            <div className="flex items-center justify-between">
-                                <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                    {/* FULL-WIDTH CRISP WHITE FILTER-SYNCED CALENDAR */}
+                    <div className="w-full p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 shadow-sm space-y-3.5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-gray-100 dark:border-white/10">
+                            <div>
+                                <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
                                     <Icon name="calendar" className="w-4 h-4 text-[#005fb8]" />
-                                    <span>{calMonth.format('MMMM YYYY')}</span>
+                                    <span>{calendarSubtitle}</span>
                                 </h4>
-                                <div className="flex items-center gap-1">
-                                    <button type="button" onClick={() => setCalMonth(m => moment(m).subtract(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center hover:bg-gray-200"><Icon name="chevron-left" className="w-4 h-4" /></button>
-                                    <button type="button" onClick={() => { setCalMonth(moment().startOf('month')); setSelectedDayYMD(moment().format('YYYY-MM-DD')); }} className="px-2.5 h-7 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold">Today</button>
-                                    <button type="button" onClick={() => setCalMonth(m => moment(m).add(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center hover:bg-gray-200"><Icon name="chevron-right" className="w-4 h-4" /></button>
-                                </div>
                             </div>
-
-                            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase text-gray-400">
-                                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-1">{d}</div>)}
+                            <div className="flex items-center gap-3 text-[10px] font-bold">
+                                <span className="text-emerald-600 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Income</span>
+                                <span className="text-rose-500 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500" /> Expense</span>
+                                {(rangeFilter === '7d' || rangeFilter === '14d') && (
+                                    <span className="text-gray-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full border border-dashed border-gray-400" /> Upcoming</span>
+                                )}
                             </div>
+                        </div>
 
-                            <div className="grid grid-cols-7 gap-1">
-                                {calCells.map((cell, idx) => {
-                                    if (!cell) return <div key={`empty-${idx}`} className="h-12 sm:h-14" />;
-                                    const isSel = cell.ymd === selectedDayYMD;
-                                    const isToday = cell.ymd === moment().format('YYYY-MM-DD');
+                        {calendarItems.length === 0 ? (
+                            <p className="py-8 text-center text-xs text-gray-400">No active months with transactions found yet.</p>
+                        ) : (
+                            <div className={`grid gap-2 ${
+                                isMonthMode
+                                    ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6'
+                                    : rangeFilter === '30d'
+                                        ? 'grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7'
+                                        : 'grid-cols-2 sm:grid-cols-4 md:grid-cols-7'
+                            }`}>
+                                {calendarItems.map(cell => {
+                                    const isSel = cell.key === selectedKey;
                                     const hasInc = cell.data.income > 0;
                                     const hasExp = cell.data.expense > 0;
                                     return (
                                         <button
-                                            key={cell.ymd}
+                                            key={cell.key}
                                             type="button"
-                                            onClick={() => { playAudio('click'); setSelectedDayYMD(cell.ymd); }}
-                                            className={`h-12 sm:h-14 p-1 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                                            onClick={() => { playAudio('click'); setSelectedKey(cell.key); }}
+                                            className={`p-2.5 rounded-xl border text-left flex flex-col justify-between min-h-[78px] sm:min-h-[86px] transition-all ${
                                                 isSel
-                                                    ? 'bg-[#005fb8] text-white border-[#005fb8] shadow-sm'
-                                                    : isToday
-                                                        ? 'bg-blue-500/10 border-[#005fb8]/50 text-gray-900 dark:text-white'
-                                                        : 'bg-white/70 dark:bg-dark-800/60 border-gray-200/60 dark:border-white/10 hover:border-[#005fb8]/50'
+                                                    ? 'bg-[#005fb8] text-white border-[#005fb8] shadow-md'
+                                                    : cell.isToday
+                                                        ? 'bg-blue-50/70 dark:bg-blue-500/15 border-[#005fb8] text-gray-900 dark:text-white'
+                                                        : cell.isFuture
+                                                            ? 'bg-gray-50/70 dark:bg-white/[0.02] border-dashed border-gray-300 dark:border-white/15 text-gray-500 dark:text-gray-400'
+                                                            : 'bg-white dark:bg-[#1a1a1f] border-gray-200 dark:border-white/10 text-gray-900 dark:text-white hover:border-[#005fb8]/60'
                                             }`}
                                         >
-                                            <span className="text-[11px] font-numbers font-bold leading-none">{cell.day}</span>
-                                            <div className="flex flex-col gap-0.5 text-[8.5px] font-numbers font-bold leading-none overflow-hidden">
-                                                {hasInc && <span className={isSel ? 'text-emerald-200 truncate' : 'text-emerald-600 dark:text-emerald-400 truncate'}>+{Math.round(cell.data.income)}</span>}
-                                                {hasExp && <span className={isSel ? 'text-rose-200 truncate' : 'text-rose-500 truncate'}>-{Math.round(cell.data.expense)}</span>}
+                                            <div className="flex items-center justify-between gap-1 w-full">
+                                                <span className={`text-[10px] font-bold uppercase ${isSel ? 'text-blue-100' : 'text-gray-400'}`}>
+                                                    {cell.topLabel}
+                                                </span>
+                                                {cell.isToday && (
+                                                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${isSel ? 'bg-white/20 text-white' : 'bg-[#005fb8] text-white'}`}>
+                                                        {isMonthMode ? 'Now' : 'Today'}
+                                                    </span>
+                                                )}
+                                                {cell.isFuture && !cell.isToday && (
+                                                    <span className="text-[8px] font-semibold uppercase opacity-70">Next</span>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-baseline gap-1 mt-0.5">
+                                                <span className="text-base sm:text-lg font-numbers font-bold leading-none">{cell.mainNum}</span>
+                                                {cell.subMonth && <span className={`text-[10px] font-semibold ${isSel ? 'text-blue-100' : 'text-gray-400'}`}>{cell.subMonth}</span>}
+                                            </div>
+
+                                            <div className="mt-1.5 space-y-0.5 text-[10px] font-numbers font-bold leading-tight">
+                                                {hasInc && (
+                                                    <div className={isSel ? 'text-emerald-200 truncate' : 'text-emerald-600 dark:text-emerald-400 truncate'}>
+                                                        +৳{Math.round(cell.data.income).toLocaleString()}
+                                                    </div>
+                                                )}
+                                                {hasExp && (
+                                                    <div className={isSel ? 'text-rose-200 truncate' : 'text-rose-500 truncate'}>
+                                                        -৳{Math.round(cell.data.expense).toLocaleString()}
+                                                    </div>
+                                                )}
+                                                {!hasInc && !hasExp && (
+                                                    <div className={`text-[9px] font-sans font-medium ${isSel ? 'text-blue-100/80' : 'text-gray-300 dark:text-gray-600'}`}>
+                                                        {cell.isFuture ? 'Upcoming' : '—'}
+                                                    </div>
+                                                )}
                                             </div>
                                         </button>
                                     );
                                 })}
                             </div>
-                        </div>
+                        )}
+                    </div>
 
-                        {/* Selected Day Details Panel */}
-                        <div className="lg:col-span-5 p-3.5 rounded-2xl bg-gray-50/90 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 flex flex-col justify-between gap-3">
-                            <div className="space-y-2.5">
-                                <div className="flex items-center justify-between gap-2 pb-2 border-b border-gray-200/70 dark:border-white/10">
-                                    <span className="text-xs font-bold text-gray-900 dark:text-white">
-                                        {moment(selectedDayYMD).format('DD MMM YYYY')}
-                                    </span>
-                                    <div className="flex items-center gap-2 text-[11px] font-numbers font-bold">
-                                        <span className="text-emerald-600">+৳{Math.round(selectedDayData.income).toLocaleString()}</span>
-                                        <span className="text-rose-500">-৳{Math.round(selectedDayData.expense).toLocaleString()}</span>
-                                    </div>
-                                </div>
-
-                                {selectedDayData.items.length === 0 ? (
-                                    <p className="text-xs text-gray-400 py-6 text-center">No income or expense recorded on this date.</p>
-                                ) : (
-                                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                                        {selectedDayData.items.map((it, idx) => (
-                                            <div key={idx} className="p-2 rounded-lg bg-white dark:bg-dark-800 border border-gray-200/60 dark:border-white/10 flex items-center justify-between gap-2 text-xs">
-                                                <span className="truncate font-semibold text-gray-800 dark:text-gray-200">{it.title}</span>
-                                                <span className={`font-numbers font-bold shrink-0 ${it.type === 'income' ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                    {it.type === 'income' ? '+' : '-'}৳{Math.round(it.amount).toLocaleString()}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                    {/* BOTTOM FULL-WIDTH SELECTED DAY / MONTH LEDGER + ACTIONS */}
+                    <div className="w-full p-4 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 shadow-sm space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-gray-100 dark:border-white/10">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-bold text-gray-900 dark:text-white">{selectedTitle}</span>
+                                <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-numbers font-bold">
+                                    +৳{Math.round(selectedData.income).toLocaleString()}
+                                </span>
+                                <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-300 text-xs font-numbers font-bold">
+                                    -৳{Math.round(selectedData.expense).toLocaleString()}
+                                </span>
                             </div>
 
-                            <div className="flex items-center gap-2 pt-2 border-t border-gray-200/70 dark:border-white/10">
+                            <div className="flex items-center gap-2 shrink-0">
                                 {typeof onAddExpense === 'function' && (
-                                    <button type="button" onClick={onAddExpense} className="flex-1 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold win-button">
+                                    <button type="button" onClick={onAddExpense} className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold win-button">
                                         + Add Expense
                                     </button>
                                 )}
                                 {typeof goTo === 'function' && (
-                                    <button type="button" onClick={() => goTo('orders')} className="flex-1 py-2 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold win-button">
+                                    <button type="button" onClick={() => goTo('orders')} className="px-3.5 py-2 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold win-button">
                                         All Transactions →
                                     </button>
                                 )}
                             </div>
                         </div>
+
+                        {selectedData.items.length === 0 ? (
+                            <p className="text-xs text-gray-400 py-5 text-center">No income or expense recorded for {selectedTitle}.</p>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+                                {selectedData.items.map((it, idx) => (
+                                    <div key={idx} className="p-2.5 rounded-xl bg-gray-50/90 dark:bg-dark-800/70 border border-gray-200/60 dark:border-white/10 flex items-center justify-between gap-2 text-xs">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate font-semibold text-gray-800 dark:text-gray-200">{it.title}</p>
+                                            {isMonthMode && <span className="text-[10px] text-gray-400 font-numbers">{it.date}</span>}
+                                        </div>
+                                        <span className={`font-numbers font-bold shrink-0 ${it.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}>
+                                            {it.type === 'income' ? '+' : '-'}৳{Math.round(it.amount).toLocaleString()}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             );
@@ -20347,6 +20545,435 @@ const SmartPhoneAction = ({ phone }) => {
         };
 
         // ==========================================
+        // ✅ ROLE-BASED DAILY ROUTINE CHECKLIST + DAILY COMPLETION RECORD CALENDAR + ADMIN MANAGER
+        // ==========================================
+        const RoleDailyChecklistWidget = ({ auth, routineTasks = [], routineLogs = [], setRoutineLogs, executeAPI, fetchOrders, addToast }) => {
+            const playAudio = (t) => { if (typeof window.playSound === 'function') window.playSound(t); };
+            const isAdmin = auth?.role === 'Admin';
+            const myRole = String(auth?.role || 'Student').trim();
+            const todayYMD = moment().format('YYYY-MM-DD');
+
+            const [viewTab, setViewTab] = useState('my-tasks'); // 'my-tasks' | 'manage' (Admin only)
+            const [manageRole, setManageRole] = useState('Student');
+            const [taskModal, setTaskModal] = useState({ isOpen: false, id: null, role: 'Student', title: '', timeSlot: '', description: '', saving: false });
+            const [calMonth, setCalMonth] = useState(() => moment().startOf('month'));
+            const [selectedCalDate, setSelectedCalDate] = useState(todayYMD);
+            const [savingCheck, setSavingCheck] = useState(false);
+
+            const myRoleTasks = useMemo(() => {
+                return (routineTasks || []).filter(t => String(t.role || '').trim().toLowerCase() === myRole.toLowerCase());
+            }, [routineTasks, myRole]);
+
+            const manageRoleTasks = useMemo(() => {
+                return (routineTasks || []).filter(t => String(t.role || '').trim().toLowerCase() === manageRole.toLowerCase());
+            }, [routineTasks, manageRole]);
+
+            const logsByDate = useMemo(() => {
+                const map = {};
+                (routineLogs || []).forEach(l => {
+                    if (l.date) map[l.date] = l;
+                });
+                return map;
+            }, [routineLogs]);
+
+            const todayLog = logsByDate[todayYMD] || { date: todayYMD, completedIds: [], totalTasks: myRoleTasks.length, completedCount: 0 };
+            const checkedSet = new Set(Array.isArray(todayLog.completedIds) ? todayLog.completedIds : []);
+            const todayCompletedCount = myRoleTasks.filter(t => checkedSet.has(t.id)).length;
+            const todayTotalCount = myRoleTasks.length;
+            const todayPct = todayTotalCount > 0 ? Math.round((todayCompletedCount / todayTotalCount) * 100) : 0;
+
+            const handleToggleTask = async (taskId) => {
+                if (savingCheck) return;
+                playAudio('click');
+                const nextIds = checkedSet.has(taskId)
+                    ? Array.from(checkedSet).filter(id => id !== taskId)
+                    : [...Array.from(checkedSet), taskId];
+                const newCount = myRoleTasks.filter(t => nextIds.includes(t.id)).length;
+
+                // ⚡ 0ms অপটিমিস্টিক আপডেট (চেক করার সাথে সাথে ক্যালেন্ডার ও প্রগ্রেস বার আপডেট হবে)
+                const optimisticLog = {
+                    logKey: `${String(auth?.userId || '').toLowerCase()}__${todayYMD}`,
+                    date: todayYMD,
+                    completedIds: nextIds,
+                    totalTasks: todayTotalCount,
+                    completedCount: newCount,
+                    updatedAt: new Date().toISOString()
+                };
+                if (typeof setRoutineLogs === 'function') {
+                    setRoutineLogs(prev => [optimisticLog, ...(prev || []).filter(l => l.date !== todayYMD)]);
+                }
+
+                setSavingCheck(true);
+                try {
+                    const res = await executeAPI({
+                        action: 'toggle_routine_check',
+                        completedIds: nextIds,
+                        totalTasks: todayTotalCount
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        if (newCount === todayTotalCount && todayTotalCount > 0) {
+                            playAudio('success');
+                            if (typeof addToast === 'function') addToast('অসাধারণ! আজকের সব ডেইলি টাস্ক সম্পন্ন হয়েছে!', 'success');
+                        }
+                    } else if (typeof fetchOrders === 'function') {
+                        fetchOrders(true);
+                    }
+                } catch (e) {}
+                setSavingCheck(false);
+            };
+
+            const handleSaveAdminTask = async (e) => {
+                e.preventDefault();
+                if (!taskModal.title.trim()) return;
+                setTaskModal(p => ({ ...p, saving: true }));
+                playAudio('action');
+                try {
+                    const res = await executeAPI({
+                        action: 'save_routine_task',
+                        task: {
+                            id: taskModal.id,
+                            role: taskModal.role,
+                            title: taskModal.title.trim(),
+                            timeSlot: taskModal.timeSlot.trim(),
+                            description: taskModal.description.trim()
+                        }
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        playAudio('success');
+                        if (typeof addToast === 'function') addToast(data.message || 'Routine task saved!', 'success');
+                        setTaskModal({ isOpen: false, id: null, role: manageRole, title: '', timeSlot: '', description: '', saving: false });
+                        if (typeof fetchOrders === 'function') fetchOrders(true);
+                    } else {
+                        if (typeof addToast === 'function') addToast((data && data.message) || 'Save failed.', 'error');
+                        setTaskModal(p => ({ ...p, saving: false }));
+                    }
+                } catch (err) {
+                    if (typeof addToast === 'function') addToast('Network error.', 'error');
+                    setTaskModal(p => ({ ...p, saving: false }));
+                }
+            };
+
+            const handleDeleteAdminTask = async (t) => {
+                if (!window.confirm(`Delete "${t.title}" from ${t.role} daily tasks?`)) return;
+                playAudio('cancel');
+                try {
+                    const res = await executeAPI({ action: 'delete_routine_task', id: t.id });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        if (typeof addToast === 'function') addToast('Task deleted!', 'info');
+                        if (typeof fetchOrders === 'function') fetchOrders(true);
+                    }
+                } catch (err) {}
+            };
+
+            // ক্যালেন্ডার গ্রিড তৈরি (কোন দিন কয়টি টাস্ক ছিল ও কয়টি কমপ্লিট হয়েছে)
+            const monthCells = useMemo(() => {
+                const start = moment(calMonth).startOf('month');
+                const daysInM = start.daysInMonth();
+                const pad = start.day();
+                const cells = [];
+                for (let i = 0; i < pad; i++) cells.push(null);
+                for (let d = 1; d <= daysInM; d++) {
+                    const ymd = moment(start).date(d).format('YYYY-MM-DD');
+                    cells.push({ day: d, ymd, log: logsByDate[ymd] || null });
+                }
+                return cells;
+            }, [calMonth, logsByDate]);
+
+            const selectedDayLog = logsByDate[selectedCalDate] || null;
+            const ROLES_LIST = ['Student', 'Manager', 'Admin', 'Trainer', 'Team'];
+
+            return (
+                <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-4">
+                    {/* Header + Admin Switcher */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-gray-100 dark:border-white/10">
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <Icon name="check-square" className="w-5 h-5 text-emerald-600 shrink-0" />
+                                <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
+                                    Daily Assigned Tasks ({myRole})
+                                </h3>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-numbers font-bold ${
+                                    todayTotalCount > 0 && todayCompletedCount === todayTotalCount
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff]'
+                                }`}>
+                                    {todayCompletedCount}/{todayTotalCount} Done Today
+                                </span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                প্রতিদিন নতুন করে আনচেকড অবস্থায় আসবে — একটি একটি করে সম্পন্ন করে টিক দিন ও নিচের ক্যালেন্ডারে রেকর্ড দেখুন।
+                            </p>
+                        </div>
+
+                        {isAdmin && (
+                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-dark-900 p-1 rounded-xl border border-gray-200/70 dark:border-white/10 shrink-0 self-start sm:self-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => { playAudio('click'); setViewTab('my-tasks'); }}
+                                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap ${viewTab === 'my-tasks' ? 'bg-[#005fb8] text-white' : 'text-gray-600 dark:text-gray-300'}`}
+                                >
+                                    My Checklist
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { playAudio('click'); setViewTab('manage'); }}
+                                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap flex items-center gap-1 ${viewTab === 'manage' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'text-gray-600 dark:text-gray-300'}`}
+                                >
+                                    <Icon name="sliders" className="w-3 h-3" /> Manage All Roles
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* MODE A: ADMIN ROLE TASK MANAGER */}
+                    {isAdmin && viewTab === 'manage' ? (
+                        <div className="space-y-3.5">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                                    {ROLES_LIST.map(r => (
+                                        <button
+                                            key={r}
+                                            type="button"
+                                            onClick={() => { playAudio('click'); setManageRole(r); }}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 border ${
+                                                manageRole === r
+                                                    ? 'bg-[#005fb8] text-white border-[#005fb8]'
+                                                    : 'bg-white dark:bg-dark-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10'
+                                            }`}
+                                        >
+                                            {r} ({(routineTasks || []).filter(t => String(t.role).toLowerCase() === r.toLowerCase()).length})
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        playAudio('click');
+                                        setTaskModal({ isOpen: true, id: null, role: manageRole, title: '', timeSlot: '', description: '', saving: false });
+                                    }}
+                                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 win-button"
+                                >
+                                    <Icon name="plus" className="w-3.5 h-3.5" /> Add {manageRole} Task
+                                </button>
+                            </div>
+
+                            {manageRoleTasks.length === 0 ? (
+                                <div className="py-8 text-center rounded-xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
+                                    {manageRole} রোলের জন্য এখনো কোনো ডেইলি টাস্ক সেট করা হয়নি।
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-gray-100 dark:divide-white/10 rounded-xl border border-gray-200/70 dark:border-white/10 bg-white dark:bg-[#141417] overflow-hidden">
+                                    {manageRoleTasks.map((t, idx) => (
+                                        <div key={t.id} className="p-3 flex items-center justify-between gap-3">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="w-5 h-5 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-numbers font-bold flex items-center justify-center shrink-0">
+                                                        {idx + 1}
+                                                    </span>
+                                                    <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white break-words">{t.title}</p>
+                                                    {t.timeSlot && (
+                                                        <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-white/10 text-[10px] font-semibold text-gray-600 dark:text-gray-300">
+                                                            {t.timeSlot}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {t.description && <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 pl-7">{t.description}</p>}
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTaskModal({ isOpen: true, id: t.id, role: t.role, title: t.title, timeSlot: t.timeSlot || '', description: t.description || '', saving: false })}
+                                                    className="p-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors"
+                                                    title="Edit"
+                                                >
+                                                    <Icon name="edit-2" className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteAdminTask(t)}
+                                                    className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors"
+                                                    title="Delete"
+                                                >
+                                                    <Icon name="trash-2" className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        /* MODE B: USER'S OWN DAILY CHECKLIST + PERMANENT RECORD CALENDAR */
+                        <div className="space-y-4">
+                            {/* Today's Progress Bar */}
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-xs font-bold">
+                                    <span className="text-gray-600 dark:text-gray-300">Today’s Progress ({moment().format('DD MMM YYYY')})</span>
+                                    <span className="font-numbers text-emerald-600 dark:text-emerald-400">{todayPct}%</span>
+                                </div>
+                                <div className="w-full h-2 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${todayPct}%` }} />
+                                </div>
+                            </div>
+
+                            {/* Checklist Items */}
+                            {myRoleTasks.length === 0 ? (
+                                <div className="py-6 px-4 text-center rounded-xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
+                                    আপনার ({myRole}) জন্য এখনো কোনো নির্ধারিত ডেইলি টাস্ক যুক্ত করা হয়নি।
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {myRoleTasks.map(task => {
+                                        const isDone = checkedSet.has(task.id);
+                                        return (
+                                            <label
+                                                key={task.id}
+                                                onClick={() => handleToggleTask(task.id)}
+                                                className={`p-3 rounded-xl border cursor-pointer flex items-start gap-3 transition-all select-none ${
+                                                    isDone
+                                                        ? 'bg-emerald-500/[0.09] dark:bg-emerald-500/[0.14] border-emerald-400/60 dark:border-emerald-500/35'
+                                                        : 'bg-white dark:bg-[#141417] border-gray-200/80 dark:border-white/10 hover:border-[#005fb8]/60'
+                                                }`}
+                                            >
+                                                <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 mt-0.5 border transition-colors ${
+                                                    isDone ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white dark:bg-dark-800 border-gray-300 dark:border-white/25'
+                                                }`}>
+                                                    {isDone && <Icon name="check" className="w-3.5 h-3.5" />}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className={`text-xs sm:text-sm font-bold leading-snug break-words ${isDone ? 'line-through text-emerald-800 dark:text-emerald-300 opacity-80' : 'text-gray-900 dark:text-white'}`}>
+                                                            {task.title}
+                                                        </span>
+                                                        {task.timeSlot && (
+                                                            <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-white/10 text-[10px] font-semibold text-gray-500 dark:text-gray-300 shrink-0">
+                                                                {task.timeSlot}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {task.description && (
+                                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{task.description}</p>
+                                                    )}
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* 📅 Daily Task Completion Record Calendar */}
+                            <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 space-y-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                                        <Icon name="calendar-check" className="w-4 h-4 text-emerald-600" />
+                                        <span>Daily Task Record — {calMonth.format('MMMM YYYY')}</span>
+                                    </h4>
+                                    <div className="flex items-center gap-1">
+                                        <button type="button" onClick={() => setCalMonth(m => moment(m).subtract(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center"><Icon name="chevron-left" className="w-4 h-4" /></button>
+                                        <button type="button" onClick={() => { setCalMonth(moment().startOf('month')); setSelectedCalDate(todayYMD); }} className="px-2 h-7 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold">Today</button>
+                                        <button type="button" onClick={() => setCalMonth(m => moment(m).add(1, 'month'))} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-800 flex items-center justify-center"><Icon name="chevron-right" className="w-4 h-4" /></button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-7 gap-1 text-center text-[9.5px] font-bold uppercase text-gray-400">
+                                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-0.5">{d}</div>)}
+                                </div>
+
+                                <div className="grid grid-cols-7 gap-1">
+                                    {monthCells.map((cell, idx) => {
+                                        if (!cell) return <div key={`pad-${idx}`} className="h-11 sm:h-12" />;
+                                        const isSel = cell.ymd === selectedCalDate;
+                                        const isTdy = cell.ymd === todayYMD;
+                                        const rec = cell.log;
+                                        const doneC = rec ? Number(rec.completedCount || 0) : 0;
+                                        const totC = rec ? Number(rec.totalTasks || 0) : (isTdy ? todayTotalCount : 0);
+                                        const isFull = totC > 0 && doneC >= totC;
+                                        const isPart = doneC > 0 && doneC < totC;
+
+                                        return (
+                                            <button
+                                                key={cell.ymd}
+                                                type="button"
+                                                onClick={() => { playAudio('click'); setSelectedCalDate(cell.ymd); }}
+                                                className={`h-11 sm:h-12 p-1 rounded-xl border flex flex-col items-center justify-between transition-all ${
+                                                    isSel
+                                                        ? 'bg-[#005fb8] text-white border-[#005fb8] shadow-sm'
+                                                        : isFull
+                                                            ? 'bg-emerald-500/15 border-emerald-400/60 text-emerald-900 dark:text-emerald-200'
+                                                            : isPart
+                                                                ? 'bg-amber-500/15 border-amber-400/60 text-amber-900 dark:text-amber-200'
+                                                                : isTdy
+                                                                    ? 'bg-blue-500/10 border-[#005fb8]/50 text-gray-900 dark:text-white'
+                                                                    : 'bg-white dark:bg-dark-800/50 border-gray-200/70 dark:border-white/10 text-gray-600 dark:text-gray-400'
+                                                }`}
+                                            >
+                                                <span className="text-[11px] font-numbers font-bold leading-none">{cell.day}</span>
+                                                <span className={`text-[9px] font-numbers font-bold leading-none ${
+                                                    isSel ? 'text-blue-100' : isFull ? 'text-emerald-700 dark:text-emerald-300' : isPart ? 'text-amber-700 dark:text-amber-300' : 'opacity-45'
+                                                }`}>
+                                                    {totC > 0 ? `${doneC}/${totC}` : '—'}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Selected Date Record Strip */}
+                                <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                    <span className="font-bold text-gray-800 dark:text-gray-200">
+                                        {moment(selectedCalDate).format('DD MMM YYYY')}
+                                    </span>
+                                    {selectedDayLog ? (
+                                        <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                                            মোট টাস্ক: <strong>{selectedDayLog.totalTasks}টি</strong> • সম্পন্ন হয়েছে: <strong>{selectedDayLog.completedCount}টি</strong>
+                                        </span>
+                                    ) : (
+                                        <span className="text-gray-400">এই তারিখে কোনো টাস্ক রেকর্ড নেই।</span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Admin Add/Edit Role Routine Task Modal */}
+                    <Modal isOpen={taskModal.isOpen} onClose={() => setTaskModal(p => ({ ...p, isOpen: false }))} title={taskModal.id ? 'Edit Daily Routine Task' : 'Add Daily Routine Task'} maxWidth="max-w-md" compact={true}>
+                        <form onSubmit={handleSaveAdminTask} className="space-y-3">
+                            <div>
+                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Target Role *</label>
+                                <select value={taskModal.role} onChange={e => setTaskModal(p => ({ ...p, role: e.target.value }))} className="w-full input-style px-3 py-2 text-xs font-bold">
+                                    {ROLES_LIST.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Task Title *</label>
+                                <input type="text" required value={taskModal.title} onChange={e => setTaskModal(p => ({ ...p, title: e.target.value }))} className="w-full input-style px-3 py-2 text-sm font-semibold" placeholder="e.g. Watch 1 Class Video & Practice 1 Hour" />
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Suggested Time / Slot (Optional)</label>
+                                <input type="text" value={taskModal.timeSlot} onChange={e => setTaskModal(p => ({ ...p, timeSlot: e.target.value }))} className="w-full input-style px-3 py-2 text-xs" placeholder="e.g. Morning / 9:00 PM" />
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Short Note (Optional)</label>
+                                <textarea rows="2" value={taskModal.description} onChange={e => setTaskModal(p => ({ ...p, description: e.target.value }))} className="w-full input-style px-3 py-2 text-xs resize-none" placeholder="Additional guidance..." />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                                <button type="button" onClick={() => setTaskModal(p => ({ ...p, isOpen: false }))} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-dark-700 text-xs font-bold">Cancel</button>
+                                <button type="submit" disabled={taskModal.saving} className="px-5 py-2 rounded-lg bg-[#005fb8] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button">
+                                    {taskModal.saving ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="save" className="w-3.5 h-3.5" />}
+                                    <span>{taskModal.saving ? 'Saving...' : 'Save Task'}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </Modal>
+                </div>
+            );
+        };
+
+        // ==========================================
         // 🎓 UNIQUE STUDENT PROFILE DASHBOARD (RIGHT PROFILE SIDEBAR + WEEKLY ROUTINE + STUDY COACH)
         // ==========================================
         const StudentDashboardView = ({
@@ -20367,6 +20994,9 @@ const SmartPhoneAction = ({ phone }) => {
             globalLeaderboard = null,
             executeAPI,
             fetchOrders,
+            routineTasks = [],
+            routineLogs = [],
+            setRoutineLogs,
             setStudentsPanel,
             addToast
         }) => {
@@ -21294,6 +21924,17 @@ const SmartPhoneAction = ({ phone }) => {
                             </div>
 
                             </LazySection>
+
+                            {/* 4.5 Role-Based Daily Assigned Tasks & Record Calendar */}
+                            <RoleDailyChecklistWidget
+                                auth={auth}
+                                routineTasks={routineTasks}
+                                routineLogs={routineLogs}
+                                setRoutineLogs={setRoutineLogs}
+                                executeAPI={executeAPI}
+                                fetchOrders={fetchOrders}
+                                addToast={addToast}
+                            />
 
                             {/* 5. Smart Study Coach & Built-in Focus Timer (Lazy Loaded When Scrolled Into View) */}
                             <LazySection minHeight={210}>
@@ -27569,6 +28210,8 @@ const [courseModules, setCourseModules] = useState([]);
            const [clientLeads, setClientLeads] = useState([]);
             const [studentLeads, setStudentLeads] = useState([]);
             const [dailyTasks, setDailyTasks] = useState([]);
+            const [routineTasks, setRoutineTasks] = useState([]);
+            const [routineLogs, setRoutineLogs] = useState([]);
             const [workspaceLinks, setWorkspaceLinks] = useState([]); // 🟢 NEW: Quick Links
             const [marketplaceGigs, setMarketplaceGigs] = useState([]);
             const [marketplaceProfiles, setMarketplaceProfiles] = useState([]);
@@ -27872,6 +28515,8 @@ const [courseModules, setCourseModules] = useState([]);
                 setCourseAssignments(d.courseAssignments || []);
 				setResources(d.resources || []);
                 setDailyTasks(d.dailyTasks || []);
+                setRoutineTasks(d.routineTasks || []);
+                setRoutineLogs(d.routineLogs || []);
                 setWorkspaceLinks(d.workspaceLinks || []); // 🟢 Load Links
                 setMarketplaceGigs(d.marketplaceGigs || []);
                 setMarketplaceProfiles(d.marketplaceProfiles || []);
@@ -29514,6 +30159,9 @@ const [courseModules, setCourseModules] = useState([]);
                                           globalLeaderboard={typeof globalLeaderboard !== 'undefined' ? globalLeaderboard : null}
                                           executeAPI={executeAPI}
                                           fetchOrders={fetchOrders}
+                                          routineTasks={routineTasks}
+                                          routineLogs={routineLogs}
+                                          setRoutineLogs={setRoutineLogs}
                                           setStudentsPanel={setStudentsPanel}
                                           addToast={addToast}
                                       />
@@ -29672,7 +30320,20 @@ const [courseModules, setCourseModules] = useState([]);
 )}
 {false && <NotesView notes={myNotes} executeAPI={executeAPI} addToast={addToast} fetchOrders={fetchOrders} auth={auth} />}
                                                 {currentRoute === 'products' && <ProductsView addToast={addToast} auth={auth} metrics={metrics} />}
-                                                {currentRoute === 'daily-tasks' && <DailyTasksView dailyTasks={dailyTasks} setDailyTasks={setDailyTasks} projects={projects} orders={orders} expenses={filteredExpensesData} clientLeads={clientLeads} studentLeads={studentLeads} executeAPI={executeAPI} fetchOrders={fetchOrders} addToast={addToast} auth={auth} globalContacts={globalContacts} batches={batches} bookings={bookings} workspaceLinks={workspaceLinks} />}
+                                                {currentRoute === 'daily-tasks' && (
+                                                    <div className="space-y-5">
+                                                        <RoleDailyChecklistWidget
+                                                            auth={auth}
+                                                            routineTasks={routineTasks}
+                                                            routineLogs={routineLogs}
+                                                            setRoutineLogs={setRoutineLogs}
+                                                            executeAPI={executeAPI}
+                                                            fetchOrders={fetchOrders}
+                                                            addToast={addToast}
+                                                        />
+                                                        <DailyTasksView dailyTasks={dailyTasks} setDailyTasks={setDailyTasks} projects={projects} orders={orders} expenses={filteredExpensesData} clientLeads={clientLeads} studentLeads={studentLeads} executeAPI={executeAPI} fetchOrders={fetchOrders} addToast={addToast} auth={auth} globalContacts={globalContacts} batches={batches} bookings={bookings} workspaceLinks={workspaceLinks} />
+                                                    </div>
+                                                )}
                                                 {currentRoute === 'marketplace' && (
                                                     <MarketplaceView
                                                         auth={auth}
