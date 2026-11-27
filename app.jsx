@@ -4565,10 +4565,11 @@
                         </div>
                     )}
 
-                    {/* 🟢 Financial Overview & Smart Calendar (Exact Duplicate from Total Analytics) */}
+                   {/* 🟢 Financial Overview & Smart Calendar (Exact Duplicate from Total Analytics) */}
                     <SmartFinancialCalendar
                         orders={orders}
                         expenses={expenses}
+                        financeConfig={financeConfig}
                         onAddExpense={onAddExpense}
                         goTo={(route) => {
                             if (typeof window.playSound === 'function') window.playSound('click');
@@ -5645,7 +5646,7 @@
       // ==========================================
         // SMART FINANCIAL CALENDAR & MONEY MANAGEMENT (PRO UI - 100% BUG-FREE)
         // ==========================================
-       const SmartFinancialCalendar = ({ orders = [], expenses = [], onAddExpense, goTo }) => {
+       const SmartFinancialCalendar = ({ orders = [], expenses = [], financeConfig = null, onAddExpense, goTo }) => {
             const playAudio = (t) => { if (typeof window.playSound === 'function') window.playSound(t); };
             const [rangeFilter, setRangeFilter] = useState('7d'); // '7d' | '14d' | '30d' | '12m' | 'all'
             const [selectedKey, setSelectedKey] = useState(() => moment().format('YYYY-MM-DD'));
@@ -5749,14 +5750,56 @@
                 const totalInc = buckets.reduce((s, b) => s + b.income, 0);
                 const totalExp = buckets.reduce((s, b) => s + b.expense, 0);
                 const net = totalInc - totalExp;
-                const horizonDays = rangeFilter === '7d' ? 7 : rangeFilter === '14d' ? 14 : 30;
-                const isLoss = net < 0;
-                const dailyGuidance = isLoss
-                    ? Math.ceil(Math.abs(net) / horizonDays)
-                    : Math.floor(net / horizonDays);
 
-                return { buckets, totalInc, totalExp, net, isLoss, dailyGuidance, horizonDays };
-            }, [dailyMap, monthlyMap, rangeFilter]);
+                // 🎯 Monthly Target (Category Budget Limits বা Savings Goal) এর সাথে তুলনা করে Safe Daily Spend হিসাব
+                const curYM = moment().format('YYYY-MM');
+                const thisMonthRec = monthlyMap[curYM] || { income: 0, expense: 0 };
+                const thisMonthNet = thisMonthRec.income - thisMonthRec.expense;
+                const daysLeftInMonth = Math.max(1, moment().daysInMonth() - moment().date() + 1);
+
+                const monthlyBudgetSum = Object.values(financeConfig?.budgets || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+                const monthlySavingsGoal = Math.max(0, Number(financeConfig?.savingsGoal || 0));
+
+                let isLoss = false;
+                let dailyGuidance = 0;
+                let guidanceTitle = 'Safe Daily Spend';
+                let guidanceSub = '';
+
+                if (monthlyBudgetSum > 0) {
+                    const remainingBudget = monthlyBudgetSum - thisMonthRec.expense;
+                    if (thisMonthNet < 0) {
+                        isLoss = true;
+                        guidanceTitle = 'Daily Income Needed';
+                        dailyGuidance = Math.ceil(Math.abs(thisMonthNet) / daysLeftInMonth);
+                        guidanceSub = `Recover loss • Target ৳${Math.round(monthlyBudgetSum).toLocaleString()} (${daysLeftInMonth}d left)`;
+                    } else if (remainingBudget < 0) {
+                        isLoss = true;
+                        guidanceTitle = 'Daily Income Needed';
+                        dailyGuidance = Math.ceil(Math.abs(remainingBudget) / daysLeftInMonth);
+                        guidanceSub = `Over ৳${Math.round(monthlyBudgetSum).toLocaleString()} Monthly Target (${daysLeftInMonth}d left)`;
+                    } else {
+                        isLoss = false;
+                        guidanceTitle = 'Safe Daily Spend';
+                        dailyGuidance = Math.floor(remainingBudget / daysLeftInMonth);
+                        guidanceSub = `৳${Math.round(remainingBudget).toLocaleString()} left of ৳${Math.round(monthlyBudgetSum).toLocaleString()} Target (${daysLeftInMonth}d left)`;
+                    }
+                } else {
+                    const spendableAfterGoal = thisMonthNet - monthlySavingsGoal;
+                    if (spendableAfterGoal < 0) {
+                        isLoss = true;
+                        guidanceTitle = 'Daily Income Needed';
+                        dailyGuidance = Math.ceil(Math.abs(spendableAfterGoal) / daysLeftInMonth);
+                        guidanceSub = `To hit ৳${Math.round(monthlySavingsGoal).toLocaleString()} Monthly Target (${daysLeftInMonth}d left)`;
+                    } else {
+                        isLoss = false;
+                        guidanceTitle = 'Safe Daily Spend';
+                        dailyGuidance = Math.floor(spendableAfterGoal / daysLeftInMonth);
+                        guidanceSub = `After ৳${Math.round(monthlySavingsGoal).toLocaleString()} Monthly Target (${daysLeftInMonth}d left)`;
+                    }
+                }
+
+                return { buckets, totalInc, totalExp, net, isLoss, dailyGuidance, guidanceTitle, guidanceSub };
+            }, [dailyMap, monthlyMap, rangeFilter, financeConfig]);
 
             // ৩. জিরো-ব্লিংক প্রিমিয়াম লাইন চার্ট (Instance Reuse -> 30s সিঙ্কে কখনো ফ্লিকার/ব্লিংক করবে না)
             const chartSignature = useMemo(() => JSON.stringify({
@@ -5887,47 +5930,15 @@
                 if (lineChartInst.current) { lineChartInst.current.destroy(); lineChartInst.current = null; }
             }, []);
 
-            // ৪. ফিল্টার-সিঙ্কড ক্যালেন্ডার গ্রিড (7D = গত ৭ + আগামী ৭, 14D = গত ১৪ + আগামী ১৪, 30D = গত ৩০, 12M = ১২ মাস, All = অ্যাক্টিভ মাস)
+            // ৪. ফিল্টার-সিঙ্কড ক্যালেন্ডার গ্রিড (শুধু Last 7D, Last 14D, Last 30D, Last 12M, All Time)
             const calendarItems = useMemo(() => {
                 const today = moment().startOf('day');
                 const todayStr = today.format('YYYY-MM-DD');
 
-                if (rangeFilter === '7d') {
-                    // গত ৭ দিন (আজসহ) + আগামী ৭ দিন = ১৪ ঘর
-                    return Array.from({ length: 14 }).map((_, idx) => {
-                        const d = moment(today).subtract(6, 'days').add(idx, 'days');
-                        const k = d.format('YYYY-MM-DD');
-                        return {
-                            key: k,
-                            topLabel: d.format('ddd'),
-                            mainNum: d.format('DD'),
-                            subMonth: d.format('MMM'),
-                            isToday: k === todayStr,
-                            isFuture: d.isAfter(today, 'day'),
-                            data: dailyMap[k] || { income: 0, expense: 0, items: [] }
-                        };
-                    });
-                }
-                if (rangeFilter === '14d') {
-                    // গত ১৪ দিন (আজসহ) + আগামী ১৪ দিন = ২৮ ঘর
-                    return Array.from({ length: 28 }).map((_, idx) => {
-                        const d = moment(today).subtract(13, 'days').add(idx, 'days');
-                        const k = d.format('YYYY-MM-DD');
-                        return {
-                            key: k,
-                            topLabel: d.format('ddd'),
-                            mainNum: d.format('DD'),
-                            subMonth: d.format('MMM'),
-                            isToday: k === todayStr,
-                            isFuture: d.isAfter(today, 'day'),
-                            data: dailyMap[k] || { income: 0, expense: 0, items: [] }
-                        };
-                    });
-                }
-                if (rangeFilter === '30d') {
-                    // গত ৩০ দিন
-                    return Array.from({ length: 30 }).map((_, idx) => {
-                        const d = moment(today).subtract(29, 'days').add(idx, 'days');
+                if (rangeFilter === '7d' || rangeFilter === '14d' || rangeFilter === '30d') {
+                    const daysCount = rangeFilter === '7d' ? 7 : rangeFilter === '14d' ? 14 : 30;
+                    return Array.from({ length: daysCount }).map((_, idx) => {
+                        const d = moment(today).subtract(daysCount - 1, 'days').add(idx, 'days');
                         const k = d.format('YYYY-MM-DD');
                         return {
                             key: k,
@@ -5990,8 +6001,8 @@
             ];
 
             const calendarSubtitle = {
-                '7d': 'Last 7 Days + Next 7 Days (14-Day Window)',
-                '14d': 'Last 14 Days + Next 14 Days (28-Day Window)',
+                '7d': 'Last 7 Days Daily Cashflow',
+                '14d': 'Last 14 Days Daily Cashflow',
                 '30d': 'Last 30 Days Daily Cashflow',
                 '12m': 'Last 12 Months Monthly Breakdown',
                 'all': `Active Months With Income/Expense (${calendarItems.length} Months)`
@@ -6049,22 +6060,20 @@
                             <p className="text-[10px] text-gray-500 mt-0.5">{chartBundle.net >= 0 ? 'Positive surplus' : 'Net deficit'}</p>
                         </div>
 
-                        {/* 4th Card: Safe Daily Spend (Surplus) OR Daily Income Needed (Loss) */}
+                        {/* 4th Card: Safe Daily Spend vs Monthly Target (OR Daily Income Needed if Loss/Over Target) */}
                         <div className={`p-3.5 rounded-xl border ${
                             chartBundle.isLoss
                                 ? 'bg-amber-500/[0.10] border-amber-300/70 dark:border-amber-500/30'
                                 : 'bg-teal-500/[0.08] border-teal-200/70 dark:border-teal-500/25'
                         }`}>
                             <p className={`text-[10px] font-bold uppercase ${chartBundle.isLoss ? 'text-amber-700 dark:text-amber-300' : 'text-teal-700 dark:text-teal-300'}`}>
-                                {chartBundle.isLoss ? 'Daily Income Needed' : 'Safe Daily Spend'}
+                                {chartBundle.guidanceTitle}
                             </p>
                             <p className={`text-lg sm:text-xl font-numbers font-bold mt-0.5 truncate ${chartBundle.isLoss ? 'text-amber-700 dark:text-amber-300' : 'text-teal-700 dark:text-teal-400'}`}>
                                 ৳{chartBundle.dailyGuidance.toLocaleString()}<span className="text-xs font-semibold opacity-75">/day</span>
                             </p>
-                            <p className="text-[10px] text-gray-500 mt-0.5 truncate">
-                                {chartBundle.isLoss
-                                    ? `To recover loss in ${chartBundle.horizonDays} days`
-                                    : `Safe daily limit (${chartBundle.horizonDays}d window)`}
+                            <p className="text-[10px] text-gray-500 mt-0.5 truncate" title={chartBundle.guidanceSub}>
+                                {chartBundle.guidanceSub}
                             </p>
                         </div>
                     </div>
@@ -6086,9 +6095,6 @@
                             <div className="flex items-center gap-3 text-[10px] font-bold">
                                 <span className="text-emerald-600 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Income</span>
                                 <span className="text-rose-500 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500" /> Expense</span>
-                                {(rangeFilter === '7d' || rangeFilter === '14d') && (
-                                    <span className="text-gray-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full border border-dashed border-gray-400" /> Upcoming</span>
-                                )}
                             </div>
                         </div>
 
@@ -20555,18 +20561,31 @@ const SmartPhoneAction = ({ phone }) => {
 
             const [viewTab, setViewTab] = useState('my-tasks'); // 'my-tasks' | 'manage' (Admin only)
             const [manageRole, setManageRole] = useState('Student');
-            const [taskModal, setTaskModal] = useState({ isOpen: false, id: null, role: 'Student', title: '', timeSlot: '', description: '', saving: false });
+            const [taskModal, setTaskModal] = useState({ isOpen: false, id: null, role: 'Student', serial: '1', title: '', description: '', saving: false });
             const [calMonth, setCalMonth] = useState(() => moment().startOf('month'));
             const [selectedCalDate, setSelectedCalDate] = useState(todayYMD);
             const [savingCheck, setSavingCheck] = useState(false);
 
+            const parseSerial = (t, fallback = 999) => {
+                const n = parseInt(String(t?.timeSlot ?? '').replace(/[^0-9]/g, ''), 10);
+                return !isNaN(n) && n > 0 ? n : fallback;
+            };
+
+            const sortBySerial = (arr) => [...arr].sort((a, b) => parseSerial(a) - parseSerial(b) || String(a.title || '').localeCompare(String(b.title || '')));
+
             const myRoleTasks = useMemo(() => {
-                return (routineTasks || []).filter(t => String(t.role || '').trim().toLowerCase() === myRole.toLowerCase());
+                return sortBySerial((routineTasks || []).filter(t => String(t.role || '').trim().toLowerCase() === myRole.toLowerCase()));
             }, [routineTasks, myRole]);
 
             const manageRoleTasks = useMemo(() => {
-                return (routineTasks || []).filter(t => String(t.role || '').trim().toLowerCase() === manageRole.toLowerCase());
+                return sortBySerial((routineTasks || []).filter(t => String(t.role || '').trim().toLowerCase() === manageRole.toLowerCase()));
             }, [routineTasks, manageRole]);
+
+            const getNextSerialForRole = (roleName) => {
+                const list = (routineTasks || []).filter(t => String(t.role || '').trim().toLowerCase() === String(roleName).toLowerCase());
+                const maxS = list.reduce((mx, t) => Math.max(mx, parseSerial(t, 0)), 0);
+                return String(maxS + 1);
+            };
 
             const logsByDate = useMemo(() => {
                 const map = {};
@@ -20590,7 +20609,6 @@ const SmartPhoneAction = ({ phone }) => {
                     : [...Array.from(checkedSet), taskId];
                 const newCount = myRoleTasks.filter(t => nextIds.includes(t.id)).length;
 
-                // ⚡ 0ms অপটিমিস্টিক আপডেট (চেক করার সাথে সাথে ক্যালেন্ডার ও প্রগ্রেস বার আপডেট হবে)
                 const optimisticLog = {
                     logKey: `${String(auth?.userId || '').toLowerCase()}__${todayYMD}`,
                     date: todayYMD,
@@ -20623,19 +20641,57 @@ const SmartPhoneAction = ({ phone }) => {
                 setSavingCheck(false);
             };
 
+            const handleCopyTaskText = (e, task) => {
+                e.stopPropagation();
+                playAudio('click');
+                const serialNo = parseSerial(task, '');
+                const txt = `${serialNo ? `#${serialNo} ` : ''}${task.title}${task.description ? `\n${task.description}` : ''}`;
+                if (navigator.clipboard) navigator.clipboard.writeText(txt);
+                if (typeof addToast === 'function') addToast('টাস্ক কপি করা হয়েছে!', 'success');
+            };
+
+            const handleDuplicateTask = (e, task) => {
+                e.stopPropagation();
+                playAudio('click');
+                setTaskModal({
+                    isOpen: true,
+                    id: null,
+                    role: task.role || manageRole,
+                    serial: getNextSerialForRole(task.role || manageRole),
+                    title: `${task.title} (Copy)`,
+                    description: task.description || '',
+                    saving: false
+                });
+            };
+
+            const handleEditTask = (e, task, idx) => {
+                e.stopPropagation();
+                playAudio('click');
+                setTaskModal({
+                    isOpen: true,
+                    id: task.id,
+                    role: task.role || manageRole,
+                    serial: String(parseSerial(task, idx + 1)),
+                    title: task.title || '',
+                    description: task.description || '',
+                    saving: false
+                });
+            };
+
             const handleSaveAdminTask = async (e) => {
                 e.preventDefault();
                 if (!taskModal.title.trim()) return;
                 setTaskModal(p => ({ ...p, saving: true }));
                 playAudio('action');
                 try {
+                    const cleanSerial = String(Math.max(1, parseInt(taskModal.serial, 10) || 1));
                     const res = await executeAPI({
                         action: 'save_routine_task',
                         task: {
                             id: taskModal.id,
                             role: taskModal.role,
                             title: taskModal.title.trim(),
-                            timeSlot: taskModal.timeSlot.trim(),
+                            timeSlot: cleanSerial, // Serial Number সংরক্ষিত হচ্ছে (কোনো শিট পরিবর্তন ছাড়াই)
                             description: taskModal.description.trim()
                         }
                     });
@@ -20643,7 +20699,7 @@ const SmartPhoneAction = ({ phone }) => {
                     if (data && data.success) {
                         playAudio('success');
                         if (typeof addToast === 'function') addToast(data.message || 'Routine task saved!', 'success');
-                        setTaskModal({ isOpen: false, id: null, role: manageRole, title: '', timeSlot: '', description: '', saving: false });
+                        setTaskModal({ isOpen: false, id: null, role: manageRole, serial: '1', title: '', description: '', saving: false });
                         if (typeof fetchOrders === 'function') fetchOrders(true);
                     } else {
                         if (typeof addToast === 'function') addToast((data && data.message) || 'Save failed.', 'error');
@@ -20655,7 +20711,8 @@ const SmartPhoneAction = ({ phone }) => {
                 }
             };
 
-            const handleDeleteAdminTask = async (t) => {
+            const handleDeleteAdminTask = async (e, t) => {
+                e.stopPropagation();
                 if (!window.confirm(`Delete "${t.title}" from ${t.role} daily tasks?`)) return;
                 playAudio('cancel');
                 try {
@@ -20668,7 +20725,6 @@ const SmartPhoneAction = ({ phone }) => {
                 } catch (err) {}
             };
 
-            // ক্যালেন্ডার গ্রিড তৈরি (কোন দিন কয়টি টাস্ক ছিল ও কয়টি কমপ্লিট হয়েছে)
             const monthCells = useMemo(() => {
                 const start = moment(calMonth).startOf('month');
                 const daysInM = start.daysInMonth();
@@ -20704,7 +20760,7 @@ const SmartPhoneAction = ({ phone }) => {
                                 </span>
                             </div>
                             <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                                প্রতিদিন নতুন করে আনচেকড অবস্থায় আসবে — একটি একটি করে সম্পন্ন করে টিক দিন ও নিচের ক্যালেন্ডারে রেকর্ড দেখুন।
+                                সিরিয়াল অনুযায়ী প্রতিদিনের নির্ধারিত কাজ সম্পন্ন করে টিক দিন ও নিচের ক্যালেন্ডারে রেকর্ড দেখুন।
                             </p>
                         </div>
 
@@ -20728,7 +20784,7 @@ const SmartPhoneAction = ({ phone }) => {
                         )}
                     </div>
 
-                    {/* MODE A: ADMIN ROLE TASK MANAGER */}
+                    {/* MODE A: ADMIN ROLE TASK MANAGER (With Serial, Copy, Duplicate, Edit, Delete) */}
                     {isAdmin && viewTab === 'manage' ? (
                         <div className="space-y-3.5">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -20753,7 +20809,15 @@ const SmartPhoneAction = ({ phone }) => {
                                     type="button"
                                     onClick={() => {
                                         playAudio('click');
-                                        setTaskModal({ isOpen: true, id: null, role: manageRole, title: '', timeSlot: '', description: '', saving: false });
+                                        setTaskModal({
+                                            isOpen: true,
+                                            id: null,
+                                            role: manageRole,
+                                            serial: getNextSerialForRole(manageRole),
+                                            title: '',
+                                            description: '',
+                                            saving: false
+                                        });
                                     }}
                                     className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 win-button"
                                 >
@@ -20763,53 +20827,50 @@ const SmartPhoneAction = ({ phone }) => {
 
                             {manageRoleTasks.length === 0 ? (
                                 <div className="py-8 text-center rounded-xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
-                                    {manageRole} রোলের জন্য এখনো কোনো ডেইলি টাস্ক সেট করা হয়নি।
+                                    {manageRole} রোলের জন্য এখনো কোনো ডেইলি টাস্ক সেট করা হয়নি।
                                 </div>
                             ) : (
                                 <div className="divide-y divide-gray-100 dark:divide-white/10 rounded-xl border border-gray-200/70 dark:border-white/10 bg-white dark:bg-[#141417] overflow-hidden">
-                                    {manageRoleTasks.map((t, idx) => (
-                                        <div key={t.id} className="p-3 flex items-center justify-between gap-3">
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="w-5 h-5 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-numbers font-bold flex items-center justify-center shrink-0">
-                                                        {idx + 1}
-                                                    </span>
-                                                    <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white break-words">{t.title}</p>
-                                                    {t.timeSlot && (
-                                                        <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-white/10 text-[10px] font-semibold text-gray-600 dark:text-gray-300">
-                                                            {t.timeSlot}
+                                    {manageRoleTasks.map((t, idx) => {
+                                        const serNum = parseSerial(t, idx + 1);
+                                        return (
+                                            <div key={t.id} className="p-3 flex items-start justify-between gap-3">
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="px-2 py-0.5 rounded-md bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-numbers font-bold shrink-0">
+                                                            #{serNum}
                                                         </span>
+                                                        <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white break-words">{t.title}</p>
+                                                    </div>
+                                                    {t.description && (
+                                                        <div className="text-[11.5px] text-gray-600 dark:text-gray-300 mt-1 pl-1 whitespace-pre-wrap break-words leading-relaxed">
+                                                            <LinkifyText text={t.description} />
+                                                        </div>
                                                     )}
                                                 </div>
-                                                {t.description && <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 pl-7">{t.description}</p>}
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <button type="button" onClick={(e) => handleCopyTaskText(e, t)} className="p-1.5 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:bg-emerald-600 hover:text-white transition-colors" title="Copy Task Text">
+                                                        <Icon name="copy" className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button type="button" onClick={(e) => handleDuplicateTask(e, t)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors" title="Duplicate & Customize">
+                                                        <Icon name="files" className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button type="button" onClick={(e) => handleEditTask(e, t, idx)} className="p-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors" title="Edit Task">
+                                                        <Icon name="edit-2" className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button type="button" onClick={(e) => handleDeleteAdminTask(e, t)} className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors" title="Delete Task">
+                                                        <Icon name="trash-2" className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-1 shrink-0">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setTaskModal({ isOpen: true, id: t.id, role: t.role, title: t.title, timeSlot: t.timeSlot || '', description: t.description || '', saving: false })}
-                                                    className="p-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors"
-                                                    title="Edit"
-                                                >
-                                                    <Icon name="edit-2" className="w-3.5 h-3.5" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDeleteAdminTask(t)}
-                                                    className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors"
-                                                    title="Delete"
-                                                >
-                                                    <Icon name="trash-2" className="w-3.5 h-3.5" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
                     ) : (
-                        /* MODE B: USER'S OWN DAILY CHECKLIST + PERMANENT RECORD CALENDAR */
+                        /* MODE B: USER'S OWN DAILY CHECKLIST (SERIAL ORDERED + CLICKABLE LINKS + COPY/EDIT/DELETE) */
                         <div className="space-y-4">
-                            {/* Today's Progress Bar */}
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between text-xs font-bold">
                                     <span className="text-gray-600 dark:text-gray-300">Today’s Progress ({moment().format('DD MMM YYYY')})</span>
@@ -20820,20 +20881,20 @@ const SmartPhoneAction = ({ phone }) => {
                                 </div>
                             </div>
 
-                            {/* Checklist Items */}
                             {myRoleTasks.length === 0 ? (
                                 <div className="py-6 px-4 text-center rounded-xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
-                                    আপনার ({myRole}) জন্য এখনো কোনো নির্ধারিত ডেইলি টাস্ক যুক্ত করা হয়নি।
+                                    আপনার ({myRole}) জন্য এখনো কোনো নির্ধারিত ডেইলি টাস্ক যুক্ত করা হয়নি।
                                 </div>
                             ) : (
                                 <div className="space-y-2">
-                                    {myRoleTasks.map(task => {
+                                    {myRoleTasks.map((task, idx) => {
                                         const isDone = checkedSet.has(task.id);
+                                        const serNum = parseSerial(task, idx + 1);
                                         return (
-                                            <label
+                                            <div
                                                 key={task.id}
                                                 onClick={() => handleToggleTask(task.id)}
-                                                className={`p-3 rounded-xl border cursor-pointer flex items-start gap-3 transition-all select-none ${
+                                                className={`p-3 rounded-xl border cursor-pointer flex items-start gap-3 transition-all group ${
                                                     isDone
                                                         ? 'bg-emerald-500/[0.09] dark:bg-emerald-500/[0.14] border-emerald-400/60 dark:border-emerald-500/35'
                                                         : 'bg-white dark:bg-[#141417] border-gray-200/80 dark:border-white/10 hover:border-[#005fb8]/60'
@@ -20844,22 +20905,45 @@ const SmartPhoneAction = ({ phone }) => {
                                                 }`}>
                                                     {isDone && <Icon name="check" className="w-3.5 h-3.5" />}
                                                 </div>
+
                                                 <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <span className={`text-xs sm:text-sm font-bold leading-snug break-words ${isDone ? 'line-through text-emerald-800 dark:text-emerald-300 opacity-80' : 'text-gray-900 dark:text-white'}`}>
-                                                            {task.title}
-                                                        </span>
-                                                        {task.timeSlot && (
-                                                            <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-white/10 text-[10px] font-semibold text-gray-500 dark:text-gray-300 shrink-0">
-                                                                {task.timeSlot}
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                                            <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-numbers font-bold shrink-0">
+                                                                #{serNum}
                                                             </span>
-                                                        )}
+                                                            <span className={`text-xs sm:text-sm font-bold leading-snug break-words ${isDone ? 'line-through text-emerald-800 dark:text-emerald-300 opacity-80' : 'text-gray-900 dark:text-white'}`}>
+                                                                {task.title}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <button type="button" onClick={(e) => handleCopyTaskText(e, task)} className="p-1 rounded-md bg-gray-100 dark:bg-dark-800 text-gray-500 hover:bg-emerald-600 hover:text-white transition-colors" title="Copy Task">
+                                                                <Icon name="copy" className="w-3 h-3" />
+                                                            </button>
+                                                            {isAdmin && (
+                                                                <>
+                                                                    <button type="button" onClick={(e) => handleDuplicateTask(e, task)} className="p-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors" title="Duplicate & Customize">
+                                                                        <Icon name="files" className="w-3 h-3" />
+                                                                    </button>
+                                                                    <button type="button" onClick={(e) => handleEditTask(e, task, idx)} className="p-1 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] hover:bg-[#005fb8] hover:text-white transition-colors" title="Edit">
+                                                                        <Icon name="edit-2" className="w-3 h-3" />
+                                                                    </button>
+                                                                    <button type="button" onClick={(e) => handleDeleteAdminTask(e, task)} className="p-1 rounded-md bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white transition-colors" title="Delete">
+                                                                        <Icon name="trash-2" className="w-3 h-3" />
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     </div>
+
                                                     {task.description && (
-                                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{task.description}</p>
+                                                        <div className="text-[11.5px] text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap break-words leading-relaxed">
+                                                            <LinkifyText text={task.description} />
+                                                        </div>
                                                     )}
                                                 </div>
-                                            </label>
+                                            </div>
                                         );
                                     })}
                                 </div>
@@ -20922,14 +21006,13 @@ const SmartPhoneAction = ({ phone }) => {
                                     })}
                                 </div>
 
-                                {/* Selected Date Record Strip */}
                                 <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
                                     <span className="font-bold text-gray-800 dark:text-gray-200">
                                         {moment(selectedCalDate).format('DD MMM YYYY')}
                                     </span>
                                     {selectedDayLog ? (
                                         <span className="font-semibold text-emerald-700 dark:text-emerald-300">
-                                            মোট টাস্ক: <strong>{selectedDayLog.totalTasks}টি</strong> • সম্পন্ন হয়েছে: <strong>{selectedDayLog.completedCount}টি</strong>
+                                            মোট টাস্ক: <strong>{selectedDayLog.totalTasks}টি</strong> • সম্পন্ন হয়েছে: <strong>{selectedDayLog.completedCount}টি</strong>
                                         </span>
                                     ) : (
                                         <span className="text-gray-400">এই তারিখে কোনো টাস্ক রেকর্ড নেই।</span>
@@ -20939,26 +21022,47 @@ const SmartPhoneAction = ({ phone }) => {
                         </div>
                     )}
 
-                    {/* Admin Add/Edit Role Routine Task Modal */}
+                    {/* Admin Add / Edit / Duplicate Role Routine Task Modal (With Serial Number & Clickable Note Links) */}
                     <Modal isOpen={taskModal.isOpen} onClose={() => setTaskModal(p => ({ ...p, isOpen: false }))} title={taskModal.id ? 'Edit Daily Routine Task' : 'Add Daily Routine Task'} maxWidth="max-w-md" compact={true}>
                         <form onSubmit={handleSaveAdminTask} className="space-y-3">
-                            <div>
-                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Target Role *</label>
-                                <select value={taskModal.role} onChange={e => setTaskModal(p => ({ ...p, role: e.target.value }))} className="w-full input-style px-3 py-2 text-xs font-bold">
-                                    {ROLES_LIST.map(r => <option key={r} value={r}>{r}</option>)}
-                                </select>
+                            <div className="grid grid-cols-2 gap-2.5">
+                                <div>
+                                    <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Target Role *</label>
+                                    <select
+                                        value={taskModal.role}
+                                        onChange={e => {
+                                            const nextR = e.target.value;
+                                            setTaskModal(p => ({
+                                                ...p,
+                                                role: nextR,
+                                                serial: p.id ? p.serial : getNextSerialForRole(nextR)
+                                            }));
+                                        }}
+                                        className="w-full input-style px-3 py-2 text-xs font-bold"
+                                    >
+                                        {ROLES_LIST.map(r => <option key={r} value={r}>{r}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] uppercase mb-1">Serial Number *</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        required
+                                        value={taskModal.serial}
+                                        onChange={e => setTaskModal(p => ({ ...p, serial: e.target.value }))}
+                                        className="w-full input-style px-3 py-2 text-sm font-numbers font-bold text-center"
+                                        placeholder="1"
+                                    />
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Task Title *</label>
                                 <input type="text" required value={taskModal.title} onChange={e => setTaskModal(p => ({ ...p, title: e.target.value }))} className="w-full input-style px-3 py-2 text-sm font-semibold" placeholder="e.g. Watch 1 Class Video & Practice 1 Hour" />
                             </div>
                             <div>
-                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Suggested Time / Slot (Optional)</label>
-                                <input type="text" value={taskModal.timeSlot} onChange={e => setTaskModal(p => ({ ...p, timeSlot: e.target.value }))} className="w-full input-style px-3 py-2 text-xs" placeholder="e.g. Morning / 9:00 PM" />
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Short Note (Optional)</label>
-                                <textarea rows="2" value={taskModal.description} onChange={e => setTaskModal(p => ({ ...p, description: e.target.value }))} className="w-full input-style px-3 py-2 text-xs resize-none" placeholder="Additional guidance..." />
+                                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Short Note / Links (Auto-Clickable)</label>
+                                <textarea rows="3" value={taskModal.description} onChange={e => setTaskModal(p => ({ ...p, description: e.target.value }))} className="w-full input-style px-3 py-2 text-xs resize-none" placeholder="নোট বা যেকোনো লিংক লিখুন (যেমন https://faridpurit.com — অটো ক্লিকেবল হবে)..." />
                             </div>
                             <div className="flex justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
                                 <button type="button" onClick={() => setTaskModal(p => ({ ...p, isOpen: false }))} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-dark-700 text-xs font-bold">Cancel</button>
