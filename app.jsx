@@ -4565,6 +4565,17 @@
                         </div>
                     )}
 
+                    {/* 🟢 Financial Overview & Smart Calendar (Exact Duplicate from Total Analytics) */}
+                    <SmartFinancialCalendar
+                        orders={orders}
+                        expenses={expenses}
+                        onAddExpense={onAddExpense}
+                        goTo={(route) => {
+                            if (typeof window.playSound === 'function') window.playSound('click');
+                            window.location.hash = route;
+                        }}
+                    />
+
                     {/* Unified Ledger with User-Friendly Responsive Category Pills */}
                     <div className="glass-panel border border-gray-200/60 dark:border-white/10 overflow-hidden">
                         <div className="p-3 sm:p-4 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-dark-900/30 space-y-2.5">
@@ -9666,54 +9677,116 @@ const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrder
             </div>
         );
 
-        const ProjectsView = ({ addToast, executeAPI, projects, orders = [], dailyTasks = [], fetchOrders, globalContacts, auth }) => {
+        const ProjectsView = ({ addToast, executeAPI, projects = [], orders = [], dailyTasks = [], fetchOrders, globalContacts = [], usersList = [], studentsPanel = [], auth }) => {
             const showToast = (msg, type) => {
                 if (typeof addToast === 'function') addToast(msg, type);
-                else console.warn("Toast Message:", msg);
             };
+            const isAdminMgr = ['Admin', 'Manager'].includes(auth?.role);
+            const canCreateProject = ['Admin', 'Manager', 'Trainer', 'Team'].includes(auth?.role);
+            const draftStorageKey = `fit_project_drafts_${auth?.userId || 'usr'}`;
 
             const [time, setTime] = useState(new Date());
             const [showModal, setShowModal] = useState(false);
             const [progressModal, setProgressModal] = useState({ isOpen: false, project: null, value: 0 });
-            const [isFetching, setIsFetching] = useState(false);
+            const [duePayModal, setDuePayModal] = useState({ isOpen: false, project: null, amount: '', method: 'Cash', saving: false });
             const [isSaving, setIsSaving] = useState(false);
-            const [expandedProject, setExpandedProject] = useState(null); // 🟢 FIX: Project Cards Collapse State
-            
-            const [filterStatus, setFilterStatus] = useState('All'); 
-            const availableTeam = ['Admin', 'Hasan (Dev)', 'Sumiya (SEO)', 'Karim (Design)', 'Rahul (Marketing)'];
+            const [quickBusyId, setQuickBusyId] = useState(null);
+            const [expandedProject, setExpandedProject] = useState(null);
+            const [searchQ, setSearchQ] = useState('');
+            const [filterStatus, setFilterStatus] = useState('Ongoing'); // 🟢 Default Filter: Ongoing
+            const [activeDraftId, setActiveDraftId] = useState(null);
+            const [projectDrafts, setProjectDrafts] = useState(() => {
+                try {
+                    const saved = JSON.parse(localStorage.getItem(draftStorageKey) || '[]');
+                    return Array.isArray(saved) ? saved : [];
+                } catch (e) { return []; }
+            });
 
-            const defaultFormState = { 
-                id: null, name: '', client: '', clientPhone: '', clientEmail: '', 
-                description: '', status: 'Ongoing', priority: 'Medium', progress: 0, 
-                deadline: '', revenue: '', paid: '', team: [], deliveryStatus: 'Not Delivered',
+            // 🟢 Settings -> Users ট্যাবের সব ইউজার (Admin, Manager, Trainer, Team, Student) নাম ও ফোন নাম্বারসহ
+            const assignableUsers = useMemo(() => {
+                const map = new Map();
+                const normNm = (v) => String(v || '').trim().toLowerCase();
+
+                (usersList || []).forEach(u => {
+                    const name = String(u.Username || '').trim();
+                    if (!name) return;
+                    const key = normNm(name);
+                    const matchedSt = (studentsPanel || []).find(s => normNm(s.name) === key);
+                    const matchedContact = (globalContacts || []).find(c => normNm(c.name) === key);
+                    const phone = String(u.Phone || matchedSt?.phone || matchedContact?.phone || '').replace(/^'/, '').trim();
+                    map.set(key, { name, phone, role: u.Role || 'Member' });
+                });
+
+                if (map.size === 0) {
+                    ['Admin'].forEach(n => map.set(n.toLowerCase(), { name: n, phone: '', role: 'Admin' }));
+                }
+                return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+            }, [usersList, studentsPanel, globalContacts]);
+
+            const defaultFormState = {
+                id: null, name: '', client: '', clientPhone: '', clientEmail: '',
+                description: '', status: 'Ongoing', priority: 'Medium', progress: 0,
+                deadline: moment().add(7, 'days').format('YYYY-MM-DD'),
+                revenue: '', paid: '', team: [], deliveryStatus: 'Not Delivered',
                 installments: [{ amount: '', date: moment().format('YYYY-MM-DD'), method: 'Cash' }]
             };
-
             const [formData, setFormData] = useState(defaultFormState);
 
             useEffect(() => {
-                const timer = setInterval(() => setTime(new Date()), 1000);
+                const timer = setInterval(() => setTime(new Date()), 60000);
                 return () => clearInterval(timer);
             }, []);
 
-           // 🟢 UNIFY PROJECTS AND DAILY TASKS FOR FULL BIDIRECTIONAL SYNC (100% Bulletproof)
-            const allUnifiedProjects = React.useMemo(() => {
-                const list = [...projects];
-                
-                // 🟢 FRONTEND FIX: App.js থেকে prop না আসলেও লোকাল স্টোরেজ থেকে সরাসরি ডাটা নিয়ে নেবে
-                const safeDailyTasks = (Array.isArray(dailyTasks) && dailyTasks.length > 0) 
-                    ? dailyTasks 
-                    : (JSON.parse(localStorage.getItem('faridpurit_offline_db'))?.dailyTasks || []);
+            const saveDraftList = (nextList) => {
+                setProjectDrafts(nextList);
+                try { localStorage.setItem(draftStorageKey, JSON.stringify(nextList)); } catch (e) {}
+            };
+
+            const handleSaveDraft = () => {
+                if (!formData.name.trim() && !formData.client.trim() && !formData.description.trim()) {
+                    return showToast('ড্রাফট সেভ করতে অন্তত প্রজেক্টের নাম, ক্লায়েন্ট বা কিছু বিবরণ লিখুন।', 'error');
+                }
+                if (typeof playSound === 'function') playSound('click');
+                const draftId = activeDraftId || `DRF-PRJ-${Date.now()}`;
+                const draftEntry = {
+                    draftId,
+                    savedAt: new Date().toISOString(),
+                    data: { ...formData }
+                };
+                const next = [draftEntry, ...projectDrafts.filter(d => d.draftId !== draftId)];
+                saveDraftList(next);
+                setShowModal(false);
+                setActiveDraftId(null);
+                setFormData(defaultFormState);
+                showToast('প্রজেক্ট ড্রাফট হিসেবে সেভ হয়েছে! পরে আবার কাজ করতে পারবেন।', 'success');
+            };
+
+            const handleResumeDraft = (draft) => {
+                if (typeof playSound === 'function') playSound('click');
+                setActiveDraftId(draft.draftId);
+                setFormData({ ...defaultFormState, ...(draft.data || {}) });
+                setShowModal(true);
+            };
+
+            const handleDeleteDraft = (draftId) => {
+                if (typeof playSound === 'function') playSound('cancel');
+                saveDraftList(projectDrafts.filter(d => d.draftId !== draftId));
+                showToast('ড্রাফট মুছে ফেলা হয়েছে।', 'info');
+            };
+
+            const allUnifiedProjects = useMemo(() => {
+                const list = [...(projects || [])];
+                const safeDailyTasks = (Array.isArray(dailyTasks) && dailyTasks.length > 0)
+                    ? dailyTasks
+                    : (JSON.parse(localStorage.getItem('faridpurit_offline_db') || '{}')?.dailyTasks || []);
 
                 safeDailyTasks.forEach(t => {
-                    // 🟢 ক্যাটাগরি 'Agency' হলে বা ID 'PRJ' দিয়ে শুরু হলে প্রজেক্ট সেকশনে শো করবেই!
                     const isAgencyTask = t.category === 'Agency';
                     const isProject = String(t.id).startsWith('PRJ');
-                    
                     if ((isAgencyTask || isProject) && !list.some(p => p.id === t.id)) {
                         list.push({
                             id: t.id,
-                            name: t.title || t.name || 'Untitled Task', // 100% Safe Name
+                            name: t.title || t.name || 'Untitled Task',
                             client: t.client || t.studentName || t.customerName || 'Internal Task',
                             clientPhone: t.clientPhone || t.phone || t.studentPhone || '',
                             clientEmail: t.clientEmail || '',
@@ -9721,12 +9794,12 @@ const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrder
                             status: t.status === 'Completed' ? 'Completed' : 'Ongoing',
                             priority: t.priority || 'Medium',
                             progress: t.status === 'Completed' ? 100 : Number(t.progress || 0),
-                            deadline: t.date || t.deadline || moment().format('YYYY-MM-DD'), // 100% Safe Deadline
+                            deadline: t.date || t.deadline || moment().format('YYYY-MM-DD'),
                             revenue: Number(t.revenue || 0),
                             paid: Number(t.paid || 0),
-                            team: t.assignedTo ? String(t.assignedTo).split(',') : (t.team || []),
+                            team: t.assignedTo ? String(t.assignedTo).split(',').map(x => x.trim()).filter(Boolean) : (t.team || []),
                             deliveryStatus: t.deliveryStatus || 'Not Delivered',
-                            isTaskSync: true // Marker for API routing
+                            isTaskSync: true
                         });
                     }
                 });
@@ -9735,599 +9808,682 @@ const ClientsView = ({ addToast, executeAPI, leads = [], orders = [], fetchOrder
 
             const totalBudget = allUnifiedProjects.reduce((sum, p) => sum + Number(p.revenue || 0), 0);
             const totalReceived = allUnifiedProjects.reduce((sum, p) => sum + Number(p.paid || 0), 0);
-            const totalDue = totalBudget - totalReceived;
+            const totalDue = Math.max(0, totalBudget - totalReceived);
             const activeProjectsCount = allUnifiedProjects.filter(p => p.status === 'Ongoing').length;
             const completedProjectsCount = allUnifiedProjects.filter(p => p.status === 'Completed').length;
-            
-            const filteredProjects = allUnifiedProjects.filter(p => {
-                if (filterStatus === 'Due') return (Number(p.revenue || 0) - Number(p.paid || 0)) > 0;
-                if (filterStatus === 'Delivered') return p.deliveryStatus === 'Delivered';
-                if (filterStatus === 'Not Delivered') return p.deliveryStatus !== 'Delivered';
-                if (filterStatus === 'All') return true;
-                return p.status === filterStatus;
-            });
 
-            const sortedProjects = [...filteredProjects].sort((a, b) => {
-                // Completed গুলো নিচে পাঠাবে
-                if (a.status === 'Completed' && b.status !== 'Completed') return 1;
-                if (a.status !== 'Completed' && b.status === 'Completed') return -1;
-                
-                // 🟢 FIX: Perfect Date Sorting - কাছের ডেটগুলো (বা ওভারডিউ) আগে দেখাবে
-                const dateA = a.deadline ? new Date(a.deadline).getTime() : 0;
-                const dateB = b.deadline ? new Date(b.deadline).getTime() : 0;
-                return dateA - dateB;
-            });
+            const filteredProjects = useMemo(() => {
+                const q = searchQ.trim().toLowerCase();
+                return allUnifiedProjects.filter(p => {
+                    if (q && !(`${p.name} ${p.client} ${p.id} ${(p.team || []).join(' ')} ${p.description}`.toLowerCase().includes(q))) return false;
+                    if (filterStatus === 'Ongoing') return p.status === 'Ongoing';
+                    if (filterStatus === 'Completed') return p.status === 'Completed';
+                    if (filterStatus === 'Due') return (Number(p.revenue || 0) - Number(p.paid || 0)) > 0;
+                    if (filterStatus === 'Delivered') return p.deliveryStatus === 'Delivered';
+                    if (filterStatus === 'Not Delivered') return p.deliveryStatus !== 'Delivered';
+                    if (filterStatus === 'Paused') return p.status === 'Paused';
+                    return true;
+                }).sort((a, b) => {
+                    if (a.status === 'Completed' && b.status !== 'Completed') return 1;
+                    if (a.status !== 'Completed' && b.status === 'Completed') return -1;
+                    return (a.deadline ? new Date(a.deadline).getTime() : 0) - (b.deadline ? new Date(b.deadline).getTime() : 0);
+                });
+            }, [allUnifiedProjects, filterStatus, searchQ]);
 
-            // Live DB Save Handler
+            // 🟢 Save / Update Project (Zero-Duplicate Payment Sync)
             const handleSave = async (e) => {
                 e.preventDefault();
                 playSound('action');
                 setIsSaving(true);
-
                 try {
-                    let finalPaid = Number(formData.paid) || 0;
-                    const rev = Number(formData.revenue) || 0;
+                    const rev = Math.max(0, Number(formData.revenue) || 0);
+                    const instList = Array.isArray(formData.installments) ? formData.installments : [];
+                    const instSum = instList.reduce((s, it) => s + Math.max(0, Number(it.amount) || 0), 0);
+                    const finalPaid = instList.length > 0 ? instSum : Math.max(0, Number(formData.paid) || 0);
                     const val = Number(formData.progress) || 0;
-                    let newStatus = formData.status || 'Ongoing';
-
-                    if (val === 100 && newStatus !== 'Completed') { newStatus = 'Completed'; }
-                    if (val === 100 && finalPaid < rev) {
-                        const confirmPaid = window.confirm(`প্রজেক্টটি 100% সম্পন্ন হয়েছে, কিন্তু ৳${rev - finalPaid} টাকা ডিউ (বাকি) আছে।\n\nক্লাইন্ট কি ফুল পেমেন্ট ক্লিয়ার করেছে?\n(পেমেন্ট পেলে 'OK' দিন, পেমেন্ট ডিউ থাকলে 'Cancel' দিন)`);
-                        if (confirmPaid) { finalPaid = rev; showToast("Full payment marked as received!", "success"); } 
-                        else { showToast("Project marked as completed, but kept in DUE list.", "info"); }
-                    }
+                    const newStatus = (val === 100 && formData.status !== 'Completed') ? 'Completed' : (formData.status || 'Ongoing');
 
                     let finalTeam = Array.isArray(formData.team) ? [...formData.team] : [];
-                    if (auth?.role === 'Student' && !finalTeam.includes(auth?.name || auth?.username)) {
-                        finalTeam.push(auth?.name || auth?.username);
-                    }
-                    if (finalTeam.length === 0) finalTeam = ['Admin'];
+                    if (finalTeam.length === 0) finalTeam = [auth?.name || auth?.username || 'Admin'];
 
-                    const clientPhoneFormatted = formData.clientPhone ? (formData.clientPhone.startsWith("'") ? formData.clientPhone : `'${formData.clientPhone}`) : '';
+                    const clientPhoneFormatted = formData.clientPhone ? (String(formData.clientPhone).startsWith("'") ? formData.clientPhone : `'${formData.clientPhone}`) : '';
                     const safeDeadline = formData.deadline ? moment(formData.deadline).format('YYYY-MM-DD') : moment().add(7, 'days').format('YYYY-MM-DD');
 
-                    // 🟢 FIX: 100% Error-Free Task vs Project Routing using formData (NOT progressModal)
-                    const isTaskEdit = formData.isTaskSync || String(formData.id).startsWith('TSK');
+                    const isTaskEdit = formData.isTaskSync || String(formData.id || '').startsWith('TSK');
                     const actionName = isTaskEdit ? 'save_daily_task' : 'save_project';
-                    
-                    let finalPayload;
-                    if (isTaskEdit) {
-                        finalPayload = {
-                            id: formData.id,
-                            title: formData.name,
-                            date: safeDeadline,
-                            note: String(formData.description).replace(/^\[.*?\]\s*/, ''),
-                            status: newStatus === 'Completed' ? 'Completed' : 'Pending',
-                            priority: formData.priority,
-                            progress: val,
-                            client: formData.client,
-                            clientPhone: clientPhoneFormatted.replace(/^'/, ''),
-                            clientEmail: formData.clientEmail,
-                            revenue: rev,
-                            paid: finalPaid,
-                            due: rev - finalPaid,
-                            assignedTo: finalTeam.join(', '),
-                            category: formData.category || 'Agency',
-                            bestSlot: formData.bestSlot || 'Morning (Deep Work)',
-                            startTime: formData.startTime || '09:00',
-                            endTime: formData.endTime || '10:30',
-                            isNew: false
-                        };
-                    } else {
-                        finalPayload = { 
-                            ...formData, 
-                            clientPhone: clientPhoneFormatted, 
-                            isNew: !formData.id, 
-                            status: newStatus, 
-                            revenue: rev, 
-                            paid: finalPaid, 
-                            team: finalTeam,
-                            deadline: safeDeadline
-                        };
-                    }
-                    
-                    const res = await executeAPI({ 
-                        action: actionName, 
-                        [isTaskEdit ? 'task' : 'project']: finalPayload 
-                    });
-                    
-                    if (!res.ok) throw new Error("Network Response Error");
+
+                    const finalPayload = isTaskEdit ? {
+                        id: formData.id, title: formData.name, date: safeDeadline,
+                        note: String(formData.description || '').replace(/^\[.*?\]\s*/, ''),
+                        status: newStatus === 'Completed' ? 'Completed' : 'Pending',
+                        priority: formData.priority, progress: val, client: formData.client,
+                        clientPhone: clientPhoneFormatted.replace(/^'/, ''), clientEmail: formData.clientEmail,
+                        revenue: rev, paid: finalPaid, due: Math.max(0, rev - finalPaid),
+                        assignedTo: finalTeam.join(', '), category: formData.category || 'Agency',
+                        bestSlot: formData.bestSlot || 'Morning (Deep Work)',
+                        startTime: formData.startTime || '09:00', endTime: formData.endTime || '10:30', isNew: false
+                    } : {
+                        ...formData, clientPhone: clientPhoneFormatted, isNew: !formData.id,
+                        status: newStatus, revenue: rev, paid: finalPaid, team: finalTeam,
+                        deadline: safeDeadline, installments: instList
+                    };
+
+                    const res = await executeAPI({ action: actionName, [isTaskEdit ? 'task' : 'project']: finalPayload });
                     const data = await res.json();
-                    
-                    if(data.success) {
-                        showToast(data.message, "success");
+                    if (data && data.success) {
+                        playSound('success');
+                        showToast(data.message || 'Project saved!', 'success');
+                        if (activeDraftId) {
+                            saveDraftList(projectDrafts.filter(d => d.draftId !== activeDraftId));
+                            setActiveDraftId(null);
+                        }
                         fetchOrders(true);
                         setShowModal(false);
                         setFormData(defaultFormState);
-                    } else {
-                        throw new Error(data.message);
-                    }
-                } catch(err) {
-                    console.error("Project Save Error: ", err);
-                    showToast("Failed to save. Please try again.", "error");
+                    } else throw new Error((data && data.message) || 'Save failed');
+                } catch (err) {
+                    showToast(err.message || 'Failed to save project.', 'error');
                 }
                 setIsSaving(false);
             };
 
-          // 🟢 FIX 2: Live DB Zap Progress Handler (Bulletproof Sync for TSK to Projects)
+            // ⚡ 1-CLICK 100% COMPLETE & DELIVER (Zero Payment Duplication — Due Stays Due!)
+            const handleOneClickCompleteDeliver = async (p) => {
+                if (quickBusyId) return;
+                playSound('action');
+                setQuickBusyId(p.id);
+                try {
+                    const isTaskEdit = p.isTaskSync || String(p.id).startsWith('TSK');
+                    const payloadObj = isTaskEdit ? {
+                        action: 'save_daily_task',
+                        task: { ...p, title: p.name, date: p.deadline, status: 'Completed', progress: 100, isNew: false }
+                    } : {
+                        action: 'save_project',
+                        project: { ...p, progress: 100, status: 'Completed', deliveryStatus: 'Delivered', isNew: false }
+                    };
+                    const res = await executeAPI(payloadObj);
+                    const data = await res.json();
+                    if (data && data.success) {
+                        playSound('success');
+                        const dueRem = Math.max(0, Number(p.revenue || 0) - Number(p.paid || 0));
+                        showToast(dueRem > 0
+                            ? `100% Completed & Delivered! (Due ৳${dueRem.toLocaleString()} kept in Due list)`
+                            : '100% Completed & Delivered! ✅', 'success');
+                        fetchOrders(true);
+                    } else showToast((data && data.message) || 'Update failed.', 'error');
+                } catch (err) {
+                    showToast('Network error updating project.', 'error');
+                }
+                setQuickBusyId(null);
+            };
+
+            // 💰 Quick Collect Due Payment (Adds ONLY the new Due payment to Finance/Transactions!)
+            const handleCollectDueSubmit = async (e) => {
+                e.preventDefault();
+                const p = duePayModal.project;
+                const addAmt = Math.max(0, parseFloat(duePayModal.amount) || 0);
+                if (!p || addAmt <= 0) return showToast('সঠিক টাকার পরিমাণ দিন।', 'error');
+                setDuePayModal(prev => ({ ...prev, saving: true }));
+                playSound('action');
+                try {
+                    const newPaidTotal = (Number(p.paid) || 0) + addAmt;
+                    const res = await executeAPI({
+                        action: 'save_project',
+                        project: { ...p, paid: newPaidTotal, paymentMethod: duePayModal.method, isNew: false }
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        playSound('success');
+                        showToast(`৳${addAmt.toLocaleString()} পেমেন্ট যুক্ত হয়েছে! (কোনো ডুপ্লিকেট হয়নি)`, 'success');
+                        setDuePayModal({ isOpen: false, project: null, amount: '', method: 'Cash', saving: false });
+                        fetchOrders(true);
+                    } else {
+                        showToast((data && data.message) || 'Payment update failed.', 'error');
+                        setDuePayModal(prev => ({ ...prev, saving: false }));
+                    }
+                } catch (err) {
+                    showToast('Network error.', 'error');
+                    setDuePayModal(prev => ({ ...prev, saving: false }));
+                }
+            };
+
+            // Quick Progress Slider Update (Zero Payment Duplication!)
             const handleProgressUpdate = async (e) => {
                 e.preventDefault();
                 playSound('action');
                 setIsSaving(true);
-
-                let finalPaid = Number(progressModal.project.paid || 0);
-                const rev = Number(progressModal.project.revenue || 0);
+                const p = progressModal.project;
                 const val = Number(progressModal.value || 0);
-                let finalStatus = progressModal.project.status;
+                const finalStatus = val === 100 ? 'Completed' : (p.status === 'Completed' ? 'Ongoing' : p.status);
+                const isTaskEdit = p.isTaskSync || String(p.id).startsWith('TSK');
 
-                if (val === 100 && finalStatus !== 'Completed') { finalStatus = 'Completed'; }
-                if (val === 100 && finalPaid < rev) {
-                    const confirmPaid = window.confirm(`প্রজেক্টটি 100% সম্পন্ন হয়েছে, কিন্তু ৳${rev - finalPaid} টাকা ডিউ (বাকি) আছে।\n\nক্লাইন্ট কি ফুল পেমেন্ট ক্লিয়ার করেছে?\n(পেমেন্ট পেলে 'OK' দিন, পেমেন্ট ডিউ থাকলে 'Cancel' দিন)`);
-                    if (confirmPaid) { finalPaid = rev; showToast("Full payment marked as received!", "success"); } 
-                    else { showToast("Project marked as completed, but kept in DUE list.", "info"); }
-                }
-
-                // 🟢 Magic Fix: TSK id হলে সরাসরি save_daily_task এ পাঠাবে, PRJ হলে save_project
-                const isTaskEdit = progressModal.project.isTaskSync || String(progressModal.project.id).startsWith('TSK');
-                const actionName = isTaskEdit ? 'save_daily_task' : 'save_project';
-
-                let finalPayload;
-                if (isTaskEdit) {
-                    finalPayload = {
-                        id: progressModal.project.id,
-                        title: progressModal.project.name,
-                        date: progressModal.project.deadline,
-                        note: String(progressModal.project.description).replace(/^\[.*?\]\s*/, ''),
-                        status: finalStatus === 'Completed' ? 'Completed' : 'Pending',
-                        progress: val,
-                        priority: progressModal.project.priority,
-                        client: progressModal.project.client,
-                        clientPhone: String(progressModal.project.clientPhone).replace(/^'/, ''),
-                        clientEmail: progressModal.project.clientEmail,
-                        revenue: rev,
-                        paid: finalPaid,
-                        due: rev - finalPaid,
-                        assignedTo: (progressModal.project.team || []).join(', '),
-                        category: progressModal.project.category || 'Agency',
-                        bestSlot: progressModal.project.bestSlot || 'Morning (Deep Work)',
-                        startTime: progressModal.project.startTime || '09:00',
-                        endTime: progressModal.project.endTime || '10:30',
-                        isNew: false
-                    };
-                } else {
-                    const isActuallyNewInProjectsDb = !projects.some(p => p.id === progressModal.project.id);
-                    finalPayload = { 
-                        ...progressModal.project, 
-                        progress: val, 
-                        paid: finalPaid, 
-                        status: finalStatus, 
-                        isNew: isActuallyNewInProjectsDb 
-                    };
-                }
-                
-               try {
-                    const res = await executeAPI({ action: actionName, [isTaskEdit ? 'task' : 'project']: finalPayload });
+                try {
+                    const res = await executeAPI(isTaskEdit ? {
+                        action: 'save_daily_task',
+                        task: { ...p, title: p.name, date: p.deadline, status: finalStatus === 'Completed' ? 'Completed' : 'Pending', progress: val, isNew: false }
+                    } : {
+                        action: 'save_project',
+                        project: { ...p, progress: val, status: finalStatus, isNew: false }
+                    });
                     const data = await res.json();
-                    if(data.success) {
-                        showToast("Progress updated successfully!", "success");
+                    if (data && data.success) {
+                        playSound('success');
+                        showToast('Progress updated!', 'success');
                         fetchOrders(true);
                         setProgressModal({ isOpen: false, project: null, value: 0 });
-                    } else {
-                        showToast("Error: " + data.message, "error");
-                    }
-                } catch(err) { 
-                    console.error("Progress Error:", err);
-                    showToast("Failed to update progress in DB", "error"); 
+                    } else showToast((data && data.message) || 'Error updating progress.', 'error');
+                } catch (err) {
+                    showToast('Failed to update progress.', 'error');
                 }
                 setIsSaving(false);
             };
 
-            const handleDeliverProject = async (projectObj) => {
-                playSound('action');
-                if(window.confirm("আপনি কি নিশ্চিত যে প্রজেক্টটি ডেলিভারড হয়েছে?")) {
-                    const updatedProject = { ...projectObj, deliveryStatus: 'Delivered', isNew: false };
-                    try {
-                        const res = await executeAPI({ action: 'save_project', project: updatedProject });
-                        const data = await res.json();
-                        if(data.success) {
-                            showToast("Project marked as Delivered! ✅", "success");
-                            fetchOrders(true);
-                        }
-                    } catch(err) { showToast("Failed to deliver project in DB", "error"); }
-                }
+            const openEditModal = (p) => {
+                playSound('click');
+                setActiveDraftId(null);
+                const exInsts = (orders || [])
+                    .filter(o => String(o.parentId || '').trim() === String(p.id || '').trim() && Number(o.installmentNo) > 0)
+                    .sort((a, b) => (Number(a.installmentNo) || 0) - (Number(b.installmentNo) || 0))
+                    .map(o => ({ amount: o.Paid || '', date: moment(parseCustomDate(o.Timestamp)).format('YYYY-MM-DD'), method: o.PaymentMethod || 'Cash' }));
+                const fbInsts = exInsts.length > 0
+                    ? exInsts
+                    : [{ amount: Number(p.paid) > 0 ? p.paid : '', date: moment(parseCustomDate(p.timestamp || new Date())).format('YYYY-MM-DD'), method: 'Cash' }];
+                setFormData({
+                    ...p,
+                    deadline: p.deadline ? moment(parseCustomDate(p.deadline)).format('YYYY-MM-DD') : moment().add(7, 'days').format('YYYY-MM-DD'),
+                    installments: fbInsts
+                });
+                setShowModal(true);
             };
 
             const handleCopyProject = (p) => {
                 playSound('action');
-                const dueAmt = Number(p.revenue) - Number(p.paid || 0);
-                const text = `🚀 *Project Details*\n\n📌 *Name:* ${p.name}\n👤 *Client:* ${p.client} (${p.clientPhone || 'N/A'})\n📊 *Status:* ${p.status} | *Priority:* ${p.priority}\n📦 *Delivery:* ${p.deliveryStatus}\n💰 *Budget:* ৳${p.revenue} | *Paid:* ৳${p.paid} | *Due:* ৳${dueAmt}\n📈 *Progress:* ${p.progress}%\n⏳ ⏳ *Deadline:* ${moment(parseCustomDate(p.deadline)).format('DD MMM YYYY')}\n👥 *Team:* ${p.team.length > 0 ? p.team.join(', ') : 'Unassigned'}\n\n📝 *Notes:* ${p.description || 'N/A'}\n\n*Auto-generated from FaridpurIT Workspace*`;
-                navigator.clipboard.writeText(text).then(() => {
-                    showToast("Project details copied to clipboard!", "success");
-                }).catch(() => showToast("Failed to copy", "error"));
+                const dueAmt = Math.max(0, Number(p.revenue || 0) - Number(p.paid || 0));
+                const phoneLine = isAdminMgr && p.clientPhone ? ` (${p.clientPhone})` : '';
+                const text = `🚀 *Project Details*\n\n📌 *Name:* ${p.name}\n👤 *Client:* ${p.client}${phoneLine}\n📊 *Status:* ${p.status} | *Priority:* ${p.priority}\n📦 *Delivery:* ${p.deliveryStatus}\n💰 *Budget:* ৳${p.revenue} | *Paid:* ৳${p.paid} | *Due:* ৳${dueAmt}\n📈 *Progress:* ${p.progress}%\n⏳ *Deadline:* ${moment(parseCustomDate(p.deadline)).format('DD MMM YYYY')}\n👥 *Team:* ${(p.team || []).length > 0 ? p.team.join(', ') : 'Unassigned'}\n\n📝 *Notes:* ${p.description || 'N/A'}`;
+                navigator.clipboard.writeText(text).then(() => showToast('Project details copied!', 'success'));
             };
 
-			const handleDeleteProject = async (id) => {
-                if(window.confirm('Are you sure you want to completely delete this project?')) {
-                    playSound('cancel');
-                    try {
-                        const res = await executeAPI({ action: 'delete_project', id: id });
-                        const data = await res.json();
-                        if(data.success) {
-                            showToast('Project deleted successfully.', 'info');
-                            fetchOrders(true); // Auto-refresh UI
-                        } else {
-                            showToast(data.message, 'error');
-                        }
-                    } catch(e) { 
-                        showToast("Failed to delete project.", "error"); 
-                    }
-                }
+            const handleDeleteProject = async (id) => {
+                if (!isAdminMgr) return showToast('শুধুমাত্র Admin বা Manager ডিলিট করতে পারবেন।', 'error');
+                if (!window.confirm('Are you sure you want to delete this project?')) return;
+                playSound('cancel');
+                try {
+                    const res = await executeAPI({ action: 'delete_project', id });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        showToast('Project moved to Trash.', 'info');
+                        fetchOrders(true);
+                    } else showToast((data && data.message) || 'Delete failed.', 'error');
+                } catch (e) { showToast('Failed to delete project.', 'error'); }
             };
 
             return (
-                <div className="space-y-6 pb-10">
-                    <div className="flex justify-between items-center gap-2 mb-4">
-                        <div className="min-w-0 flex-1">
-                            <h2 className="text-lg md:text-3xl font-semibold text-gray-900 dark:text-white tracking-tight truncate">
-                                Agency Projects
-                            </h2>
-                            <p className="text-[10px] md:text-sm text-gray-500 mt-1 truncate">Manage tasks, assign teams, track payments and deliveries.</p>
+                <div className="space-y-4 sm:space-y-5 pb-12 w-full max-w-full overflow-x-hidden">
+                    {/* Compact Single-Row Responsive Header */}
+                    <div className="glass-panel p-3.5 sm:p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-3">
+                        <div className="flex items-center justify-between gap-2 flex-nowrap">
+                            <div className="min-w-0 flex-1">
+                                <h2 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2 truncate">
+                                    <Icon name="briefcase" className="w-5 h-5 text-[#005fb8] shrink-0" />
+                                    <span className="truncate">{auth?.role === 'Student' ? 'My Projects' : 'Agency Projects'}</span>
+                                </h2>
+                                <p className="hidden sm:block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                    1-Click delivery, zero-duplicate payments &amp; assigned team collaboration.
+                                </p>
+                            </div>
+                            {canCreateProject && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        playSound('click');
+                                        setActiveDraftId(null);
+                                        setFormData({ ...defaultFormState, deadline: moment().add(7, 'days').format('YYYY-MM-DD') });
+                                        setShowModal(true);
+                                    }}
+                                    className="h-9 sm:h-10 px-3.5 sm:px-5 bg-[#facc15] hover:bg-[#eab308] text-gray-900 rounded-xl font-bold shadow-sm flex items-center gap-1.5 text-xs sm:text-sm transition-colors whitespace-nowrap shrink-0 win-button"
+                                >
+                                    <Icon name="plus" className="w-4 h-4 shrink-0" />
+                                    <span className="hidden sm:inline">Add New Project</span>
+                                    <span className="sm:hidden">New</span>
+                                </button>
+                            )}
                         </div>
-                        <button onClick={() => { setFormData({...defaultFormState, deadline: moment().add(7,'days').format('YYYY-MM-DD')}); setShowModal(true); }} className="bg-[#facc15] hover:bg-[#eab308] text-gray-900 px-3 md:px-5 py-2 md:py-2.5 rounded-full font-bold shadow-sm flex items-center gap-1.5 text-xs md:text-sm transition-colors whitespace-nowrap shrink-0 win-button">
-                            <Icon name="plus" className="w-4 h-4 shrink-0" /> <span className="hidden sm:inline">Add New Project</span><span className="sm:hidden">Add</span>
-                        </button>
+
+                        {/* Filter Pills (Ongoing First, Then All, Completed, Due...) + Search */}
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 pt-2.5 border-t border-gray-100 dark:border-white/10">
+                            <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                                {['Ongoing', 'All', 'Completed', 'Due', 'Paused', 'Delivered', 'Not Delivered'].map(status => (
+                                    <button
+                                        key={status}
+                                        type="button"
+                                        onClick={() => { playSound('action'); setFilterStatus(status); }}
+                                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-colors border win-button ${
+                                            filterStatus === status
+                                                ? 'bg-[#005fb8] text-white border-[#005fb8] shadow-sm'
+                                                : 'bg-white dark:bg-dark-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-dark-700'
+                                        }`}
+                                    >
+                                        {status}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="flex items-center bg-white dark:bg-dark-800 px-3 py-1.5 rounded-xl border border-gray-200/80 dark:border-white/10 w-full md:w-60 shrink-0">
+                                <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
+                                <input
+                                    type="text"
+                                    value={searchQ}
+                                    onChange={e => setSearchQ(e.target.value)}
+                                    placeholder="Search project, client, team..."
+                                    className="bg-transparent border-none outline-none w-full text-xs font-medium text-gray-800 dark:text-white"
+                                />
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Technical Analysis 6 Cards - Standard Font */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
-                        <div className="bg-white dark:bg-[#1f1f1f] p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100/50 dark:border-white/5">
-                            <p className="text-[10px] md:text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">Total Projects</p>
-                            <p className="text-2xl lg:text-4xl font-semibold text-gray-900 dark:text-white">{projects.length}</p>
+                    {/* Saved Project Drafts Banner */}
+                    {canCreateProject && projectDrafts.length > 0 && (
+                        <div className="p-3.5 rounded-2xl bg-amber-500/[0.08] dark:bg-amber-500/[0.12] border border-amber-300/60 dark:border-amber-500/30 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                                    <Icon name="file-edit" className="w-4 h-4" /> Saved Project Drafts ({projectDrafts.length})
+                                </span>
+                                <span className="text-[10px] text-amber-700/80 dark:text-amber-300/75">Click to resume &amp; publish</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {projectDrafts.map(dr => (
+                                    <div key={dr.draftId} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-dark-800 border border-amber-200 dark:border-amber-500/30 shadow-sm text-xs">
+                                        <button type="button" onClick={() => handleResumeDraft(dr)} className="font-bold text-gray-900 dark:text-white hover:text-[#005fb8] truncate max-w-[180px]">
+                                            {dr.data?.name || dr.data?.client || 'Untitled Draft'}
+                                        </button>
+                                        <span className="text-[10px] text-gray-400 font-numbers">{moment(dr.savedAt).format('DD MMM')}</span>
+                                        <button type="button" onClick={() => handleDeleteDraft(dr.draftId)} className="text-rose-500 hover:text-rose-700" title="Remove Draft">
+                                            <Icon name="x" className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <div className="bg-white dark:bg-[#1f1f1f] p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100/50 dark:border-white/5">
-                            <p className="text-[10px] md:text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">Ongoing</p>
-                            <p className="text-2xl lg:text-4xl font-semibold text-blue-500">{activeProjectsCount}</p>
+                    )}
+
+                    {/* Compact KPI Summary Strip */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+                        <div className="p-3.5 rounded-2xl bg-blue-500/[0.07] dark:bg-blue-500/[0.11] border border-blue-200/60 dark:border-blue-500/20">
+                            <p className="text-[10px] font-bold text-[#005fb8] dark:text-[#60cdff] uppercase">Ongoing</p>
+                            <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white mt-0.5">{activeProjectsCount}</p>
                         </div>
-                        <div className="bg-white dark:bg-[#1f1f1f] p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100/50 dark:border-white/5">
-                            <p className="text-[10px] md:text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">Completed</p>
-                            <p className="text-2xl lg:text-4xl font-semibold text-green-500">{completedProjectsCount}</p>
+                        <div className="p-3.5 rounded-2xl bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] border border-emerald-200/60 dark:border-emerald-500/20">
+                            <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">Completed</p>
+                            <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white mt-0.5">{completedProjectsCount}</p>
                         </div>
-                        <div className="bg-white dark:bg-[#1f1f1f] p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100/50 dark:border-white/5">
-                            <p className="text-[10px] md:text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">Total Budget</p>
-                            <p className="text-2xl lg:text-3xl font-semibold text-gray-900 dark:text-white truncate">৳{(totalBudget/1000).toFixed(1)}k</p>
+                        <div className="p-3.5 rounded-2xl bg-gray-100/80 dark:bg-white/[0.04] border border-gray-200/70 dark:border-white/10">
+                            <p className="text-[10px] font-bold text-gray-500 uppercase">Total</p>
+                            <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white mt-0.5">{allUnifiedProjects.length}</p>
                         </div>
-                        <div className="bg-white dark:bg-[#1f1f1f] p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100/50 dark:border-white/5">
-                            <p className="text-[10px] md:text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">Received</p>
-                            <p className="text-2xl lg:text-3xl font-semibold text-teal-500 truncate">৳{(totalReceived/1000).toFixed(1)}k</p>
+                        <div className="p-3.5 rounded-2xl bg-purple-500/[0.06] dark:bg-purple-500/[0.10] border border-purple-200/60 dark:border-purple-500/20">
+                            <p className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase">Budget</p>
+                            <p className="text-lg sm:text-xl font-numbers font-bold text-gray-900 dark:text-white mt-0.5 truncate">৳{totalBudget.toLocaleString()}</p>
                         </div>
-                        <div className="bg-white dark:bg-[#1f1f1f] p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100/50 dark:border-white/5">
-                            <p className="text-[10px] md:text-xs font-bold text-red-500 dark:text-red-400 mb-1.5 uppercase tracking-wider">Total Due</p>
-                            <p className="text-2xl lg:text-3xl font-semibold text-red-500 truncate">৳{(totalDue/1000).toFixed(1)}k</p>
+                        <div className="p-3.5 rounded-2xl bg-teal-500/[0.07] dark:bg-teal-500/[0.11] border border-teal-200/60 dark:border-teal-500/20">
+                            <p className="text-[10px] font-bold text-teal-700 dark:text-teal-400 uppercase">Received</p>
+                            <p className="text-lg sm:text-xl font-numbers font-bold text-teal-600 dark:text-teal-400 mt-0.5 truncate">৳{totalReceived.toLocaleString()}</p>
+                        </div>
+                        <div className="p-3.5 rounded-2xl bg-rose-500/[0.07] dark:bg-rose-500/[0.11] border border-rose-200/60 dark:border-rose-500/20">
+                            <p className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase">Total Due</p>
+                            <p className="text-lg sm:text-xl font-numbers font-bold text-rose-600 dark:text-rose-400 mt-0.5 truncate">৳{totalDue.toLocaleString()}</p>
                         </div>
                     </div>
 
-                    {/* Advanced Filter Buttons */}
-                    <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar border-b border-gray-200/50 dark:border-white/10 pb-2 pt-2">
-                        {['All', 'Ongoing', 'Due', 'Completed', 'Paused', 'Delivered', 'Not Delivered'].map(status => (
-                            <button key={status} onClick={() => { playSound('action'); setFilterStatus(status); }} className={`px-4 md:px-5 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 win-button ${filterStatus === status ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 shadow-sm' : 'bg-white dark:bg-dark-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-dark-600 hover:bg-gray-50 dark:hover:bg-dark-700'}`}>
-                                {status}
-                            </button>
-                        ))}
-                    </div>
+                    {/* Responsive Project Cards Grid */}
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+                        {filteredProjects.length === 0 ? (
+                            <div className="col-span-full py-12 px-4 text-center glass-panel rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-xs font-semibold text-gray-500">
+                                No projects found in "{filterStatus}".
+                            </div>
+                        ) : filteredProjects.map(p => {
+                            const deadlineMoment = moment(parseCustomDate(p.deadline)).endOf('day');
+                            const diffMs = deadlineMoment.diff(moment(time));
+                            const duration = moment.duration(Math.max(0, diffMs));
+                            const isPassed = diffMs < 0;
+                            const isUrgent = diffMs > 0 && diffMs < 172800000;
+                            const dueAmt = Math.max(0, Number(p.revenue || 0) - Number(p.paid || 0));
+                            const isExpanded = expandedProject === p.id;
+                            const isDoneAndDelivered = p.status === 'Completed' && p.deliveryStatus === 'Delivered';
 
-                  {/* 🟢 FIX 1: Responsive MASONRY Layout for Independent Card Expansion */}
-                    <div className="columns-1 xl:columns-2 gap-4 md:gap-5 space-y-4 md:space-y-5">
-                        {isFetching ? (
-                                <div className="col-span-full flex flex-col justify-center items-center py-12">
-                                    <Icon name="loader" className="w-8 h-8 text-[#005fb8] animate-spin mb-2" />
-                                    <p className="text-gray-500 text-sm">Loading live projects from database...</p>
-                                </div>
-                            ) : sortedProjects.length === 0 ? (
-                                <div className="col-span-full text-center py-12 text-gray-500 glass-panel border-dashed">No projects found in this category.</div>
-                            ) : sortedProjects.map(p => {
-                                const deadlineMoment = moment(parseCustomDate(p.deadline)).endOf('day');
-                                const diffMs = deadlineMoment.diff(moment(time));
-                                const duration = moment.duration(Math.max(0, diffMs)); // নেগেটিভ টাইম আটকানো হয়েছে
-                                const isPassed = diffMs < 0;
-                                const isUrgent = diffMs > 0 && diffMs < 172800000;
-                                const dueAmt = Number(p.revenue) - Number(p.paid || 0);
-                                const isExpanded = expandedProject === p.id;
-                                
-                                return (
-                                    <div key={p.id} className={`glass-panel p-4 md:p-5 rounded-2xl shadow-sm border flex flex-col relative transition-all break-inside-avoid ${isUrgent && p.status === 'Ongoing' ? 'border-red-300 dark:border-red-800/50 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'border-gray-200/50 dark:border-white/10 hover:border-[#005fb8]/50'}`}>
-                                        
-                                        {/* HEADER (Always Visible) - Click to expand */}
-                                        <div className="flex justify-between items-start cursor-pointer group" onClick={() => setExpandedProject(isExpanded ? null : p.id)}>
-                                            <div className="flex-1 pr-3 min-w-0">
-                                                <div className="flex items-center flex-wrap gap-2 mb-2">
-                                                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border whitespace-nowrap ${p.status === 'Completed' ? 'bg-green-50 text-green-600 border-green-200 dark:bg-green-900/20 dark:border-green-800/50' : p.status === 'Paused' ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:border-red-800/50' : 'bg-blue-50 text-[#005fb8] border-blue-200 dark:bg-blue-900/20 dark:text-[#60cdff] dark:border-blue-800/50'}`}>
-                                                        {p.status}
+                            return (
+                                <div key={p.id} className={`glass-panel p-4 rounded-2xl border transition-all flex flex-col gap-3 ${isUrgent && p.status === 'Ongoing' ? 'border-rose-300 dark:border-rose-700/60 shadow-sm' : 'border-gray-200/70 dark:border-white/10 hover:border-[#005fb8]/50'}`}>
+                                    {/* Top Row: Badges + Countdown + Expand */}
+                                    <div className="flex items-start justify-between gap-2 cursor-pointer" onClick={() => setExpandedProject(isExpanded ? null : p.id)}>
+                                        <div className="min-w-0 flex-1 space-y-1.5">
+                                            <div className="flex items-center flex-wrap gap-1.5">
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${p.status === 'Completed' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : p.status === 'Paused' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300' : 'bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff]'}`}>
+                                                    {p.status}
+                                                </span>
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${p.priority === 'High' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : p.priority === 'Medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'}`}>
+                                                    {p.priority}
+                                                </span>
+                                                {p.deliveryStatus === 'Delivered' && (
+                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-purple-500/15 text-purple-700 dark:text-purple-300">
+                                                        Delivered ✓
                                                     </span>
-                                                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border whitespace-nowrap ${p.priority === 'High' ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50' : p.priority === 'Medium' ? 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800/50' : 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-dark-800 dark:text-gray-300 dark:border-dark-600'}`}>
-                                                        {p.priority} Priority
-                                                    </span>
-                                                    {p.deliveryStatus === 'Delivered' && (
-                                                        <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border bg-purple-50 text-purple-600 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-800/50 whitespace-nowrap">
-                                                            Delivered
-                                                        </span>
-                                                    )}
-                                                    <span className="text-[10px] text-gray-500 font-semibold whitespace-nowrap ml-1">{p.id}</span>
-                                                    {isUrgent && p.status === 'Ongoing' && <span className="flex h-2.5 w-2.5 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span></span>}
-                                                </div>
-                                                <h3 className="font-bold text-base md:text-lg text-gray-900 dark:text-white leading-tight line-clamp-1 group-hover:text-[#005fb8] transition-colors" title={p.name}>{p.name}</h3>
-                                                
-                                                {/* Client Info & Compact Timer (Moved to Header) */}
-                                                <div className="flex items-center flex-wrap gap-y-2 gap-x-4 mt-2">
-                                                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                        <span className="inline-flex items-center gap-1.5 truncate max-w-[150px] font-medium text-gray-700 dark:text-gray-300">
-                                                            <UserAvatar name={p.client} size="xs" />
-                                                            <span className="truncate">{p.client}</span>
-                                                        </span>
-                                                        <span className="font-numbers font-bold text-gray-800 dark:text-gray-300">৳{Number(p.revenue).toLocaleString()}</span>
-                                                    </div>
-                                                    
-                                                    {/* The Always-Visible Timer */}
-                                                    <div className="flex items-center gap-1.5 pl-0 sm:pl-3 sm:border-l border-gray-200 dark:border-white/10">
-                                                        {isPassed || p.status === 'Completed' ? (
-                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-widest ${p.status === 'Completed' ? 'bg-green-50 text-green-600 border-green-200 dark:bg-green-900/30 dark:border-green-800/50' : 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:border-red-800/50'}`}>
-                                                                {p.status === 'Completed' ? 'Achieved' : 'Overdue'}
-                                                            </span>
-                                                        ) : (
-                                                            <div className="flex items-center gap-1">
-                                                            <TimerBox label="D" value={Math.floor(duration.asDays())} />
-                                                            <TimerBox label="H" value={duration.hours()} />
-                                                            <TimerBox label="M" value={duration.minutes()} />
-                                                        </div>
-                                                        )}
-                                                    </div>
-                                                </div>
+                                                )}
+                                                <span className="text-[10px] font-mono-code font-bold text-gray-400">{p.id}</span>
                                             </div>
-                                            <div className="flex items-center gap-2 shrink-0">
-                                                <div className="text-right mr-1 hidden sm:block">
-                                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Progress</div>
-                                                    <div className={`text-sm  ${p.progress === 100 ? 'text-green-500' : 'text-[#005fb8] dark:text-[#60cdff]'}`}>{p.progress}%</div>
-                                                </div>
-                                                <button className="p-1.5 bg-gray-100 dark:bg-dark-800 text-gray-500 rounded-md transition-colors win-button">
-                                                    <Icon name={isExpanded ? "chevron-up" : "chevron-down"} className="w-4 h-4" />
-                                                </button>
+
+                                            <h3 className="font-bold text-base sm:text-[17px] text-gray-900 dark:text-white leading-snug break-words">
+                                                {p.name}
+                                            </h3>
+
+                                            <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
+                                                <span className="inline-flex items-center gap-1.5 font-semibold">
+                                                    <UserAvatar name={p.client} size="xs" />
+                                                    <span>{p.client}</span>
+                                                </span>
+                                                <span className="text-[11px] font-numbers text-gray-500">
+                                                    Due Date: <strong>{moment(parseCustomDate(p.deadline)).format('DD MMM')}</strong>
+                                                </span>
+                                                {isPassed && p.status !== 'Completed' ? (
+                                                    <span className="text-[10px] font-bold text-rose-600 bg-rose-500/10 px-1.5 py-0.5 rounded">Overdue</span>
+                                                ) : p.status !== 'Completed' ? (
+                                                    <span className="text-[10px] font-numbers font-bold text-[#005fb8] dark:text-[#60cdff] bg-blue-500/10 px-1.5 py-0.5 rounded">
+                                                        {Math.floor(duration.asDays())}d {duration.hours()}h left
+                                                    </span>
+                                                ) : null}
                                             </div>
                                         </div>
 
-                                        {/* EXPANDABLE BODY */}
-                                        {isExpanded && (
-                                            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-white/10 flex flex-col gap-4 animate-in slide-in-from-top-2">
-                                                {/* Client Info & Description */}
-                                                <div className="bg-gray-50/50 dark:bg-dark-900/30 p-3 rounded-xl border border-gray-100 dark:border-white/5 text-sm flex flex-col gap-2">
-                                                    <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium">
-                                                        <Icon name="phone" className="w-4 h-4 text-gray-400 shrink-0" />
-                                                        <span className="truncate font-mono-code">{p.clientPhone || 'No Phone Number'}</span>
-                                                    </div>
-                                                    {p.description && (
-                                                        <p className="text-[11px] md:text-xs text-gray-500 dark:text-gray-400 leading-relaxed italic border-l-2 border-gray-300 dark:border-dark-600 pl-2 ml-1 whitespace-pre-wrap">
-                                                            {p.description}
-                                                        </p>
-                                                    )}
-                                                </div>
-
-                                                {/* Financials Grid */}
-{auth?.role === 'Admin' && (
-<div className="grid grid-cols-3 gap-2 py-1.5 px-3 bg-white dark:bg-[#1a1a1a] rounded-lg border border-gray-100 dark:border-white/5">
-    <div className="flex flex-col">
-        <span className="text-[9px] md:text-[10px] text-gray-400 uppercase tracking-widest font-bold">Budget</span>
-        <span className="text-xs md:text-sm font-semibold text-gray-900 dark:text-white truncate">{CURRENCY_SYMBOL}{Number(p.revenue).toLocaleString()}</span>
-    </div>
-    <div className="flex flex-col border-l border-gray-100 dark:border-white/10 pl-2 md:pl-3">
-        <span className="text-[9px] md:text-[10px] text-teal-500 uppercase tracking-widest font-bold">Paid</span>
-        <span className="text-xs md:text-sm font-semibold text-teal-600 dark:text-teal-400 truncate">{CURRENCY_SYMBOL}{Number(p.paid || 0).toLocaleString()}</span>
-    </div>
-    <div className="flex flex-col border-l border-gray-100 dark:border-white/10 pl-2 md:pl-3">
-        <span className="text-[9px] md:text-[10px] text-red-400 uppercase tracking-widest font-bold">Due</span>
-        <span className={`text-xs md:text-sm font-semibold truncate ${dueAmt > 0 ? 'text-red-500' : 'text-gray-400'}`}>{CURRENCY_SYMBOL}{dueAmt.toLocaleString()}</span>
-    </div>
-</div>
-)}
-
-{/* Progress with Quick Update Button */}
-                                                <div className="flex flex-col gap-1.5 mt-auto">
-                                                    <div className="flex justify-between items-end text-xs font-bold text-gray-700 dark:text-gray-300">
-                                                        <span className="text-[10px] uppercase text-gray-400 tracking-wider">Update Progress</span>
-                                                        <div className="flex items-center gap-2">
-                                                            {p.status !== 'Completed' && (
-                                                                <button onClick={(e) => { e.stopPropagation(); playSound('click'); setProgressModal({ isOpen: true, project: p, value: p.progress }); }} className="text-[#005fb8] dark:text-[#60cdff] hover:bg-blue-50 dark:hover:bg-blue-900/30 p-1.5 rounded transition-colors win-button border border-[#005fb8]/20 flex items-center gap-1" title="Update Progress">
-                                                                    <Icon name="zap" className="w-3.5 h-3.5" /> <span className="text-[10px]">Update</span>
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2 shadow-inner overflow-hidden"><div className={`h-full transition-all duration-500 ${p.progress === 100 ? 'bg-green-500' : 'bg-[#005fb8] dark:bg-[#60cdff]'}`} style={{width: `${p.progress}%`}}></div></div>
-                                                </div>
-                                                
-                                                {/* Footer: Team & Delivery Action */}
-                                                <div className="flex justify-between items-end pt-3 border-t border-gray-100 dark:border-white/5 mt-1 flex-wrap gap-y-3">
-                                                    <div className="flex flex-col gap-2">
-                                                        {/* Timer moved to header, keeping only delivery button here */}
-                                                        {p.status === 'Completed' && p.deliveryStatus !== 'Delivered' && (
-                                                            <button onClick={() => handleDeliverProject(p)} className="bg-[#facc15] hover:bg-[#eab308] text-gray-900 px-3 py-1.5 rounded-md font-bold shadow-sm flex items-center gap-1.5 text-xs transition-colors win-button w-max mt-1">
-                                                                <Icon name="package" className="w-3.5 h-3.5" /> Mark Delivered
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    
-                                                    <div className="flex flex-col items-end gap-2">
-                                                        <div className="flex items-center gap-1.5 shrink-0">
-                                                            <button onClick={(e) => { e.stopPropagation(); handleCopyProject(p); }} className="px-2 py-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 rounded hover:text-green-600 dark:hover:text-green-400 transition-colors border border-gray-200 dark:border-dark-600 win-button flex items-center gap-1 text-[10px] font-bold"><Icon name="copy" className="w-3.5 h-3.5" /> Copy</button>
-                                                            <button onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                playSound('click');
-                                                                const exInsts = (orders || [])
-                                                                    .filter(o => String(o.parentId || '').trim() === String(p.id || '').trim() && Number(o.installmentNo) > 0)
-                                                                    .sort((a, b) => (Number(a.installmentNo) || 0) - (Number(b.installmentNo) || 0))
-                                                                    .map(o => ({ amount: o.Paid || '', date: moment(parseCustomDate(o.Timestamp)).format('YYYY-MM-DD'), method: o.PaymentMethod || 'Cash' }));
-                                                                const fbInsts = exInsts.length > 0
-                                                                    ? exInsts
-                                                                    : [{ amount: Number(p.paid) > 0 ? p.paid : '', date: moment(parseCustomDate(p.timestamp || new Date())).format('YYYY-MM-DD'), method: 'Cash' }];
-                                                                setFormData({ ...p, deadline: moment(parseCustomDate(p.deadline)).format('YYYY-MM-DD'), installments: fbInsts });
-                                                                setShowModal(true);
-                                                            }} className="px-2 py-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 rounded hover:text-[#005fb8] dark:hover:text-[#60cdff] transition-colors border border-gray-200 dark:border-dark-600 win-button flex items-center gap-1 text-[10px] font-bold"><Icon name="edit-2" className="w-3.5 h-3.5" /> Edit</button>
-                                                            {['Admin', 'Manager'].includes(auth?.role) && (
-                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteProject(p.id); }} className="px-2 py-1.5 bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 rounded hover:text-red-500 dark:hover:text-red-400 transition-colors border border-gray-200 dark:border-dark-600 win-button flex items-center gap-1 text-[10px] font-bold"><Icon name="trash-2" className="w-3.5 h-3.5" /> Delete</button>
-                                                            )}
-                                                        </div>
-														
-
-                                                        <div className="flex -space-x-2 overflow-hidden py-0.5 mt-1">
-                                                            {p.team && p.team.length > 0 ? p.team.slice(0, 3).map((t, idx) => (
-                                                                <div key={idx} className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-to-tr from-gray-200 to-gray-100 dark:from-dark-700 dark:to-dark-600 border-2 border-white dark:border-[#1a1a1a] flex items-center justify-center text-[10px] font-bold text-gray-700 dark:text-gray-200 shadow-sm z-10 hover:z-20 hover:scale-110 transition-transform cursor-pointer" title={t}>
-                                                                    {t.substring(0, 2).toUpperCase()}
-                                                                </div>
-                                                            )) : <span className="text-[10px] text-gray-400 italic">Unassigned</span>}
-                                                            {p.team && p.team.length > 3 && (
-                                                                <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-gray-100 dark:bg-dark-800 border-2 border-white dark:border-[#1a1a1a] flex items-center justify-center text-[9px] font-bold text-gray-500 z-10">
-                                                                    +{p.team.length - 3}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
+                                        <button type="button" className="p-1.5 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-500 shrink-0">
+                                            <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} className="w-4 h-4" />
+                                        </button>
                                     </div>
-                                );
-                            })}
+
+                                    {/* Always-Visible Compact Progress + Financials Strip */}
+                                    <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-gray-50/90 dark:bg-dark-900/40 border border-gray-200/60 dark:border-white/5 text-xs font-numbers">
+                                        <div>
+                                            <span className="text-[9px] font-sans font-bold uppercase text-gray-400 block">Budget</span>
+                                            <span className="font-bold text-gray-900 dark:text-white">৳{Number(p.revenue || 0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="border-l border-gray-200 dark:border-white/10 pl-2">
+                                            <span className="text-[9px] font-sans font-bold uppercase text-emerald-600 dark:text-emerald-400 block">Paid</span>
+                                            <span className="font-bold text-emerald-600 dark:text-emerald-400">৳{Number(p.paid || 0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="border-l border-gray-200 dark:border-white/10 pl-2">
+                                            <span className="text-[9px] font-sans font-bold uppercase text-rose-500 block">Due</span>
+                                            <span className={`font-bold ${dueAmt > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400'}`}>৳{dueAmt.toLocaleString()}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Progress Bar */}
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between text-[11px] font-bold">
+                                            <span className="text-gray-500">Progress</span>
+                                            <span className={p.progress === 100 ? 'text-emerald-600' : 'text-[#005fb8] dark:text-[#60cdff]'}>{p.progress}%</span>
+                                        </div>
+                                        <div className="w-full h-2 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                                            <div className={`h-full rounded-full transition-all duration-500 ${p.progress === 100 ? 'bg-emerald-500' : 'bg-[#005fb8]'}`} style={{ width: `${Math.min(100, Number(p.progress) || 0)}%` }} />
+                                        </div>
+                                    </div>
+
+                                    {/* Always-Visible 1-Click Quick Action Bar */}
+                                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-white/10">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            {!isDoneAndDelivered && (
+                                                <button
+                                                    type="button"
+                                                    disabled={quickBusyId === p.id}
+                                                    onClick={() => handleOneClickCompleteDeliver(p)}
+                                                    className="h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50 whitespace-nowrap win-button"
+                                                >
+                                                    {quickBusyId === p.id ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="check-circle" className="w-3.5 h-3.5" />}
+                                                    <span>100% &amp; Deliver</span>
+                                                </button>
+                                            )}
+
+                                            {dueAmt > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        playSound('click');
+                                                        setDuePayModal({ isOpen: true, project: p, amount: String(dueAmt), method: 'Cash', saving: false });
+                                                    }}
+                                                    className="h-8 px-2.5 rounded-lg bg-amber-500/15 hover:bg-amber-500 text-amber-800 hover:text-white dark:text-amber-300 text-[11px] font-bold flex items-center gap-1 whitespace-nowrap transition-colors win-button"
+                                                >
+                                                    <Icon name="wallet" className="w-3.5 h-3.5" /> Pay Due
+                                                </button>
+                                            )}
+
+                                            {p.status !== 'Completed' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { playSound('click'); setProgressModal({ isOpen: true, project: p, value: p.progress }); }}
+                                                    className="h-8 px-2.5 rounded-lg bg-blue-500/10 hover:bg-[#005fb8] text-[#005fb8] hover:text-white dark:text-[#60cdff] text-[11px] font-bold flex items-center gap-1 whitespace-nowrap transition-colors win-button"
+                                                >
+                                                    <Icon name="zap" className="w-3.5 h-3.5" /> {p.progress}%
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5">
+                                            <button type="button" onClick={() => openEditModal(p)} className="h-8 px-2.5 rounded-lg bg-gray-100 dark:bg-dark-800 hover:bg-blue-500/15 text-gray-700 dark:text-gray-200 hover:text-[#005fb8] text-[11px] font-bold flex items-center gap-1 win-button">
+                                                <Icon name="edit-2" className="w-3.5 h-3.5" /> Edit
+                                            </button>
+                                            <button type="button" onClick={() => handleCopyProject(p)} className="h-8 w-8 rounded-lg bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300 hover:text-emerald-600 flex items-center justify-center win-button" title="Copy Details">
+                                                <Icon name="copy" className="w-3.5 h-3.5" />
+                                            </button>
+                                            {isAdminMgr && (
+                                                <button type="button" onClick={() => handleDeleteProject(p.id)} className="h-8 w-8 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-600 hover:text-white flex items-center justify-center transition-colors win-button" title="Delete Project">
+                                                    <Icon name="trash-2" className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Expandable Details (Description, Contact, Assigned Team) */}
+                                    {isExpanded && (
+                                        <div className="pt-3 border-t border-gray-100 dark:border-white/10 space-y-2.5 text-xs">
+                                            {isAdminMgr && (p.clientPhone || p.clientEmail) && (
+                                                <div className="flex flex-wrap gap-3 text-gray-600 dark:text-gray-300 font-mono-code">
+                                                    {p.clientPhone && <span className="flex items-center gap-1"><Icon name="phone" className="w-3.5 h-3.5 text-[#005fb8]" /> {p.clientPhone}</span>}
+                                                    {p.clientEmail && <span className="flex items-center gap-1"><Icon name="mail" className="w-3.5 h-3.5 text-[#005fb8]" /> {p.clientEmail}</span>}
+                                                </div>
+                                            )}
+                                            {p.description && (
+                                                <p className="p-3 rounded-xl bg-gray-50 dark:bg-dark-900/50 border border-gray-200/60 dark:border-white/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                                                    {p.description}
+                                                </p>
+                                            )}
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                <span className="text-[10px] font-bold uppercase text-gray-400">Assigned Team:</span>
+                                                {(p.team || []).length > 0 ? p.team.map((t, idx) => (
+                                                    <span key={idx} className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-[11px] font-bold">
+                                                        {t}
+                                                    </span>
+                                                )) : <span className="text-gray-400 italic">Unassigned</span>}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
 
-                    {/* 🟢 Add/Edit Project Modal */}
-                    <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={formData.id ? "Edit Project Details" : "Create New Project"} fullWidthContent={true}>
-                        <form onSubmit={handleSave} className="space-y-4 px-2 py-2">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="md:col-span-2"><label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Project Name *</label><input type="text" required value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} className="w-full input-style px-3 py-2 text-sm font-semibold" placeholder="e.g. E-Commerce Website" /></div>
-                                
-                               <div><label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Client Name *</label><AutocompleteInput value={formData.client} onChange={e=>setFormData({...formData, client: e.target.value})} onSelect={(c) => setFormData({...formData, client: c.name, clientPhone: c.phone || formData.clientPhone, clientEmail: c.email || formData.clientEmail})} placeholder="e.g. John Doe (Type to search)" contacts={globalContacts} required={true} /></div>
-                                <div><label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Client Phone</label><input type="text" value={formData.clientPhone} onChange={e=>setFormData({...formData, clientPhone: e.target.value})} className="w-full input-style px-3 py-2 text-sm" placeholder="e.g. 01700000000" /></div>
-                                
-                                <div className="md:col-span-2"><label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Project Description / Tasks</label><textarea rows="2" value={formData.description} onChange={e=>setFormData({...formData, description: e.target.value})} className="w-full input-style px-3 py-2 text-sm resize-none" placeholder="Briefly describe the tasks..."></textarea></div>
-
-                                <div className="md:col-span-2">
-                                    <InstallmentPaymentBox
-                                        total={formData.revenue}
-                                        onTotalChange={v => setFormData({ ...formData, revenue: v })}
-                                        installments={formData.installments}
-                                        onInstallmentsChange={list => {
-                                            const paidSum = list.reduce((s, it) => s + (Number(it.amount) || 0), 0);
-                                            setFormData({ ...formData, installments: list, paid: paidSum });
-                                        }}
-                                        totalLabel="Total Budget (৳) *"
-                                        defaultDate={moment().format('YYYY-MM-DD')}
-                                    />
+                    {/* 🟢 Responsive Add / Edit Project Modal (With Draft & All Users Dropdown) */}
+                    <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={formData.id ? 'Edit Project Details' : 'Create New Project'} maxWidth="max-w-3xl" compact={true}>
+                        <form onSubmit={handleSave} className="space-y-3.5 w-full min-w-0">
+                            <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">1. Project &amp; Client Info</div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Project Name *</label>
+                                    <input type="text" required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full input-style px-3 py-2 text-sm font-semibold" placeholder="e.g. E-Commerce Website Design" />
                                 </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Client Name *</label>
+                                        <AutocompleteInput value={formData.client} onChange={e => setFormData({ ...formData, client: e.target.value })} onSelect={c => setFormData({ ...formData, client: c.name, clientPhone: c.phone || formData.clientPhone, clientEmail: c.email || formData.clientEmail })} placeholder="Search or type client name..." contacts={globalContacts} required={true} />
+                                    </div>
+                                    {isAdminMgr && (
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Client Phone</label>
+                                            <input type="text" value={formData.clientPhone} onChange={e => setFormData({ ...formData, clientPhone: e.target.value })} className="w-full input-style px-3 py-2 text-sm font-mono-code" placeholder="017XXXXXXXX" />
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Project Brief / Tasks</label>
+                                    <textarea rows="2" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm resize-none" placeholder="Describe project requirements & deliverables..." />
+                                </div>
+                            </div>
 
-                                {/* 🟢 Select Dropdown for Team Assignment */}
-                                <div className="md:col-span-2">
-                                    <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5"><Icon name="users" className="w-3.5 h-3.5 inline mr-1" /> Assign Team Members</label>
-                                    <select 
-                                        onChange={(e) => {
-                                            const selectedVal = e.target.value;
-                                            if (selectedVal && !formData.team?.includes(selectedVal)) {
-                                                setFormData({ ...formData, team: [...(formData.team || []), selectedVal] });
+                            {/* Payment & Installments Box */}
+                            <InstallmentPaymentBox
+                                total={formData.revenue}
+                                onTotalChange={v => setFormData({ ...formData, revenue: v })}
+                                installments={formData.installments}
+                                onInstallmentsChange={list => {
+                                    const paidSum = list.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+                                    setFormData({ ...formData, installments: list, paid: paidSum });
+                                }}
+                                totalLabel="Total Budget (৳) *"
+                                defaultDate={moment().format('YYYY-MM-DD')}
+                            />
+
+                            {/* Assign Team Members (ALL Users from Settings with Name + Phone + Role) */}
+                            <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">2. Assign Team &amp; Schedule</div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Assign Team Members (All Users with Name &amp; Phone)</label>
+                                    <select
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            if (val && !(formData.team || []).includes(val)) {
+                                                setFormData({ ...formData, team: [...(formData.team || []), val] });
                                             }
-                                            e.target.value = ""; 
-                                        }} 
-                                        className="w-full input-style px-3 py-2 text-sm font-semibold mb-2"
+                                            e.target.value = '';
+                                        }}
+                                        className="w-full input-style px-3 py-2 text-xs sm:text-sm font-semibold"
                                     >
-                                        <option value="">-- Select Member to Assign --</option>
-                                        {availableTeam.map(member => (
-                                            <option key={member} value={member}>{member}</option>
+                                        <option value="">-- Select Student / Manager / Team Member --</option>
+                                        {assignableUsers.map(u => (
+                                            <option key={u.name} value={u.name}>
+                                                {u.name}{u.phone ? ` (${u.phone})` : ''} — {u.role}
+                                            </option>
                                         ))}
                                     </select>
-                                    
-                                    <div className="flex flex-wrap gap-2 pt-1">
-                                        {formData.team && formData.team.map((member, idx) => (
-                                            <span key={idx} className="bg-[#005fb8] text-white px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 shadow-sm">
-                                                {member}
-                                                <button type="button" onClick={() => setFormData({...formData, team: formData.team.filter(t => t !== member)})} className="hover:text-red-300 bg-white/20 rounded-full p-0.5 transition-colors win-button">
+                                    <div className="flex flex-wrap gap-1.5 pt-2">
+                                        {(formData.team || []).map((member, idx) => (
+                                            <span key={idx} className="bg-[#005fb8] text-white px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5">
+                                                <span>{member}</span>
+                                                <button type="button" onClick={() => setFormData({ ...formData, team: formData.team.filter(t => t !== member) })} className="hover:text-rose-200">
                                                     <Icon name="x" className="w-3 h-3" />
                                                 </button>
                                             </span>
                                         ))}
-                                        {(!formData.team || formData.team.length === 0) && <span className="text-xs text-gray-400 italic">No members assigned yet</span>}
+                                        {(!formData.team || formData.team.length === 0) && <span className="text-[11px] text-gray-400 italic">No members assigned yet</span>}
                                     </div>
                                 </div>
 
-                                <div><label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Delivery Deadline *</label><input type="date" required value={formData.deadline} onChange={e=>setFormData({...formData, deadline: e.target.value})} className="w-full input-style px-3 py-2 text-sm dark:[color-scheme:dark]" /></div>
-                                
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
                                     <div>
-                                        <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Status</label>
-                                        <select value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})} className="w-full input-style px-3 py-2 text-sm font-semibold">
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Deadline *</label>
+                                        <input type="date" required value={formData.deadline} onChange={e => setFormData({ ...formData, deadline: e.target.value })} className="w-full input-style px-2.5 py-2 text-xs font-semibold dark:[color-scheme:dark]" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Status</label>
+                                        <select value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} className="w-full input-style px-2.5 py-2 text-xs font-semibold">
                                             <option value="Ongoing">Ongoing</option>
                                             <option value="Completed">Completed</option>
                                             <option value="Paused">Paused</option>
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Priority</label>
-                                        <select value={formData.priority} onChange={e=>setFormData({...formData, priority: e.target.value})} className="w-full input-style px-3 py-2 text-sm font-semibold">
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Priority</label>
+                                        <select value={formData.priority} onChange={e => setFormData({ ...formData, priority: e.target.value })} className="w-full input-style px-2.5 py-2 text-xs font-semibold">
                                             <option value="High">High</option>
                                             <option value="Medium">Medium</option>
                                             <option value="Low">Low</option>
                                         </select>
                                     </div>
-                                </div>
-                                
-                                <div className="md:col-span-2">
-                                    <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Delivery Status</label>
-                                    <select value={formData.deliveryStatus} onChange={e=>setFormData({...formData, deliveryStatus: e.target.value})} className="w-full input-style px-3 py-2 text-sm font-semibold">
-                                        <option value="Not Delivered">Not Delivered</option>
-                                        <option value="Delivered">Delivered</option>
-                                    </select>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Delivery</label>
+                                        <select value={formData.deliveryStatus} onChange={e => setFormData({ ...formData, deliveryStatus: e.target.value })} className="w-full input-style px-2.5 py-2 text-xs font-semibold">
+                                            <option value="Not Delivered">Not Delivered</option>
+                                            <option value="Delivered">Delivered</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
-                           <div className="flex justify-end pt-4 border-t border-gray-200/50 dark:border-white/10 mt-5 gap-2">
-                                <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2.5 text-gray-600 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-dark-800 rounded-lg transition-colors win-button">Cancel</button>
-                                <button type="submit" disabled={isSaving} className="bg-[#005fb8] hover:bg-[#004a94] text-white px-8 py-2.5 rounded-lg font-bold shadow-sm flex items-center gap-2 text-sm transition-colors win-button w-full sm:w-auto justify-center disabled:opacity-50">
-                                    {isSaving ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="save" className="w-4 h-4" />} 
-                                    {isSaving ? 'Saving to DB...' : 'Save Project'}
-                                </button>
+
+                            <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                                {!formData.id ? (
+                                    <button type="button" onClick={handleSaveDraft} className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-800 hover:text-white dark:text-amber-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors win-button">
+                                        <Icon name="file-edit" className="w-4 h-4" /> Save as Draft
+                                    </button>
+                                ) : <div />}
+
+                                <div className="flex flex-col-reverse sm:flex-row gap-2">
+                                    <button type="button" onClick={() => setShowModal(false)} className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold win-button">Cancel</button>
+                                    <button type="submit" disabled={isSaving} className="w-full sm:w-auto px-7 py-2.5 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 win-button">
+                                        {isSaving ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="save" className="w-4 h-4" />}
+                                        <span>{isSaving ? 'Saving...' : (formData.id ? 'Update Project' : 'Publish Project')}</span>
+                                    </button>
+                                </div>
                             </div>
                         </form>
                     </Modal>
 
-                    {/* 🟢 Premium Quick Progress Update Modal */}
-                    <Modal isOpen={progressModal.isOpen} onClose={() => setProgressModal({isOpen: false, project: null, value: 0})} title="Update Project Progress">
-                        {progressModal.project && (
-                            <form onSubmit={handleProgressUpdate} className="space-y-6 px-2 py-4">
-                                <div className="text-center">
-                                    <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2 leading-tight">{progressModal.project.name}</h3>
-                                    <p className="text-sm text-gray-500">Adjust the slider to update the current working progress.</p>
-                                </div>
-                                
-                                <div className="flex flex-col items-center gap-6 py-8 bg-gray-50 dark:bg-dark-900/30 rounded-2xl border border-gray-100 dark:border-white/5">
-                                    {/* Dynamic Circle/Text Display */}
-                                    <div className="relative flex items-center justify-center w-32 h-32 rounded-full shadow-inner bg-white dark:bg-dark-800 border-[6px] transition-colors duration-300" style={{ borderColor: progressModal.value == 100 ? '#22c55e' : progressModal.value > 50 ? '#3b82f6' : '#facc15' }}>
-                                        <span className="text-4xl  text-gray-900 dark:text-white font-semibold">{progressModal.value}%</span>
-                                    </div>
-                                    
-                                    <div className="w-full max-w-sm px-6">
-                                        <input 
-                                            type="range" min="0" max="100" step="5" 
-                                            value={progressModal.value} 
-                                            onChange={(e) => setProgressModal({...progressModal, value: e.target.value})}
-                                            className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer outline-none"
-                                            style={{ accentColor: progressModal.value == 100 ? '#22c55e' : progressModal.value > 50 ? '#3b82f6' : '#facc15' }}
-                                        />
-                                        <div className="flex justify-between w-full text-xs font-bold text-gray-400 mt-2">
-                                            <span>0%</span>
-                                            <span>50%</span>
-                                            <span className="text-green-500">100% (Done)</span>
-                                        </div>
+                    {/* 💰 Quick Collect Due Modal (Adds ONLY the paid due without duplicating!) */}
+                    <Modal isOpen={duePayModal.isOpen} onClose={() => setDuePayModal({ isOpen: false, project: null, amount: '', method: 'Cash', saving: false })} title="Collect Project Due Payment" maxWidth="max-w-sm" compact={true}>
+                        {duePayModal.project && (
+                            <form onSubmit={handleCollectDueSubmit} className="space-y-3.5">
+                                <div className="p-3 rounded-xl bg-blue-500/[0.07] border border-blue-200/70 dark:border-blue-500/25 text-xs space-y-1">
+                                    <p className="font-bold text-gray-900 dark:text-white">{duePayModal.project.name}</p>
+                                    <div className="flex justify-between font-numbers font-bold pt-1">
+                                        <span>Paid: ৳{Number(duePayModal.project.paid || 0).toLocaleString()}</span>
+                                        <span className="text-rose-600">Due: ৳{Math.max(0, Number(duePayModal.project.revenue || 0) - Number(duePayModal.project.paid || 0)).toLocaleString()}</span>
                                     </div>
                                 </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 mb-1">Received Due Amount (৳) *</label>
+                                    <input type="number" min="1" required autoFocus value={duePayModal.amount} onChange={e => setDuePayModal(p => ({ ...p, amount: e.target.value }))} className="w-full input-style px-3 py-2 text-base font-numbers font-bold text-emerald-600" />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-300 mb-1">Payment Method</label>
+                                    <select value={duePayModal.method} onChange={e => setDuePayModal(p => ({ ...p, method: e.target.value }))} className="w-full input-style px-3 py-2 text-xs font-bold">
+                                        <option value="Cash">Cash</option>
+                                        <option value="bKash">bKash</option>
+                                        <option value="Nagad">Nagad</option>
+                                        <option value="Rocket">Rocket</option>
+                                        <option value="Bank">Bank Transfer</option>
+                                    </select>
+                                </div>
+                                <div className="flex justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                                    <button type="button" onClick={() => setDuePayModal({ isOpen: false, project: null, amount: '', method: 'Cash', saving: false })} className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-dark-700 text-xs font-bold">Cancel</button>
+                                    <button type="submit" disabled={duePayModal.saving} className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button">
+                                        {duePayModal.saving ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="check-circle" className="w-3.5 h-3.5" />}
+                                        <span>{duePayModal.saving ? 'Saving...' : 'Confirm Payment'}</span>
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+                    </Modal>
 
-                               <div className="flex justify-end gap-3 pt-2">
-                                    <button type="button" onClick={() => setProgressModal({isOpen: false, project: null, value: 0})} className="px-6 py-2.5 text-gray-600 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-dark-800 rounded-xl transition-colors">Cancel</button>
-                                    <button type="submit" disabled={isSaving} className={`px-8 py-2.5 rounded-xl font-bold shadow-sm flex justify-center items-center gap-2 transition-colors text-white disabled:opacity-50 ${progressModal.value == 100 ? 'bg-green-500 hover:bg-green-600' : 'bg-[#005fb8] hover:bg-[#005fb8]/90'}`}>
-                                        {isSaving ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name={progressModal.value == 100 ? "check-circle" : "zap"} className="w-4 h-4" />} 
-                                        {isSaving ? 'Updating...' : progressModal.value == 100 ? 'Complete Project' : 'Update Progress'}
+                    {/* Quick Progress Slider Modal */}
+                    <Modal isOpen={progressModal.isOpen} onClose={() => setProgressModal({ isOpen: false, project: null, value: 0 })} title="Update Project Progress" maxWidth="max-w-md" compact={true}>
+                        {progressModal.project && (
+                            <form onSubmit={handleProgressUpdate} className="space-y-5 py-2">
+                                <h3 className="font-bold text-base text-center text-gray-900 dark:text-white">{progressModal.project.name}</h3>
+                                <div className="flex flex-col items-center gap-4 py-5 bg-gray-50 dark:bg-dark-900/40 rounded-2xl border border-gray-200/60 dark:border-white/5">
+                                    <div className="w-24 h-24 rounded-full bg-white dark:bg-dark-800 border-[5px] flex items-center justify-center font-numbers text-2xl font-bold" style={{ borderColor: progressModal.value == 100 ? '#10b981' : '#005fb8' }}>
+                                        {progressModal.value}%
+                                    </div>
+                                    <input type="range" min="0" max="100" step="5" value={progressModal.value} onChange={e => setProgressModal({ ...progressModal, value: e.target.value })} className="w-4/5 accent-[#005fb8] cursor-pointer" />
+                                </div>
+                                <div className="flex justify-end gap-2">
+                                    <button type="button" onClick={() => setProgressModal({ isOpen: false, project: null, value: 0 })} className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-dark-700 text-xs font-bold">Cancel</button>
+                                    <button type="submit" disabled={isSaving} className="px-6 py-2 rounded-xl bg-[#005fb8] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button">
+                                        {isSaving ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="zap" className="w-4 h-4" />}
+                                        <span>Save Progress</span>
                                     </button>
                                 </div>
                             </form>
@@ -23722,7 +23878,7 @@ const SmartPhoneAction = ({ phone }) => {
 // ==========================================
         // 🛒 FIVERR-STYLE MARKETPLACE VIEW (MAX 6 GIGS + LINE-BY-LINE FEATURES + AUTO-SAVE UPWORK PROFILE)
         // ==========================================
-        const MarketplaceView = ({ auth, gigs = [], projects = [], clientLeads = [], studentsPanel = [], studentLeads = [], myPortfolioConfig = null, setMyPortfolioConfig, executeAPI, fetchOrders, addToast }) => {
+        const MarketplaceView = ({ auth, gigs = [],marketplaceProfiles = [], globalLeaderboard = [], projects = [], clientLeads = [], studentsPanel = [], studentLeads = [], myPortfolioConfig = null, setMyPortfolioConfig, executeAPI, fetchOrders, addToast }) => {
             const playAudio = (type) => { if (typeof window.playSound === 'function') window.playSound(type); };
             const [serviceList] = useGlobalServices();
             const isAdminMgr = ['Admin', 'Manager'].includes(auth?.role);
@@ -23747,8 +23903,38 @@ const SmartPhoneAction = ({ phone }) => {
             const [searchQ, setSearchQ] = useState('');
             const [catFilter, setCatFilter] = useState('All');
             const [modalOpen, setModalOpen] = useState(false);
+            const [gigMobilePane, setGigMobilePane] = useState('form'); // 'form' | 'preview' (Mobile Toggle)
+            const [previewPkgIdx, setPreviewPkgIdx] = useState(0);
             const [saving, setSaving] = useState(false);
             const [uploadingBanner, setUploadingBanner] = useState(false);
+
+            const gigDraftKey = `fit_gig_drafts_${myId || 'usr'}`;
+            const [activeGigDraftId, setActiveGigDraftId] = useState(null);
+            const [gigDrafts, setGigDrafts] = useState(() => {
+                try {
+                    const saved = JSON.parse(localStorage.getItem(gigDraftKey) || '[]');
+                    return Array.isArray(saved) ? saved : [];
+                } catch (e) { return []; }
+            });
+
+            const persistGigDrafts = (nextList) => {
+                setGigDrafts(nextList);
+                try { localStorage.setItem(gigDraftKey, JSON.stringify(nextList)); } catch (e) {}
+            };
+
+            const handleSaveGigDraft = () => {
+                if (!gigForm.title.trim() && !gigForm.description.trim() && !gigForm.bannerUrl.trim()) {
+                    return addToast('ড্রাফট সেভ করতে অন্তত টাইটেল, ছবি বা বিবরণ দিন।', 'error');
+                }
+                playAudio('click');
+                const draftId = activeGigDraftId || `DRF-GIG-${Date.now()}`;
+                const next = [{ draftId, savedAt: new Date().toISOString(), data: { ...gigForm } }, ...gigDrafts.filter(d => d.draftId !== draftId)];
+                persistGigDrafts(next);
+                setModalOpen(false);
+                setActiveGigDraftId(null);
+                setGigForm(defaultGigForm);
+                addToast('গিগ ড্রাফট হিসেবে সেভ হয়েছে! পরে আবার পাবলিশ করতে পারবেন।', 'success');
+            };
 
             // Profile Customization States (Hydrated once so 30s background sync NEVER wipes unsaved typing!)
             const hydratedRef = useRef(false);
@@ -23862,9 +24048,176 @@ const SmartPhoneAction = ({ phone }) => {
                 });
             }, [gigs, searchQ, catFilter, isAdminMgr]);
 
+            // 🔎 অর্ডারটি কোন স্টুডেন্ট বা অ্যাডমিনের তা নিখুঁতভাবে বের করা (কখনো মিক্সড হবে না)
+            const extractOrderOwner = useCallback((p) => {
+                const desc = String(p?.description || '');
+                const frMatch = desc.match(/\[Freelancer:\s*([^\]]+)\]/i);
+                if (frMatch && frMatch[1]) return frMatch[1].trim();
+
+                const addedMatch = desc.match(/\(Added by:\s*([^)]+)\)/i);
+                if (addedMatch && addedMatch[1]) return addedMatch[1].trim();
+
+                const teamArr = Array.isArray(p?.team) ? p.team : [];
+                const nonAdminMember = teamArr.find(m => String(m || '').trim().toLowerCase() !== 'admin');
+                if (nonAdminMember) return String(nonAdminMember).trim();
+
+                return String(teamArr[0] || 'Admin').trim();
+            }, []);
+
             const incomingOrders = useMemo(() => {
-                return (projects || []).filter(p => String(p.description || '').includes('[Marketplace Order]'));
-            }, [projects]);
+                return (projects || [])
+                    .filter(p => String(p.description || '').includes('[Marketplace Order]'))
+                    .map(p => {
+                        const assignedFreelancer = extractOrderOwner(p);
+                        const isAdminOrder = assignedFreelancer.toLowerCase() === 'admin';
+                        return { ...p, assignedFreelancer, isAdminOrder };
+                    });
+            }, [projects, extractOrderOwner]);
+
+            // 🎯 অর্ডার ফিল্টার ও প্রোফাইল ডিরেক্টরি স্টেট (হাজার হাজার স্টুডেন্টের জন্য সার্চ + পেজিনেশন)
+            const [orderOwnerFilter, setOrderOwnerFilter] = useState('all'); // 'all' | 'students' | 'admin'
+            const [orderSearchQ, setOrderSearchQ] = useState('');
+            const [profileSearchQ, setProfileSearchQ] = useState('');
+            const [profileSortBy, setProfileSortBy] = useState('income'); // 'income' | 'orders' | 'skill' | 'gigs'
+            const [profilePage, setProfilePage] = useState(1);
+            const PROFILES_PER_PAGE = 12;
+
+            // 🏆 আসল লিডারবোর্ড / ড্যাশবোর্ড স্কিল % ম্যাপ
+            const skillScoreByName = useMemo(() => {
+                const map = {};
+                const nk = (v) => String(v || '').trim().toLowerCase();
+                (globalLeaderboard || []).forEach(row => {
+                    const score = Number(row.totalScore ?? row.score ?? row.skillProgress ?? 0);
+                    if (row.name) map[nk(row.name)] = score;
+                    if (row.phone) map[nk(row.phone)] = score;
+                });
+                (studentsPanel || []).forEach(st => {
+                    const nm = nk(st.name);
+                    if (nm && map[nm] === undefined) map[nm] = Number(st.skillProgress || 0);
+                });
+                return map;
+            }, [globalLeaderboard, studentsPanel]);
+
+            // 👥 শুধুমাত্র যাদের মার্কেটপ্লেস প্রোফাইল খোলা আছে (গিগ বা পোর্টফোলিও আছে) তাদের প্রোফাইল কার্ড লিস্ট
+            const activeProfileCards = useMemo(() => {
+                const map = new Map();
+                const nk = (v) => String(v || '').trim().toLowerCase();
+
+                const ensureProfile = (rawName, extra = {}) => {
+                    const cleanName = String(rawName || '').trim();
+                    if (!cleanName) return null;
+                    const key = nk(cleanName);
+                    if (!map.has(key)) {
+                        const stRec = (studentsPanel || []).find(s => nk(s.name) === key);
+                        const idDigits = String(stRec?.id || '').replace(/[^0-9]/g, '');
+                        const phDigits = String(stRec?.phone || '').replace(/[^0-9]/g, '');
+                        const fallbackShort = idDigits.length >= 4 ? idDigits.slice(-4) : (phDigits.length >= 4 ? phDigits.slice(-4) : key.replace(/[^a-z0-9\u0980-\u09ff]/g, ''));
+                        map.set(key, {
+                            name: cleanName,
+                            shortId: extra.shortId || fallbackShort,
+                            course: stRec?.course || extra.course || (key === 'admin' ? 'Institute Admin' : 'Verified Talent'),
+                            tagline: extra.tagline || '',
+                            availability: extra.availability || 'Available Now',
+                            isVerified: extra.isVerified !== undefined ? extra.isVerified : true,
+                            totalGigs: 0,
+                            activeGigs: 0,
+                            totalOrders: 0,
+                            totalIncome: 0,
+                            totalDue: 0,
+                            skillGrowth: Number(skillScoreByName[key] ?? stRec?.skillProgress ?? 0)
+                        });
+                    } else {
+                        const cur = map.get(key);
+                        if (extra.shortId && !cur.shortId) cur.shortId = extra.shortId;
+                        if (extra.tagline && !cur.tagline) cur.tagline = extra.tagline;
+                        if (extra.availability) cur.availability = extra.availability;
+                    }
+                    return map.get(key);
+                };
+
+                (marketplaceProfiles || []).forEach(pf => {
+                    ensureProfile(pf.ownerName, { shortId: pf.shortId, tagline: pf.tagline, availability: pf.availability });
+                });
+
+                (gigs || []).forEach(g => {
+                    const rec = ensureProfile(g.ownerName, { shortId: g.ownerShortId, isVerified: g.isVerified });
+                    if (!rec) return;
+                    rec.totalGigs += 1;
+                    if (g.status === 'Active') rec.activeGigs += 1;
+                    rec.totalOrders += Number(g.ordersCount || 0);
+                });
+
+                (incomingOrders || []).forEach(ord => {
+                    const rec = ensureProfile(ord.assignedFreelancer);
+                    if (!rec) return;
+                    const paidAmt = Number(ord.paid || 0);
+                    const revAmt = Number(ord.revenue || 0);
+                    rec.totalIncome += paidAmt > 0 ? paidAmt : revAmt;
+                    rec.totalDue += Math.max(0, revAmt - paidAmt);
+                    rec._orderProjectCount = (rec._orderProjectCount || 0) + 1;
+                });
+
+                return Array.from(map.values()).map(rec => ({
+                    ...rec,
+                    totalOrders: Math.max(rec.totalOrders, rec._orderProjectCount || 0)
+                }));
+            }, [marketplaceProfiles, gigs, incomingOrders, studentsPanel, skillScoreByName]);
+
+            // 👤 লগইন করা ইউজারের নিজের মার্কেটপ্লেস প্রোফাইল খোলা আছে কি না + তার ৪টি মেট্রিক কার্ড
+            const myMarketplaceProfile = useMemo(() => {
+                const nk = (v) => String(v || '').trim().toLowerCase();
+                const meKey = nk(myName);
+                const hasCustomPf = Boolean(
+                    (myPortfolioConfig?.tagline || '').trim() ||
+                    (myPortfolioConfig?.bio || '').trim() ||
+                    (myPortfolioConfig?.portfolioItems || []).length > 0
+                );
+                if (myGigs.length === 0 && !hasCustomPf) return null;
+
+                const matched = activeProfileCards.find(c => nk(c.name) === meKey);
+                if (matched) return matched;
+
+                const myOrdList = incomingOrders.filter(o => nk(o.assignedFreelancer) === meKey);
+                return {
+                    name: myName,
+                    shortId: portfolioSlug,
+                    course: auth?.course || auth?.role || 'Verified Talent',
+                    tagline: myPortfolioConfig?.tagline || '',
+                    availability: myPortfolioConfig?.availability || 'Available Now',
+                    isVerified: true,
+                    totalGigs: myGigs.length,
+                    activeGigs: myGigs.filter(g => g.status === 'Active').length,
+                    totalOrders: Math.max(myGigs.reduce((s, g) => s + Number(g.ordersCount || 0), 0), myOrdList.length),
+                    totalIncome: myOrdList.reduce((s, o) => s + (Number(o.paid || 0) > 0 ? Number(o.paid || 0) : Number(o.revenue || 0)), 0),
+                    totalDue: myOrdList.reduce((s, o) => s + Math.max(0, Number(o.revenue || 0) - Number(o.paid || 0)), 0),
+                    skillGrowth: Number(skillScoreByName[meKey] || 0)
+                };
+            }, [myName, portfolioSlug, myGigs, myPortfolioConfig, activeProfileCards, incomingOrders, auth, skillScoreByName]);
+
+            const filteredProfileCards = useMemo(() => {
+                const q = profileSearchQ.trim().toLowerCase();
+                return activeProfileCards
+                    .filter(p => !q || `${p.name} ${p.course} ${p.shortId} ${p.tagline}`.toLowerCase().includes(q))
+                    .sort((a, b) => {
+                        if (profileSortBy === 'orders') return b.totalOrders - a.totalOrders || b.totalIncome - a.totalIncome;
+                        if (profileSortBy === 'skill') return b.skillGrowth - a.skillGrowth || b.totalOrders - a.totalOrders;
+                        if (profileSortBy === 'gigs') return b.totalGigs - a.totalGigs || b.totalOrders - a.totalOrders;
+                        return b.totalIncome - a.totalIncome || b.totalOrders - a.totalOrders;
+                    });
+            }, [activeProfileCards, profileSearchQ, profileSortBy]);
+
+            const totalProfilePages = Math.max(1, Math.ceil(filteredProfileCards.length / PROFILES_PER_PAGE));
+            const pagedProfileCards = filteredProfileCards.slice((profilePage - 1) * PROFILES_PER_PAGE, profilePage * PROFILES_PER_PAGE);
+
+            const filteredIncomingOrders = useMemo(() => {
+                const q = orderSearchQ.trim().toLowerCase();
+                return incomingOrders.filter(o => {
+                    if (orderOwnerFilter === 'admin' && !o.isAdminOrder) return false;
+                    if (orderOwnerFilter === 'students' && o.isAdminOrder) return false;
+                    if (q && !`${o.id} ${o.name} ${o.client} ${o.assignedFreelancer} ${o.status}`.toLowerCase().includes(q)) return false;
+                    return true;
+                });
+            }, [incomingOrders, orderOwnerFilter, orderSearchQ]);
 
             const updatePackageField = (idx, field, val) => {
                 setGigForm(prev => ({
@@ -23965,6 +24318,10 @@ const SmartPhoneAction = ({ phone }) => {
                     if (data && data.success) {
                         playAudio('success');
                         addToast(data.message || 'Gig saved!', 'success');
+                        if (activeGigDraftId) {
+                            persistGigDrafts(gigDrafts.filter(d => d.draftId !== activeGigDraftId));
+                            setActiveGigDraftId(null);
+                        }
                         setModalOpen(false);
                         setGigForm(defaultGigForm);
                         fetchOrders(true);
@@ -24201,9 +24558,227 @@ const SmartPhoneAction = ({ phone }) => {
                         ))}
                     </div>
 
-                    {/* TAB 1: MY GIGS */}
+                    {/* 📊 MY MARKETPLACE PROFILE SUMMARY CARDS (Visible ONLY When User Has an Open Marketplace Profile) */}
+                    {myMarketplaceProfile && (
+                        <div className="glass-panel p-3.5 sm:p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-gray-100 dark:border-white/10">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <UserAvatar name={myMarketplaceProfile.name} size="md" showOnline={true} />
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white truncate">{myMarketplaceProfile.name}</h3>
+                                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
+                                                Active Profile
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                                            {myMarketplaceProfile.tagline || myMarketplaceProfile.course}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                                    <button
+                                        type="button"
+                                        onClick={() => window.open(`${window.location.origin}/?p=${encodeURIComponent(myMarketplaceProfile.shortId || portfolioSlug)}`, '_blank')}
+                                        className="h-8 px-3 rounded-lg bg-[#005fb8] hover:bg-[#004a94] text-white text-[11px] font-bold flex items-center gap-1 win-button"
+                                    >
+                                        <Icon name="external-link" className="w-3.5 h-3.5" /> View Public Profile
+                                    </button>
+                                    {isAdminMgr && (
+                                        <button
+                                            type="button"
+                                            onClick={() => { playAudio('click'); setActiveTab('profiles'); }}
+                                            className={`h-8 px-3 rounded-lg text-[11px] font-bold flex items-center gap-1 win-button border ${activeTab === 'profiles' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 border-transparent' : 'bg-white dark:bg-dark-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-white/10'}`}
+                                        >
+                                            <Icon name="users" className="w-3.5 h-3.5" /> All Profiles ({activeProfileCards.length})
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+                                <div className="p-3 rounded-xl bg-blue-500/[0.07] dark:bg-blue-500/[0.12] border border-blue-200/60 dark:border-blue-500/20">
+                                    <p className="text-[10px] font-bold uppercase text-[#005fb8] dark:text-[#60cdff]">Total Gigs</p>
+                                    <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white mt-0.5">{myMarketplaceProfile.totalGigs}</p>
+                                    <p className="text-[10px] text-gray-500">{myMarketplaceProfile.activeGigs} active now</p>
+                                </div>
+                                <div className="p-3 rounded-xl bg-amber-500/[0.08] dark:bg-amber-500/[0.12] border border-amber-200/60 dark:border-amber-500/20">
+                                    <p className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300">Total Orders</p>
+                                    <p className="text-xl sm:text-2xl font-numbers font-bold text-gray-900 dark:text-white mt-0.5">{myMarketplaceProfile.totalOrders}</p>
+                                    <p className="text-[10px] text-gray-500">Marketplace orders</p>
+                                </div>
+                                <div className="p-3 rounded-xl bg-emerald-500/[0.08] dark:bg-emerald-500/[0.12] border border-emerald-200/60 dark:border-emerald-500/20">
+                                    <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">Total Income</p>
+                                    <p className="text-xl sm:text-2xl font-numbers font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 truncate">{CURRENCY_SYMBOL}{Number(myMarketplaceProfile.totalIncome || 0).toLocaleString()}</p>
+                                    <p className="text-[10px] text-gray-500">Due: {CURRENCY_SYMBOL}{Number(myMarketplaceProfile.totalDue || 0).toLocaleString()}</p>
+                                </div>
+                                <div className="p-3 rounded-xl bg-purple-500/[0.08] dark:bg-purple-500/[0.12] border border-purple-200/60 dark:border-purple-500/20">
+                                    <p className="text-[10px] font-bold uppercase text-purple-700 dark:text-purple-300">Skill Growth</p>
+                                    <p className="text-xl sm:text-2xl font-numbers font-bold text-purple-600 dark:text-purple-400 mt-0.5">{myMarketplaceProfile.skillGrowth}%</p>
+                                    <p className="text-[10px] text-gray-500">Verified leaderboard</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 👥 SCALABLE ACTIVE PROFILES DIRECTORY (Admin/Manager — Ready for 1,000s of Students) */}
+                    {activeTab === 'profiles' && isAdminMgr && (
+                        <div className="space-y-4">
+                            <div className="glass-panel p-3.5 rounded-2xl border border-gray-200/70 dark:border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+                                <div className="flex items-center bg-white dark:bg-dark-800 px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 flex-1">
+                                    <Icon name="search" className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
+                                    <input
+                                        type="text"
+                                        value={profileSearchQ}
+                                        onChange={e => { setProfileSearchQ(e.target.value); setProfilePage(1); }}
+                                        placeholder="Search student profile by name, course, or ID..."
+                                        className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <select
+                                        value={profileSortBy}
+                                        onChange={e => { setProfileSortBy(e.target.value); setProfilePage(1); }}
+                                        className="input-style px-3 py-2 text-xs font-bold"
+                                    >
+                                        <option value="income">Sort: Highest Income</option>
+                                        <option value="orders">Sort: Most Orders</option>
+                                        <option value="skill">Sort: Highest Skill %</option>
+                                        <option value="gigs">Sort: Most Gigs</option>
+                                    </select>
+                                    <span className="px-2.5 py-1.5 rounded-lg bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] text-xs font-numbers font-bold whitespace-nowrap">
+                                        {filteredProfileCards.length} Profiles
+                                    </span>
+                                </div>
+                            </div>
+
+                            {pagedProfileCards.length === 0 ? (
+                                <div className="py-12 text-center glass-panel rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-xs text-gray-500">
+                                    No open marketplace profiles found.
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                                    {pagedProfileCards.map(pf => (
+                                        <div key={pf.name} className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-white/10 hover:border-[#005fb8]/60 transition-all flex flex-col gap-3">
+                                            <div className="flex items-center justify-between gap-2.5">
+                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                    <UserAvatar name={pf.name} size="sm" showOnline={true} />
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-1">
+                                                            <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate">{pf.name}</h4>
+                                                            {pf.isVerified && (
+                                                                <svg className="w-3.5 h-3.5 text-[#0095F6] shrink-0" viewBox="0 0 40 40" fill="none">
+                                                                    <path d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.64 3.094 20 0 25.359l5.432 3.137v5.905h5.975L14.638 40l5.36-3.094L25.358 40l3.232-5.6h6.162v-6.01L40 25.359 36.905 20 40 14.641l-5.248-3.03v-6.46h-6.419L25.358 0l-5.36 3.094Z" fill="currentColor" />
+                                                                    <path d="M17.204 27.624 10.67 21.09l2.475-2.475 4.059 4.059 9.65-9.65 2.475 2.475-12.125 12.125Z" fill="#ffffff" />
+                                                                </svg>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{pf.course}</p>
+                                                    </div>
+                                                </div>
+                                                <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-white/10 text-[10px] font-mono-code font-bold text-gray-600 dark:text-gray-300 shrink-0">
+                                                    ?p={pf.shortId}
+                                                </span>
+                                            </div>
+
+                                            <div className="grid grid-cols-4 gap-1.5 text-center">
+                                                <div className="p-2 rounded-xl bg-blue-500/[0.07] border border-blue-200/50 dark:border-blue-500/20">
+                                                    <p className="text-sm font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{pf.totalGigs}</p>
+                                                    <p className="text-[9px] font-bold uppercase text-gray-500">Gigs</p>
+                                                </div>
+                                                <div className="p-2 rounded-xl bg-amber-500/[0.08] border border-amber-200/50 dark:border-amber-500/20">
+                                                    <p className="text-sm font-numbers font-bold text-amber-600 dark:text-amber-400">{pf.totalOrders}</p>
+                                                    <p className="text-[9px] font-bold uppercase text-gray-500">Orders</p>
+                                                </div>
+                                                <div className="p-2 rounded-xl bg-emerald-500/[0.08] border border-emerald-200/50 dark:border-emerald-500/20">
+                                                    <p className="text-xs sm:text-sm font-numbers font-bold text-emerald-600 dark:text-emerald-400 truncate">৳{pf.totalIncome.toLocaleString()}</p>
+                                                    <p className="text-[9px] font-bold uppercase text-gray-500">Income</p>
+                                                </div>
+                                                <div className="p-2 rounded-xl bg-purple-500/[0.08] border border-purple-200/50 dark:border-purple-500/20">
+                                                    <p className="text-sm font-numbers font-bold text-purple-600 dark:text-purple-400">{pf.skillGrowth}%</p>
+                                                    <p className="text-[9px] font-bold uppercase text-gray-500">Skill</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5 pt-2 border-t border-gray-100 dark:border-white/10">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => window.open(`${window.location.origin}/?p=${encodeURIComponent(pf.shortId)}`, '_blank')}
+                                                    className="flex-1 py-1.5 rounded-lg bg-[#005fb8]/10 hover:bg-[#005fb8] text-[#005fb8] hover:text-white dark:text-[#60cdff] text-[11px] font-bold transition-colors"
+                                                >
+                                                    Open Profile ↗
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setOrderOwnerFilter('all');
+                                                        setOrderSearchQ(pf.name);
+                                                        setActiveTab('orders');
+                                                    }}
+                                                    className="flex-1 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-600 text-emerald-700 hover:text-white dark:text-emerald-300 text-[11px] font-bold transition-colors"
+                                                >
+                                                    View Orders →
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Pagination Bar for Thousands of Profiles */}
+                            {totalProfilePages > 1 && (
+                                <div className="flex items-center justify-center gap-2 pt-2">
+                                    <button type="button" disabled={profilePage <= 1} onClick={() => setProfilePage(p => Math.max(1, p - 1))} className="px-3.5 py-1.5 rounded-lg bg-white dark:bg-dark-800 border border-gray-200 dark:border-white/10 text-xs font-bold disabled:opacity-40">
+                                        ← Prev
+                                    </button>
+                                    <span className="text-xs font-numbers font-bold text-gray-600 dark:text-gray-300">
+                                        Page {profilePage} / {totalProfilePages}
+                                    </span>
+                                    <button type="button" disabled={profilePage >= totalProfilePages} onClick={() => setProfilePage(p => Math.min(totalProfilePages, p + 1))} className="px-3.5 py-1.5 rounded-lg bg-white dark:bg-dark-800 border border-gray-200 dark:border-white/10 text-xs font-bold disabled:opacity-40">
+                                        Next →
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* TAB 1: MY GIGS + SAVED GIG DRAFTS */}
                     {activeTab === 'my-gigs' && (
-                        myGigs.length === 0 ? (
+                        <div className="space-y-4">
+                            {gigDrafts.length > 0 && (
+                                <div className="p-3.5 rounded-2xl bg-amber-500/[0.08] dark:bg-amber-500/[0.12] border border-amber-300/60 dark:border-amber-500/30 space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                                            <Icon name="file-edit" className="w-4 h-4" /> Saved Gig Drafts ({gigDrafts.length})
+                                        </span>
+                                        <span className="text-[10px] text-amber-700/80 dark:text-amber-300/75">Click to continue editing &amp; publish</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {gigDrafts.map(dr => (
+                                            <div key={dr.draftId} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-dark-800 border border-amber-200 dark:border-amber-500/30 shadow-sm text-xs">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        playAudio('click');
+                                                        setActiveGigDraftId(dr.draftId);
+                                                        setGigForm({ ...defaultGigForm, ...(dr.data || {}) });
+                                                        setGigMobilePane('form');
+                                                        setModalOpen(true);
+                                                    }}
+                                                    className="font-bold text-gray-900 dark:text-white hover:text-[#005fb8] truncate max-w-[200px]"
+                                                >
+                                                    {dr.data?.title || 'Untitled Gig Draft'}
+                                                </button>
+                                                <span className="text-[10px] text-gray-400 font-numbers">{moment(dr.savedAt).format('DD MMM')}</span>
+                                                <button type="button" onClick={() => persistGigDrafts(gigDrafts.filter(x => x.draftId !== dr.draftId))} className="text-rose-500 hover:text-rose-700" title="Delete Draft">
+                                                    <Icon name="x" className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        {myGigs.length === 0 ? (
                             <div className="glass-panel py-12 px-4 rounded-2xl border border-dashed border-gray-300 dark:border-white/15 text-center space-y-2.5">
                                 <Icon name="store" className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto" />
                                 <p className="text-sm font-bold text-gray-800 dark:text-gray-200">আপনার এখনো কোনো গিগ নেই</p>
@@ -24216,7 +24791,8 @@ const SmartPhoneAction = ({ phone }) => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 {myGigs.map(g => renderGigCard(g, true))}
                             </div>
-                        )
+                        )}
+                        </div>
                     )}
 
                     {/* TAB 2: ADVANCED REAL-TIME PROFILE & PORTFOLIO CUSTOMIZER (AUTO-SAVES TO DB!) */}
@@ -24305,14 +24881,16 @@ const SmartPhoneAction = ({ phone }) => {
                                         <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">Auto-saves immediately to database</span>
                                     </div>
 
-                                    <div className="p-3 rounded-xl bg-gray-50/90 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 space-y-2.5">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                            <input type="text" value={newCaseStudy.title} onChange={e => setNewCaseStudy(p => ({ ...p, title: e.target.value }))} className="w-full input-style px-3 py-2 text-xs font-semibold" placeholder="Project / Case Study Title *" />
+                                    {/* Split-Screen Portfolio Builder (Left: Form | Right: Live Preview) */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                                        <div className="lg:col-span-7 p-3.5 rounded-xl bg-gray-50/90 dark:bg-dark-900/50 border border-gray-200/70 dark:border-white/10 space-y-2.5">
+                                            <div className="text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">Add New Portfolio / Case Study</div>
+                                            <input type="text" value={newCaseStudy.title} onChange={e => setNewCaseStudy(p => ({ ...p, title: e.target.value }))} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-semibold" placeholder="Project / Case Study Title *" />
                                             <div className="flex gap-1.5">
-                                                <input type="url" value={newCaseStudy.imageUrl} onChange={e => setNewCaseStudy(p => ({ ...p, imageUrl: e.target.value }))} className="flex-1 min-w-0 input-style px-2.5 py-2 text-xs" placeholder="Upload Photo or paste URL →" />
+                                                <input type="url" value={newCaseStudy.imageUrl} onChange={e => setNewCaseStudy(p => ({ ...p, imageUrl: e.target.value }))} className="flex-1 min-w-0 input-style px-2.5 py-2 text-xs" placeholder="Upload Photo or paste image URL →" />
                                                 <label className="px-3 py-2 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 shrink-0">
                                                     <Icon name={newCaseStudy.uploading ? 'loader' : 'upload'} className={`w-3.5 h-3.5 ${newCaseStudy.uploading ? 'animate-spin' : ''}`} />
-                                                    <span>Photo</span>
+                                                    <span>Upload</span>
                                                     <input
                                                         type="file"
                                                         accept="image/*"
@@ -24336,7 +24914,7 @@ const SmartPhoneAction = ({ phone }) => {
                                                                     const data = await res.json();
                                                                     if (data && data.success && data.fileId) {
                                                                         setNewCaseStudy(p => ({ ...p, imageUrl: `https://lh3.googleusercontent.com/d/${data.fileId}=w1000`, uploading: false }));
-                                                                        addToast('ছবি আপলোড হয়েছে!', 'success');
+                                                                        addToast('Portfolio photo uploaded!', 'success');
                                                                     } else setNewCaseStudy(p => ({ ...p, uploading: false }));
                                                                 } catch (err) { setNewCaseStudy(p => ({ ...p, uploading: false })); }
                                                                 URL.revokeObjectURL(u);
@@ -24347,25 +24925,57 @@ const SmartPhoneAction = ({ phone }) => {
                                                     />
                                                 </label>
                                             </div>
+                                            <textarea rows="4" value={newCaseStudy.caseStudy} onChange={e => setNewCaseStudy(p => ({ ...p, caseStudy: e.target.value }))} className="w-full input-style px-3 py-2 text-xs sm:text-sm resize-none" placeholder="Write the project challenge, your solution, tools used, and final outcome..." />
+                                            <div className="flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    disabled={savingPortfolio || newCaseStudy.uploading}
+                                                    onClick={() => {
+                                                        if (!newCaseStudy.title.trim() || !newCaseStudy.imageUrl.trim()) return addToast('Please add both an image and a title.', 'error');
+                                                        const newItem = { id: `PF-${Date.now()}`, title: newCaseStudy.title.trim(), imageUrl: newCaseStudy.imageUrl.trim(), caseStudy: newCaseStudy.caseStudy.trim() };
+                                                        const nextState = { ...pfState, portfolioItems: [newItem, ...(pfState.portfolioItems || [])] };
+                                                        setPfState(nextState);
+                                                        setNewCaseStudy({ title: '', imageUrl: '', caseStudy: '', uploading: false });
+                                                        persistPortfolioToDB(nextState, 'Portfolio item saved!');
+                                                    }}
+                                                    className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button"
+                                                >
+                                                    {savingPortfolio ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="plus" className="w-3.5 h-3.5" />}
+                                                    <span>Add &amp; Save Portfolio</span>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <textarea rows="3" value={newCaseStudy.caseStudy} onChange={e => setNewCaseStudy(p => ({ ...p, caseStudy: e.target.value }))} className="w-full input-style px-3 py-2 text-xs resize-none" placeholder="Case Study Details (ক্লায়েন্টের চাহিদা, আপনার সমাধান ও ফলাফল)..." />
-                                        <div className="flex justify-end">
-                                            <button
-                                                type="button"
-                                                disabled={savingPortfolio || newCaseStudy.uploading}
-                                                onClick={() => {
-                                                    if (!newCaseStudy.title.trim() || !newCaseStudy.imageUrl.trim()) return addToast('ছবি এবং টাইটেল দিন।', 'error');
-                                                    const newItem = { id: `PF-${Date.now()}`, title: newCaseStudy.title.trim(), imageUrl: newCaseStudy.imageUrl.trim(), caseStudy: newCaseStudy.caseStudy.trim() };
-                                                    const nextState = { ...pfState, portfolioItems: [newItem, ...(pfState.portfolioItems || [])] };
-                                                    setPfState(nextState);
-                                                    setNewCaseStudy({ title: '', imageUrl: '', caseStudy: '', uploading: false });
-                                                    persistPortfolioToDB(nextState, 'পোর্টফোলিও আইটেম ডাটাবেসে সেভ হয়েছে!');
-                                                }}
-                                                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 win-button"
-                                            >
-                                                {savingPortfolio ? <Icon name="loader" className="w-3.5 h-3.5 animate-spin" /> : <Icon name="plus" className="w-3.5 h-3.5" />}
-                                                <span>Add &amp; Save Portfolio</span>
-                                            </button>
+
+                                        {/* Right: Live Portfolio Card Preview */}
+                                        <div className="lg:col-span-5 p-3.5 rounded-xl bg-white dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 space-y-2.5">
+                                            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                                                <span className="flex items-center gap-1"><Icon name="eye" className="w-3.5 h-3.5" /> Live Preview</span>
+                                                <span className="text-[10px] text-gray-400 font-normal normal-case">Public Profile Look</span>
+                                            </div>
+                                            <div className="rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#18181b] overflow-hidden shadow-sm">
+                                                <div className="relative aspect-video bg-gray-100 dark:bg-dark-900 overflow-hidden flex items-center justify-center">
+                                                    {newCaseStudy.imageUrl ? (
+                                                        <img src={newCaseStudy.imageUrl} alt="Preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="text-center text-gray-400 p-4 space-y-1">
+                                                            <Icon name="image" className="w-8 h-8 mx-auto opacity-50" />
+                                                            <p className="text-[11px] font-semibold">Uploaded photo will preview here (16:9)</p>
+                                                        </div>
+                                                    )}
+                                                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-emerald-600/90 text-white text-[9px] font-bold uppercase">Portfolio</span>
+                                                </div>
+                                                <div className="p-3.5 space-y-1.5">
+                                                    <h4 className="text-sm font-bold text-gray-900 dark:text-white line-clamp-1">
+                                                        {newCaseStudy.title.trim() || 'Your Case Study Title Will Appear Here'}
+                                                    </h4>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-3 leading-relaxed">
+                                                        {newCaseStudy.caseStudy.trim() || 'Your project challenge, solution, and final results will preview here live as you type...'}
+                                                    </p>
+                                                    <span className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] inline-flex items-center gap-1 pt-1">
+                                                        View Case Study <Icon name="arrow-right" className="w-3 h-3" />
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -24426,143 +25036,299 @@ const SmartPhoneAction = ({ phone }) => {
                         </div>
                     )}
 
-                    {/* TAB 4: INCOMING ORDERS (CLIENT CONTACT STRICTLY PROTECTED FROM STUDENTS) */}
+                   {/* TAB 4: INCOMING ORDERS (CLEAR ASSIGNED STUDENT / ADMIN TAGS + FILTER + PROTECTED CLIENT CONTACT) */}
                     {activeTab === 'orders' && (
-                        <div className="glass-panel rounded-2xl border border-gray-200/70 dark:border-white/10 overflow-hidden divide-y divide-gray-100 dark:divide-white/10">
-                            {incomingOrders.length === 0 ? (
-                                <div className="py-12 px-4 text-center text-xs text-gray-500">No marketplace orders received yet.</div>
-                            ) : incomingOrders.map(p => (
-                                <div key={p.id} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className="px-2 py-0.5 rounded bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-mono-code font-bold">{p.id}</span>
-                                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">{p.status}</span>
-                                            <span className="text-[10px] text-gray-400 font-numbers">Deadline: {moment(parseCustomDate(p.deadline)).format('DD MMM YYYY')}</span>
-                                            {!isAdminMgr && (
-                                                <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[9px] font-bold">Coordinated by Institute</span>
-                                            )}
-                                        </div>
-                                        <h4 className="text-sm font-bold text-gray-900 dark:text-white mt-1 break-words">{p.name}</h4>
-                                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
-                                            Client: <strong>{p.client}</strong> {isAdminMgr && p.clientPhone ? `• ${p.clientPhone}` : ''}
-                                        </p>
+                        <div className="space-y-3">
+                            {/* Admin/Manager Filter Bar: Separate Student Orders vs Admin Orders */}
+                            {isAdminMgr && (
+                                <div className="glass-panel p-3 rounded-2xl border border-gray-200/70 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                    <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-nowrap">
+                                        {[
+                                            { id: 'all', label: `All Orders (${incomingOrders.length})` },
+                                            { id: 'students', label: `Student Orders (${incomingOrders.filter(o => !o.isAdminOrder).length})` },
+                                            { id: 'admin', label: `Admin Orders (${incomingOrders.filter(o => o.isAdminOrder).length})` }
+                                        ].map(tab => (
+                                            <button
+                                                key={tab.id}
+                                                type="button"
+                                                onClick={() => { playAudio('click'); setOrderOwnerFilter(tab.id); }}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${orderOwnerFilter === tab.id ? 'bg-[#005fb8] text-white' : 'bg-gray-100 dark:bg-dark-800 text-gray-600 dark:text-gray-300'}`}
+                                            >
+                                                {tab.label}
+                                            </button>
+                                        ))}
                                     </div>
-                                    <div className="flex items-center justify-between sm:flex-col sm:items-end gap-1.5 shrink-0">
-                                        <span className="text-base font-numbers font-bold text-emerald-600 dark:text-emerald-400">{CURRENCY_SYMBOL}{Number(p.revenue || 0).toLocaleString()}</span>
-                                        <a href="#projects" onClick={() => playAudio('click')} className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">Open in Projects →</a>
+                                    <div className="flex items-center bg-white dark:bg-dark-800 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-white/10 w-full sm:w-64">
+                                        <Icon name="search" className="w-3.5 h-3.5 text-gray-400 mr-2 shrink-0" />
+                                        <input
+                                            type="text"
+                                            value={orderSearchQ}
+                                            onChange={e => setOrderSearchQ(e.target.value)}
+                                            placeholder="Filter by student, order ID, client..."
+                                            className="bg-transparent border-none outline-none w-full text-xs font-medium"
+                                        />
+                                        {orderSearchQ && (
+                                            <button type="button" onClick={() => setOrderSearchQ('')} className="text-gray-400 hover:text-rose-500 ml-1">
+                                                <Icon name="x" className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
-                            ))}
+                            )}
+
+                            <div className="glass-panel rounded-2xl border border-gray-200/70 dark:border-white/10 overflow-hidden divide-y divide-gray-100 dark:divide-white/10">
+                                {filteredIncomingOrders.length === 0 ? (
+                                    <div className="py-12 px-4 text-center text-xs text-gray-500">No matching marketplace orders found.</div>
+                                ) : filteredIncomingOrders.map(p => {
+                                    const dueAmt = Math.max(0, Number(p.revenue || 0) - Number(p.paid || 0));
+                                    return (
+                                        <div key={p.id} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                            <div className="min-w-0 flex-1 space-y-1.5">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className="px-2 py-0.5 rounded bg-blue-500/15 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-mono-code font-bold">{p.id}</span>
+                                                    <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">{p.status}</span>
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${dueAmt > 0 ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300' : 'bg-teal-500/15 text-teal-700 dark:text-teal-300'}`}>
+                                                        {dueAmt > 0 ? `Due: ${CURRENCY_SYMBOL}${dueAmt.toLocaleString()}` : 'Paid ✓'}
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-400 font-numbers">Deadline: {moment(parseCustomDate(p.deadline)).format('DD MMM YYYY')}</span>
+                                                </div>
+
+                                                {/* 🎯 স্পষ্টভাবে দেখানো হচ্ছে অর্ডারটি কোন স্টুডেন্টের না কি অ্যাডমিনের */}
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                                                        p.isAdminOrder
+                                                            ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-300/60 dark:border-purple-500/30'
+                                                            : 'bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] border-blue-300/60 dark:border-blue-500/30'
+                                                    }`}>
+                                                        <UserAvatar name={p.assignedFreelancer} size="xs" />
+                                                        <span>{p.isAdminOrder ? 'Admin Order (Direct)' : `Student Order • Assigned to: ${p.assignedFreelancer}`}</span>
+                                                    </span>
+                                                    {!isAdminMgr && (
+                                                        <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-bold">Coordinated by Institute</span>
+                                                    )}
+                                                </div>
+
+                                                <h4 className="text-sm font-bold text-gray-900 dark:text-white break-words">{p.name}</h4>
+                                                <p className="text-xs text-gray-600 dark:text-gray-300">
+                                                    Client: <strong>{p.client}</strong> {isAdminMgr && p.clientPhone ? `• ${p.clientPhone}` : ''}
+                                                </p>
+                                            </div>
+
+                                            <div className="flex items-center justify-between sm:flex-col sm:items-end gap-1.5 shrink-0">
+                                                <div className="sm:text-right">
+                                                    <span className="text-base font-numbers font-bold text-emerald-600 dark:text-emerald-400 block">{CURRENCY_SYMBOL}{Number(p.revenue || 0).toLocaleString()}</span>
+                                                    <span className="text-[10px] font-numbers text-gray-400">Paid: {CURRENCY_SYMBOL}{Number(p.paid || 0).toLocaleString()}</span>
+                                                </div>
+                                                <a href="#projects" onClick={() => playAudio('click')} className="text-[11px] font-bold text-[#005fb8] dark:text-[#60cdff] hover:underline">Open in Projects →</a>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
 
-                    {/* Create / Edit Gig Modal (Individual Input Boxes for Every Package Feature!) */}
-                    <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={gigForm.id ? 'Edit Service Gig' : 'Create New Service Gig'} maxWidth="max-w-3xl" compact={true}>
+                    {/* Create / Edit Gig Modal — Split-Screen Live Preview (Left: Form | Right: Live Preview) + Save Draft */}
+                    <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={gigForm.id ? 'Edit Service Gig' : 'Create New Service Gig'} maxWidth="max-w-6xl" compact={true}>
                         <form onSubmit={handleSaveGig} className="space-y-3.5 w-full min-w-0">
-                            <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">1. Gig Overview</div>
-                                <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Gig Title *</label>
-                                    <input type="text" required value={gigForm.title} onChange={e => setGigForm({ ...gigForm, title: e.target.value })} className="w-full input-style px-3 py-2 text-sm font-semibold" placeholder="e.g. I will build a modern responsive WordPress website" />
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Category *</label>
-                                        <select value={gigForm.category} onChange={e => setGigForm({ ...gigForm, category: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-semibold">
-                                            {serviceList.map(s => <option key={s} value={s}>{s}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Visibility</label>
-                                        <select value={gigForm.status} onChange={e => setGigForm({ ...gigForm, status: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-semibold">
-                                            <option value="Active">Active (Public)</option>
-                                            <option value="Paused">Paused (Hidden)</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Service Description *</label>
-                                    <textarea rows="3" required value={gigForm.description} onChange={e => setGigForm({ ...gigForm, description: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm" placeholder="ক্লায়েন্টকে বুঝিয়ে লিখুন আপনি কী কী সার্ভিস দেবেন..." />
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Banner Image (16:9 Recommended)</label>
-                                        <div className="flex gap-1.5">
-                                            <input type="url" value={gigForm.bannerUrl} onChange={e => setGigForm({ ...gigForm, bannerUrl: e.target.value })} className="flex-1 min-w-0 input-style px-2.5 py-1.5 text-xs" placeholder="https://..." />
-                                            <label className="px-2.5 py-1.5 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 shrink-0">
-                                                <Icon name={uploadingBanner ? 'loader' : 'upload'} className={`w-3.5 h-3.5 ${uploadingBanner ? 'animate-spin' : ''}`} />
-                                                <span>Upload</span>
-                                                <input type="file" accept="image/*" onChange={handleBannerUpload} className="hidden" disabled={uploadingBanner} />
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Live Demo / Sample Link (Optional)</label>
-                                        <input type="url" value={gigForm.demoUrl} onChange={e => setGigForm({ ...gigForm, demoUrl: e.target.value })} className="w-full input-style px-2.5 py-1.5 text-xs" placeholder="https://..." />
-                                    </div>
-                                </div>
+                            {/* Mobile-Only Form / Live Preview Switcher */}
+                            <div className="lg:hidden grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-gray-100 dark:bg-dark-900 border border-gray-200/70 dark:border-white/10">
+                                <button type="button" onClick={() => setGigMobilePane('form')} className={`py-2 rounded-lg text-xs font-bold ${gigMobilePane === 'form' ? 'bg-[#005fb8] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}>
+                                    1. Edit Gig Form
+                                </button>
+                                <button type="button" onClick={() => setGigMobilePane('preview')} className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 ${gigMobilePane === 'preview' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 dark:text-gray-300'}`}>
+                                    <Icon name="eye" className="w-3.5 h-3.5" /> 2. Live Preview
+                                </button>
                             </div>
 
-                            {/* 3 Packages with Individual Feature Boxes */}
-                            <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5">
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">2. Pricing Packages &amp; Features</div>
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
-                                    {gigForm.packages.map((pk, idx) => (
-                                        <div key={pk.tier} className="p-2.5 rounded-xl bg-white dark:bg-dark-800 border border-gray-200/70 dark:border-white/10 space-y-2 flex flex-col">
-                                            <div className="text-xs font-bold text-center py-1 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] uppercase">
-                                                {pk.tier}
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                                {/* LEFT COLUMN (7/12): Gig Form Inputs */}
+                                <div className={`lg:col-span-7 space-y-3.5 min-w-0 ${gigMobilePane === 'preview' ? 'hidden lg:block' : 'block'}`}>
+                                    <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5">
+                                        <div className="text-[11px] font-bold uppercase tracking-wider text-[#005fb8] dark:text-[#60cdff]">1. Gig Overview</div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Gig Title *</label>
+                                            <input type="text" required value={gigForm.title} onChange={e => setGigForm({ ...gigForm, title: e.target.value })} className="w-full input-style px-3 py-2 text-sm font-semibold" placeholder="e.g. I will build a modern responsive WordPress website" />
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Category *</label>
+                                                <select value={gigForm.category} onChange={e => setGigForm({ ...gigForm, category: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-semibold">
+                                                    {serviceList.map(s => <option key={s} value={s}>{s}</option>)}
+                                                </select>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-1.5">
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-gray-400 uppercase">Price (৳)</label>
-                                                    <input type="number" min="0" value={pk.price} onChange={e => updatePackageField(idx, 'price', e.target.value)} className="w-full input-style px-2 py-1 text-xs font-numbers font-bold text-emerald-600" placeholder="1500" />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[9px] font-bold text-gray-400 uppercase">Days</label>
-                                                    <input type="number" min="1" value={pk.deliveryDays} onChange={e => updatePackageField(idx, 'deliveryDays', e.target.value)} className="w-full input-style px-2 py-1 text-xs font-numbers font-bold" placeholder="3" />
-                                                </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Visibility</label>
+                                                <select value={gigForm.status} onChange={e => setGigForm({ ...gigForm, status: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm font-semibold">
+                                                    <option value="Active">Active (Public)</option>
+                                                    <option value="Paused">Paused (Hidden)</option>
+                                                </select>
                                             </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Service Description *</label>
+                                            <textarea rows="3" required value={gigForm.description} onChange={e => setGigForm({ ...gigForm, description: e.target.value })} className="w-full input-style px-3 py-2 text-xs sm:text-sm" placeholder="Clearly explain what you will deliver to clients..." />
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Banner Image (16:9)</label>
+                                                <div className="flex gap-1.5">
+                                                    <input type="url" value={gigForm.bannerUrl} onChange={e => setGigForm({ ...gigForm, bannerUrl: e.target.value })} className="flex-1 min-w-0 input-style px-2.5 py-1.5 text-xs" placeholder="https://..." />
+                                                    <label className="px-2.5 py-1.5 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold cursor-pointer flex items-center gap-1 shrink-0">
+                                                        <Icon name={uploadingBanner ? 'loader' : 'upload'} className={`w-3.5 h-3.5 ${uploadingBanner ? 'animate-spin' : ''}`} />
+                                                        <span>Upload</span>
+                                                        <input type="file" accept="image/*" onChange={handleBannerUpload} className="hidden" disabled={uploadingBanner} />
+                                                    </label>
+                                                </div>
+                                                {gigForm.bannerUrl && (
+                                                    <div className="mt-2 flex items-center gap-2 p-1.5 rounded-lg bg-white dark:bg-dark-800 border border-emerald-300/60 dark:border-emerald-500/30">
+                                                        <img src={gigForm.bannerUrl} alt="Uploaded" referrerPolicy="no-referrer" className="w-16 h-9 rounded object-cover shrink-0" />
+                                                        <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 truncate flex-1">Image Ready ✓</span>
+                                                        <button type="button" onClick={() => setGigForm({ ...gigForm, bannerUrl: '' })} className="text-rose-500 p-1" title="Remove Image"><Icon name="x" className="w-3.5 h-3.5" /></button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Live Demo / Sample Link (Optional)</label>
+                                                <input type="url" value={gigForm.demoUrl} onChange={e => setGigForm({ ...gigForm, demoUrl: e.target.value })} className="w-full input-style px-2.5 py-1.5 text-xs" placeholder="https://..." />
+                                            </div>
+                                        </div>
+                                    </div>
 
-                                            <div className="space-y-1.5 pt-1 border-t border-gray-100 dark:border-white/10 flex-1">
-                                                <label className="block text-[9px] font-bold text-gray-400 uppercase">Included Features</label>
-                                                {(Array.isArray(pk.features) ? pk.features : ['']).map((ft, fIdx) => (
-                                                    <div key={fIdx} className="flex items-center gap-1 min-w-0">
-                                                        <input
-                                                            type="text"
-                                                            value={ft}
-                                                            onChange={e => updatePackageFeature(idx, fIdx, e.target.value)}
-                                                            className="flex-1 min-w-0 input-style px-2 py-1 text-[11px]"
-                                                            placeholder={`Feature #${fIdx + 1}`}
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removePackageFeature(idx, fIdx)}
-                                                            className="w-6 h-6 rounded bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white flex items-center justify-center shrink-0"
-                                                            title="Remove"
-                                                        >
-                                                            <Icon name="x" className="w-3 h-3" />
+                                    {/* 3 Packages */}
+                                    <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-dark-900/40 border border-gray-200/70 dark:border-white/10 space-y-2.5">
+                                        <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">2. Pricing Packages &amp; Features</div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                                            {gigForm.packages.map((pk, idx) => (
+                                                <div key={pk.tier} className="p-2.5 rounded-xl bg-white dark:bg-dark-800 border border-gray-200/70 dark:border-white/10 space-y-2 flex flex-col">
+                                                    <div className="text-xs font-bold text-center py-1 rounded-md bg-blue-500/10 text-[#005fb8] dark:text-[#60cdff] uppercase">
+                                                        {pk.tier}
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-1.5">
+                                                        <div>
+                                                            <label className="block text-[9px] font-bold text-gray-400 uppercase">Price (৳)</label>
+                                                            <input type="number" min="0" value={pk.price} onChange={e => updatePackageField(idx, 'price', e.target.value)} className="w-full input-style px-2 py-1 text-xs font-numbers font-bold text-emerald-600" placeholder="1500" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[9px] font-bold text-gray-400 uppercase">Days</label>
+                                                            <input type="number" min="1" value={pk.deliveryDays} onChange={e => updatePackageField(idx, 'deliveryDays', e.target.value)} className="w-full input-style px-2 py-1 text-xs font-numbers font-bold" placeholder="3" />
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-1.5 pt-1 border-t border-gray-100 dark:border-white/10 flex-1">
+                                                        <label className="block text-[9px] font-bold text-gray-400 uppercase">Features</label>
+                                                        {(Array.isArray(pk.features) ? pk.features : ['']).map((ft, fIdx) => (
+                                                            <div key={fIdx} className="flex items-center gap-1 min-w-0">
+                                                                <input type="text" value={ft} onChange={e => updatePackageFeature(idx, fIdx, e.target.value)} className="flex-1 min-w-0 input-style px-2 py-1 text-[11px]" placeholder={`Feature #${fIdx + 1}`} />
+                                                                <button type="button" onClick={() => removePackageFeature(idx, fIdx)} className="w-6 h-6 rounded bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white flex items-center justify-center shrink-0"><Icon name="x" className="w-3 h-3" /></button>
+                                                            </div>
+                                                        ))}
+                                                        <button type="button" onClick={() => addPackageFeature(idx)} className="w-full py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold flex items-center justify-center gap-1">
+                                                            <Icon name="plus" className="w-3 h-3" /> Add Feature
                                                         </button>
                                                     </div>
-                                                ))}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => addPackageFeature(idx)}
-                                                    className="w-full py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-[#005fb8] dark:text-[#60cdff] text-[10px] font-bold flex items-center justify-center gap-1"
-                                                >
-                                                    <Icon name="plus" className="w-3 h-3" /> Add Feature
-                                                </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* RIGHT COLUMN (5/12): Live Published Preview Panel */}
+                                {(() => {
+                                    const validPrices = (gigForm.packages || []).map(p => Number(p.price) || 0).filter(v => v > 0);
+                                    const minPrice = validPrices.length > 0 ? Math.min(...validPrices) : 0;
+                                    const activePrevPkg = (gigForm.packages || [])[previewPkgIdx] || gigForm.packages[0] || { tier: 'Basic', price: 0, deliveryDays: 3, features: [] };
+
+                                    return (
+                                        <div className={`lg:col-span-5 lg:sticky lg:top-0 space-y-3 min-w-0 ${gigMobilePane === 'form' ? 'hidden lg:block' : 'block'}`}>
+                                            <div className="p-3.5 rounded-2xl bg-gray-50/90 dark:bg-[#141417] border border-gray-200/80 dark:border-white/10 space-y-3">
+                                                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                                                    <span className="flex items-center gap-1.5"><Icon name="eye" className="w-3.5 h-3.5" /> Live Published Preview</span>
+                                                    <span className="text-[10px] text-gray-400 font-normal normal-case">Updates as you type</span>
+                                                </div>
+
+                                                {/* Card Preview */}
+                                                <div className="rounded-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#18181b] overflow-hidden shadow-sm">
+                                                    <div className="relative aspect-video bg-gradient-to-br from-[#0f172a] via-[#172554] to-[#005fb8] overflow-hidden flex items-center justify-center">
+                                                        {gigForm.bannerUrl ? (
+                                                            <img src={gigForm.bannerUrl} alt="Gig Banner Preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="text-center text-white/80 p-4 space-y-1">
+                                                                <Icon name="image" className="w-8 h-8 mx-auto text-[#facc15]" />
+                                                                <p className="text-[11px] font-bold uppercase">{gigForm.category}</p>
+                                                                <p className="text-[10px] opacity-75">Upload 16:9 Banner to Preview</p>
+                                                            </div>
+                                                        )}
+                                                        <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/75 text-white text-[10px] font-bold">{gigForm.category}</span>
+                                                    </div>
+                                                    <div className="p-3.5 space-y-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <UserAvatar name={myName} size="xs" showOnline={true} />
+                                                            <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{myName}</span>
+                                                        </div>
+                                                        <h4 className="text-sm sm:text-[15px] font-bold text-gray-900 dark:text-white leading-snug line-clamp-2">
+                                                            {gigForm.title.trim() || 'Your Gig Title Will Preview Here...'}
+                                                        </h4>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+                                                            {gigForm.description.trim() || 'Your service description will appear here live...'}
+                                                        </p>
+                                                        <div className="pt-2 border-t border-gray-100 dark:border-white/10 flex items-center justify-between">
+                                                            <div>
+                                                                <span className="text-[9px] uppercase font-bold text-gray-400 block leading-none">Starting at</span>
+                                                                <span className="text-base font-numbers font-bold text-[#005fb8] dark:text-[#60cdff]">{CURRENCY_SYMBOL}{minPrice.toLocaleString()}</span>
+                                                            </div>
+                                                            <span className="px-2.5 py-1 rounded-lg bg-[#005fb8] text-white text-[11px] font-bold">Order Now →</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Interactive Package Box Preview */}
+                                                <div className="rounded-xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-[#18181b] overflow-hidden">
+                                                    <div className="grid grid-cols-3 bg-gray-100 dark:bg-dark-900 p-1 gap-1">
+                                                        {(gigForm.packages || []).map((pk, idx) => (
+                                                            <button key={pk.tier} type="button" onClick={() => setPreviewPkgIdx(idx)} className={`py-1.5 rounded-lg text-[11px] font-bold ${previewPkgIdx === idx ? 'bg-[#005fb8] text-white' : 'text-gray-600 dark:text-gray-300'}`}>
+                                                                {pk.tier}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    <div className="p-3 space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[11px] font-bold uppercase text-gray-500">{activePrevPkg.tier} Package</span>
+                                                            <span className="text-lg font-numbers font-bold text-emerald-600 dark:text-emerald-400">{CURRENCY_SYMBOL}{(Number(activePrevPkg.price) || 0).toLocaleString()}</span>
+                                                        </div>
+                                                        <p className="text-[11px] font-semibold text-gray-500 flex items-center gap-1">
+                                                            <Icon name="clock" className="w-3.5 h-3.5 text-[#005fb8]" /> {activePrevPkg.deliveryDays || 3} Days Delivery
+                                                        </p>
+                                                        <ul className="space-y-1 pt-1.5 border-t border-gray-100 dark:border-white/10">
+                                                            {(Array.isArray(activePrevPkg.features) ? activePrevPkg.features : []).filter(Boolean).map((ft, fi) => (
+                                                                <li key={fi} className="text-[11px] text-gray-700 dark:text-gray-200 flex items-start gap-1.5">
+                                                                    <Icon name="check" className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                                                                    <span>{ft}</span>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
+                                    );
+                                })()}
                             </div>
 
-                            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
-                                <button type="button" onClick={() => setModalOpen(false)} className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold win-button">Cancel</button>
-                                <button type="submit" disabled={saving || uploadingBanner} className="w-full sm:w-auto px-7 py-2.5 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 win-button">
-                                    {saving ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="save" className="w-4 h-4" />}
-                                    <span>{saving ? 'Publishing...' : (gigForm.id ? 'Update Gig' : 'Publish Gig')}</span>
-                                </button>
+                            {/* Footer Actions with Save as Draft */}
+                            <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 pt-2 border-t border-gray-200/60 dark:border-white/10">
+                                {!gigForm.id ? (
+                                    <button type="button" onClick={handleSaveGigDraft} className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-800 hover:text-white dark:text-amber-300 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors win-button">
+                                        <Icon name="file-edit" className="w-4 h-4" /> Save as Draft
+                                    </button>
+                                ) : <div />}
+
+                                <div className="flex flex-col-reverse sm:flex-row gap-2">
+                                    <button type="button" onClick={() => setModalOpen(false)} className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gray-100 dark:bg-dark-700 text-gray-700 dark:text-gray-200 text-xs font-bold win-button">Cancel</button>
+                                    <button type="submit" disabled={saving || uploadingBanner} className="w-full sm:w-auto px-7 py-2.5 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 win-button">
+                                        {saving ? <Icon name="loader" className="w-4 h-4 animate-spin" /> : <Icon name="save" className="w-4 h-4" />}
+                                        <span>{saving ? 'Publishing...' : (gigForm.id ? 'Update Gig' : 'Publish Gig')}</span>
+                                    </button>
+                                </div>
                             </div>
                         </form>
                     </Modal>
@@ -24579,6 +25345,35 @@ const SmartPhoneAction = ({ phone }) => {
             const [errorMsg, setErrorMsg] = useState('');
             const [selectedPkgIdx, setSelectedPkgIdx] = useState(0);
             const [orderForm, setOrderForm] = useState({ clientName: '', clientPhone: '', clientEmail: '', brief: '', submitting: false });
+            const [orderReceipt, setOrderReceipt] = useState(null);
+
+            const handleDownloadReceiptPNG = async () => {
+                if (typeof window.playSound === 'function') window.playSound('action');
+                const el = document.getElementById('fit-client-order-receipt');
+                if (!el || typeof html2canvas === 'undefined') {
+                    window.print();
+                    return;
+                }
+                try {
+                    const canvas = await html2canvas(el, { scale: 2.5, useCORS: true, backgroundColor: '#ffffff' });
+                    const link = document.createElement('a');
+                    link.download = `FaridpurIT_Order_${orderReceipt?.orderId || 'Receipt'}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                    if (typeof addToast === 'function') addToast('Order receipt downloaded!', 'success');
+                } catch (err) {
+                    window.print();
+                }
+            };
+
+            const handlePrintReceipt = () => {
+                if (typeof window.playSound === 'function') window.playSound('action');
+                const el = document.getElementById('fit-client-order-receipt');
+                if (!el) return window.print();
+                const win = window.open('', '_blank');
+                win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Order Receipt — ${orderReceipt?.orderId || ''}</title><style>body{font-family:'Segoe UI',Arial,sans-serif;padding:24px;color:#0f172a;background:#fff;} .slip{max-width:600px;margin:0 auto;border:1px solid #cbd5e1;border-radius:14px;padding:22px;} table{width:100%;border-collapse:collapse;margin:14px 0;} td,th{padding:8px 10px;border:1px solid #e2e8f0;font-size:13px;text-align:left;} .due{background:#fff7ed;border:1px solid #fdba74;padding:12px;border-radius:10px;font-size:12.5px;line-height:1.6;margin-top:12px;} @media print{body{padding:0;}}</style></head><body><div class="slip"><h2 style="margin:0 0 4px 0;">Faridpur IT Institute</h2><p style="margin:0 0 14px 0;font-size:12px;color:#475569;">Official Order Confirmation &amp; Payment Due Slip</p><table><tr><th>Order ID</th><td><strong>${orderReceipt.orderId}</strong></td></tr><tr><th>Date</th><td>${orderReceipt.orderDate}</td></tr><tr><th>Payment Status</th><td><strong style="color:#c2410c;">PAYMENT DUE (Advance Required)</strong></td></tr><tr><th>Assigned Freelancer</th><td><strong>${orderReceipt.assignedFreelancer}</strong> (Profile: ?p=${orderReceipt.freelancerShortId})</td></tr><tr><th>Service / Gig</th><td>${orderReceipt.gigTitle}</td></tr><tr><th>Selected Package</th><td>${orderReceipt.packageName} (${orderReceipt.deliveryDays} Days • Est. Delivery: ${orderReceipt.deadlineDate})</td></tr><tr><th>Client Name</th><td>${orderReceipt.clientName}</td></tr><tr><th>Client Phone</th><td>${orderReceipt.clientPhone}</td></tr>${orderReceipt.clientEmail ? `<tr><th>Client Email</th><td>${orderReceipt.clientEmail}</td></tr>` : ''}<tr><th>Order Total</th><td><strong>৳${Number(orderReceipt.totalAmount || 0).toLocaleString()}</strong></td></tr><tr><th>Paid / Advance</th><td>৳0</td></tr><tr><th>Payment Due</th><td><strong style="color:#dc2626;font-size:15px;">৳${Number(orderReceipt.dueAmount || 0).toLocaleString()}</strong></td></tr></table><div class="due"><strong>Payment &amp; Verification Instructions:</strong><br/>Your order is currently registered under <strong>Payment Due</strong> status. Please complete the advance or full due payment with the Faridpur IT Institute management team to initiate your project. Present or forward this slip to our Admin / Support Team (WhatsApp: +880 1642890942) so we can verify the assigned freelancer and get started immediately.</div><p style="margin-top:14px;font-size:11px;color:#64748b;text-align:center;">Faridpur IT Institute • faridpurit.com • +880 1642890942</p></div><script>setTimeout(function(){window.print();},400);</script></body></html>`);
+                win.document.close();
+            };
             const [orderSuccess, setOrderSuccess] = useState(null);
 
             useEffect(() => {
@@ -24699,6 +25494,27 @@ const SmartPhoneAction = ({ phone }) => {
                         if (typeof window.playSound === 'function') window.playSound('success');
                         setOrderSuccess({ orderId: data.orderId, message: data.message, gigTitle: gig.title, pkg: activePkg });
                         setOrderForm({ clientName: '', clientPhone: '', clientEmail: '', brief: '', submitting: false });
+                        const r = data.receipt || {
+    orderId: data.orderId || `PRJ-${Date.now().toString().slice(-4)}`,
+    orderDate: moment().format('DD MMM YYYY, hh:mm A'),
+    gigId: gig.id,
+    gigTitle: gig.title,
+    category: gig.category,
+    packageName: activePkg.tier,
+    deliveryDays: Number(activePkg.deliveryDays) || 3,
+    deadlineDate: moment().add(Number(activePkg.deliveryDays) || 3, 'days').format('DD MMM YYYY'),
+    totalAmount: Number(activePkg.price) || 0,
+    paidAmount: 0,
+    dueAmount: Number(activePkg.price) || 0,
+    paymentStatus: 'PAYMENT DUE',
+    assignedFreelancer: gig.ownerName,
+    freelancerShortId: gig.ownerShortId || '',
+    clientName: orderForm.clientName.trim(),
+    clientPhone: orderForm.clientPhone.trim(),
+    clientEmail: orderForm.clientEmail.trim(),
+    brief: orderForm.brief.trim()
+};
+setOrderReceipt(r);
                     } else {
                         if (typeof addToast === 'function') addToast((data && data.message) || 'Order could not be placed.', 'error');
                         setOrderForm(prev => ({ ...prev, submitting: false }));
@@ -24873,6 +25689,99 @@ const SmartPhoneAction = ({ phone }) => {
                                         </div>
                                     </div>
 
+                                    {orderReceipt ? (
+                                        <div className="space-y-3">
+                                            {/* 🧾 Printable & Downloadable Official English Order & Payment Due Slip */}
+                                            <div id="fit-client-order-receipt" className="p-4 sm:p-5 rounded-2xl bg-white text-gray-900 border-2 border-emerald-500/70 shadow-md space-y-3.5">
+                                                <div className="flex items-start justify-between gap-2 pb-3 border-b border-gray-200">
+                                                    <div>
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#005fb8]">Faridpur IT Institute</p>
+                                                        <h3 className="text-base font-bold text-gray-900 leading-tight mt-0.5">Order Confirmation &amp; Payment Slip</h3>
+                                                        <p className="text-[11px] text-gray-500 font-numbers mt-0.5">{orderReceipt.orderDate}</p>
+                                                    </div>
+                                                    <div className="text-right shrink-0 space-y-1">
+                                                        <span className="inline-block px-2 py-0.5 rounded bg-blue-100 text-[#005fb8] text-[10px] font-mono-code font-bold">{orderReceipt.orderId}</span>
+                                                        <span className="block px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold uppercase">Payment Due</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Assignment & Service Details (For Admin / Team Verification) */}
+                                                <div className="rounded-xl bg-gray-50 border border-gray-200 divide-y divide-gray-200 text-xs">
+                                                    <div className="px-3 py-2 flex justify-between gap-2">
+                                                        <span className="text-gray-500 font-semibold">Assigned Freelancer</span>
+                                                        <span className="font-bold text-[#005fb8] text-right">{orderReceipt.assignedFreelancer} {orderReceipt.freelancerShortId ? `(#${orderReceipt.freelancerShortId})` : ''}</span>
+                                                    </div>
+                                                    <div className="px-3 py-2 flex justify-between gap-2">
+                                                        <span className="text-gray-500 font-semibold">Service / Gig</span>
+                                                        <span className="font-bold text-gray-900 text-right line-clamp-2 max-w-[62%]">{orderReceipt.gigTitle}</span>
+                                                    </div>
+                                                    <div className="px-3 py-2 flex justify-between gap-2">
+                                                        <span className="text-gray-500 font-semibold">Package &amp; Timeline</span>
+                                                        <span className="font-bold text-gray-900 text-right">{orderReceipt.packageName} • {orderReceipt.deliveryDays} Days</span>
+                                                    </div>
+                                                    <div className="px-3 py-2 flex justify-between gap-2">
+                                                        <span className="text-gray-500 font-semibold">Est. Delivery</span>
+                                                        <span className="font-numbers font-bold text-gray-900">{orderReceipt.deadlineDate}</span>
+                                                    </div>
+                                                    <div className="px-3 py-2 flex justify-between gap-2">
+                                                        <span className="text-gray-500 font-semibold">Client</span>
+                                                        <span className="font-bold text-gray-900 text-right">{orderReceipt.clientName} ({orderReceipt.clientPhone})</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Payment Breakdown Box */}
+                                                <div className="rounded-xl bg-rose-50/80 border border-rose-200 p-3 space-y-1.5 text-xs font-numbers">
+                                                    <div className="flex justify-between">
+                                                        <span className="font-sans text-gray-600 font-semibold">Order Total</span>
+                                                        <span className="font-bold text-gray-900">{CURRENCY_SYMBOL}{Number(orderReceipt.totalAmount || 0).toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="font-sans text-gray-600 font-semibold">Paid / Advance</span>
+                                                        <span className="font-bold text-emerald-700">{CURRENCY_SYMBOL}0</span>
+                                                    </div>
+                                                    <div className="flex justify-between pt-1.5 border-t border-rose-200 text-sm">
+                                                        <span className="font-sans font-bold text-rose-700 uppercase">Payment Due</span>
+                                                        <span className="font-bold text-rose-700">{CURRENCY_SYMBOL}{Number(orderReceipt.dueAmount || 0).toLocaleString()}</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Clear English Payment & Team Verification Notice */}
+                                                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11.5px] leading-relaxed text-amber-950 space-y-1">
+                                                    <p className="font-bold">Action Required — Complete Advance or Due Payment:</p>
+                                                    <p>
+                                                        Your order has been successfully placed with <strong>Payment Due</strong> status. Please complete your advance or full payment with the <strong>Faridpur IT Institute</strong> team to start your project immediately. Show or forward this receipt to our Admin / Support Team so we can verify your assigned freelancer and project details.
+                                                    </p>
+                                                </div>
+
+                                                <div className="text-[10px] text-center text-gray-500 pt-1 border-t border-gray-100">
+                                                    Faridpur IT Institute • faridpurit.com • Official Support: +880 1642890942
+                                                </div>
+                                            </div>
+
+                                            {/* Receipt Action Buttons */}
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button type="button" onClick={handleDownloadReceiptPNG} className="py-2.5 px-3 rounded-xl bg-[#005fb8] hover:bg-[#004a94] text-white text-xs font-bold flex items-center justify-center gap-1.5 win-button">
+                                                    <Icon name="download" className="w-3.5 h-3.5" /> Download Slip
+                                                </button>
+                                                <button type="button" onClick={handlePrintReceipt} className="py-2.5 px-3 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:text-gray-900 text-white text-xs font-bold flex items-center justify-center gap-1.5 win-button">
+                                                    <Icon name="printer" className="w-3.5 h-3.5" /> Print / PDF
+                                                </button>
+                                            </div>
+
+                                            <a
+                                                href={`https://wa.me/8801642890942?text=${encodeURIComponent(`Hello Faridpur IT Team,\nI have placed a new order and want to confirm the advance/due payment.\n\nOrder ID: ${orderReceipt.orderId}\nAssigned Freelancer: ${orderReceipt.assignedFreelancer} (?p=${orderReceipt.freelancerShortId})\nService: ${orderReceipt.gigTitle}\nPackage: ${orderReceipt.packageName} (${orderReceipt.deliveryDays} Days)\nPayment Due: ৳${orderReceipt.dueAmount}\nClient Name: ${orderReceipt.clientName}\nPhone: ${orderReceipt.clientPhone}`)}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm win-button"
+                                            >
+                                                <Icon name="message-circle" className="w-4 h-4" /> Send Receipt to Admin on WhatsApp
+                                            </a>
+
+                                            <button type="button" onClick={() => setOrderReceipt(null)} className="w-full py-2 rounded-xl bg-gray-100 dark:bg-white/10 text-xs font-bold text-gray-600 dark:text-gray-300">
+                                                Place Another Order
+                                            </button>
+                                        </div>
+                                    ) : (
                                     <form onSubmit={handlePlaceOrder} className="p-4 sm:p-5 rounded-2xl bg-blue-500/[0.06] border border-blue-200/70 dark:border-blue-500/25 space-y-3">
                                         <p className="text-xs font-bold text-[#005fb8] dark:text-[#60cdff] uppercase tracking-wider">
                                             Place Order — {activePkg.tier} ({CURRENCY_SYMBOL}{Number(activePkg.price || 0).toLocaleString()})
@@ -24915,6 +25824,7 @@ const SmartPhoneAction = ({ phone }) => {
                                             </div>
                                         </div>
                                     </form>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -26172,6 +27082,7 @@ const handleAISubmit = async (e) => {
                 setUsersList([]);
                 setActivityLogs([]);
                 setMarketplaceGigs([]);
+                setMarketplaceProfiles([]);
                 setAuth(null);
                 window.location.hash = '';
                 setTimeout(() => { sessionLogoutLockRef.current = false; }, 1500);
@@ -26402,6 +27313,7 @@ const [courseModules, setCourseModules] = useState([]);
             const [dailyTasks, setDailyTasks] = useState([]);
             const [workspaceLinks, setWorkspaceLinks] = useState([]); // 🟢 NEW: Quick Links
             const [marketplaceGigs, setMarketplaceGigs] = useState([]);
+            const [marketplaceProfiles, setMarketplaceProfiles] = useState([]);
             const [loading, setLoading] = useState(true);
 
             // 🟢 GLOBAL SMART AUTOCOMPLETE ENGINE (SECURE & ISOLATED)
@@ -26541,14 +27453,17 @@ const [courseModules, setCourseModules] = useState([]);
 
                 // ২. এজেন্সি প্রজেক্ট (যদি ইতিমধ্যেই কিস্তিতে না থাকে)
                 const projectPhoneKeys = new Set();
+                const projectClientPairs = new Set();
                 (d.projects || []).forEach(p => {
                     const paid = Math.max(0, parseMoney(p.paid));
                     const rev = Math.max(0, parseMoney(p.revenue));
+                    const ph = cleanPh(p.clientPhone);
+                    if (ph && (paid > 0 || coveredParentIds.has(String(p.id).trim()))) {
+                        projectPhoneKeys.add(`${ph}|${paid}`);
+                        projectClientPairs.add(`${ph}|${normTxt(p.name)}`);
+                    }
                     if (paid <= 0 && rev <= 0) return;
                     if (coveredParentIds.has(String(p.id).trim())) return;
-
-                    const ph = cleanPh(p.clientPhone);
-                    if (ph) projectPhoneKeys.add(`${ph}|${paid}`);
 
                     if (!autoOrders.find(o => o.TrxID === p.id)) {
                         const fin = normalizeFinancials(rev, paid, p.status);
@@ -26578,7 +27493,8 @@ const [courseModules, setCourseModules] = useState([]);
                     if (coveredParentIds.has(String(c.id).trim())) return;
 
                     const ph = cleanPh(c.phone);
-                    if (ph && paid > 0 && projectPhoneKeys.has(`${ph}|${paid}`)) return; // Project-এ থাকলে ডুপ্লিকেট বাদ
+                    if (String(c.desc || '').includes('[Auto-Synced from Project')) return;
+                    if (ph && paid > 0 && (projectPhoneKeys.has(`${ph}|${paid}`) || Array.from(projectClientPairs).some(k => k.startsWith(ph + '|') && k.includes(normTxt(c.interestedIn || ''))))) return;
 
                     if (!autoOrders.find(o => o.TrxID === c.id)) {
                         const fin = normalizeFinancials(paid + due, paid, c.status === 'Active' ? 'Completed' : c.status);
@@ -26700,6 +27616,7 @@ const [courseModules, setCourseModules] = useState([]);
                 setDailyTasks(d.dailyTasks || []);
                 setWorkspaceLinks(d.workspaceLinks || []); // 🟢 Load Links
                 setMarketplaceGigs(d.marketplaceGigs || []);
+                setMarketplaceProfiles(d.marketplaceProfiles || []);
                 if (d.myPortfolioConfig) setMyPortfolioConfig(d.myPortfolioConfig);
                 if (typeof d.communityTodayCount === 'number') {
                     setCommunityAllTodayCount(d.communityTodayCount);
@@ -27382,7 +28299,7 @@ const [courseModules, setCourseModules] = useState([]);
                 const permissions = {
                     Admin: ['community', 'dashboard', 'daily-tasks', 'marketplace', 'projects', 'clients', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'id-card', 'students', 'seats', 'leaderboard', 'analytics', 'orders', 'abandoned', 'ranking', 'expenses', 'trash', 'affiliates', 'payouts', 'products', 'omni-search', 'notes', 'settings'],
                     Manager: ['community', 'dashboard', 'daily-tasks', 'marketplace', 'projects', 'clients', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'students', 'seats', 'leaderboard', 'orders', 'abandoned', 'products', 'omni-search', 'notes', 'settings'],
-                    Trainer: ['community', 'dashboard', 'daily-tasks', 'marketplace', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'students', 'seats', 'leaderboard', 'notes', 'settings'],
+                    Trainer: ['community', 'dashboard', 'daily-tasks', 'marketplace', 'projects', 'enrollments', 'courses', 'modules', 'assignments', 'resources', 'progress', 'students', 'seats', 'leaderboard', 'notes', 'settings'],
                     Team: ['community', 'dashboard', 'daily-tasks', 'marketplace', 'projects', 'clients', 'enrollments', 'orders', 'notes', 'settings'],
                     Student: ['community', 'dashboard', 'marketplace', 'projects', 'courses', 'modules', 'assignments', 'resources', 'id-card', 'seats', 'leaderboard', 'orders', 'notes', 'settings', 'clients', 'enrollments', 'products'],
                     Affiliator: ['community', 'dashboard', 'marketplace', 'orders', 'abandoned', 'affiliates', 'payouts', 'products', 'omni-search', 'notes', 'settings']
@@ -28502,6 +29419,8 @@ const [courseModules, setCourseModules] = useState([]);
                                                     <MarketplaceView
                                                         auth={auth}
                                                         gigs={marketplaceGigs}
+                                                        marketplaceProfiles={marketplaceProfiles}
+                                                        globalLeaderboard={globalLeaderboard}
                                                         projects={myProjects}
                                                         clientLeads={myClientLeads}
                                                         studentsPanel={studentsPanel}
@@ -28513,7 +29432,7 @@ const [courseModules, setCourseModules] = useState([]);
                                                         addToast={addToast}
                                                     />
                                                 )}
-                                                {currentRoute === 'projects' && <ProjectsView addToast={addToast} executeAPI={executeAPI} projects={myProjects} orders={orders} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} />}
+                                                {currentRoute === 'projects' && <ProjectsView addToast={addToast} executeAPI={executeAPI} projects={myProjects} orders={orders} fetchOrders={fetchOrders} globalContacts={globalContacts} usersList={usersList} studentsPanel={studentsPanel} auth={auth} />}
                                                 {currentRoute === 'enrollments' && <EnrollmentsView addToast={addToast} executeAPI={executeAPI} leads={myStudentLeads} orders={orders} fetchOrders={fetchOrders} globalContacts={globalContacts} auth={auth} studentsPanel={myStudentsPanel} usersList={usersList} />}
                                                 {currentRoute === 'courses' && <CoursesView addToast={addToast} auth={auth} videos={videos} executeAPI={executeAPI} fetchOrders={fetchOrders} studentsPanel={studentsPanel} enrolledCourses={myEnrolledCourses} />}
                                                 {currentRoute === 'modules' && <ModulesView addToast={addToast} auth={auth} modules={courseModules} moduleProgress={moduleProgress} executeAPI={executeAPI} fetchOrders={fetchOrders} enrolledCourses={myEnrolledCourses} />}
