@@ -20623,7 +20623,12 @@ const SmartPhoneAction = ({ phone }) => {
             const [taskModal, setTaskModal] = useState({ isOpen: false, id: null, role: 'Student', serial: '1', title: '', description: '', saving: false });
             const [calMonth, setCalMonth] = useState(() => moment().startOf('month'));
             const [selectedCalDate, setSelectedCalDate] = useState(() => moment().format('YYYY-MM-DD'));
-            const [savingCheck, setSavingCheck] = useState(false);
+            const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
+            const syncShieldUntilRef = useRef(0);
+            const syncTimerRef = useRef(null);
+            const savedBadgeTimerRef = useRef(null);
+            const isApiInFlightRef = useRef(false);
+            const needsResendRef = useRef(false);
 
             const handleMidnightRollover = useCallback((newDayStr) => {
                 setTodayYMD(newDayStr);
@@ -20651,24 +20656,148 @@ const SmartPhoneAction = ({ phone }) => {
                 return String(maxS + 1);
             };
 
+            const checkCacheKey = `fit_rtn_chk_${String(auth?.userId || 'u').toLowerCase()}_${todayYMD}`;
+
+            const readInitialCheckedIds = (dateKey) => {
+                const cKey = `fit_rtn_chk_${String(auth?.userId || 'u').toLowerCase()}_${dateKey}`;
+                try {
+                    const cached = JSON.parse(localStorage.getItem(cKey) || 'null');
+                    if (cached && Array.isArray(cached.ids)) return cached.ids.map(String);
+                } catch (e) {}
+                const srv = (routineLogs || []).find(l => l.date === dateKey);
+                return srv && Array.isArray(srv.completedIds) ? srv.completedIds.map(String) : [];
+            };
+
+            const [localCheckedIds, setLocalCheckedIds] = useState(() => readInitialCheckedIds(todayYMD));
+            const latestIdsRef = useRef(localCheckedIds);
+            const myRoleTasksRef = useRef(myRoleTasks);
+            myRoleTasksRef.current = myRoleTasks;
+
+            // রাত ১২টার পর নতুন দিন শুরু হলে চেক-স্টেট ফ্রেশ হবে
+            useEffect(() => {
+                syncShieldUntilRef.current = 0;
+                const initIds = readInitialCheckedIds(todayYMD);
+                latestIdsRef.current = initIds;
+                setLocalCheckedIds(initIds);
+            }, [todayYMD, auth?.userId]);
+
+            // ব্যাকগ্রাউন্ড সিঙ্ক এলে শিল্ড-সুরক্ষিত অবস্থায় শুধু নিরাপদ ডাটা মার্জ হবে (কখনো ফ্লিকার বা রিসেট হবে না)
+            useEffect(() => {
+                if (Date.now() < syncShieldUntilRef.current || isApiInFlightRef.current || syncTimerRef.current) return;
+                try {
+                    const cached = JSON.parse(localStorage.getItem(checkCacheKey) || 'null');
+                    if (cached && cached.synced === false && Date.now() - (cached.ts || 0) < 120000) return;
+                } catch (e) {}
+                const srv = (routineLogs || []).find(l => l.date === todayYMD);
+                if (srv && Array.isArray(srv.completedIds)) {
+                    const srvIds = srv.completedIds.map(String);
+                    const curSorted = [...latestIdsRef.current].sort().join('|');
+                    const srvSorted = [...srvIds].sort().join('|');
+                    if (curSorted !== srvSorted) {
+                        latestIdsRef.current = srvIds;
+                        setLocalCheckedIds(srvIds);
+                        try { localStorage.setItem(checkCacheKey, JSON.stringify({ ids: srvIds, ts: Date.now(), synced: true })); } catch (e) {}
+                    }
+                }
+            }, [routineLogs, todayYMD, checkCacheKey]);
+
+            useEffect(() => () => {
+                if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+                if (savedBadgeTimerRef.current) clearTimeout(savedBadgeTimerRef.current);
+            }, []);
+
             const logsByDate = useMemo(() => {
                 const map = {};
                 (routineLogs || []).forEach(l => {
                     if (l.date) map[l.date] = l;
                 });
+                const doneNow = myRoleTasks.filter(t => localCheckedIds.includes(String(t.id))).length;
+                if (localCheckedIds.length > 0 || map[todayYMD]) {
+                    map[todayYMD] = {
+                        ...(map[todayYMD] || {}),
+                        logKey: `${String(auth?.userId || '').toLowerCase()}__${todayYMD}`,
+                        date: todayYMD,
+                        completedIds: localCheckedIds,
+                        totalTasks: Math.max(myRoleTasks.length, doneNow),
+                        completedCount: doneNow
+                    };
+                }
                 return map;
-            }, [routineLogs]);
+            }, [routineLogs, localCheckedIds, myRoleTasks, todayYMD, auth?.userId]);
 
-            const todayLog = logsByDate[todayYMD] || { date: todayYMD, completedIds: [], totalTasks: myRoleTasks.length, completedCount: 0 };
-            const checkedSet = new Set(Array.isArray(todayLog.completedIds) ? todayLog.completedIds : []);
-            const todayCompletedCount = myRoleTasks.filter(t => checkedSet.has(t.id)).length;
+            const checkedSet = useMemo(() => new Set(localCheckedIds.map(String)), [localCheckedIds]);
+            const todayCompletedCount = myRoleTasks.filter(t => checkedSet.has(String(t.id))).length;
             const todayTotalCount = myRoleTasks.length;
             const remainingTasksCount = Math.max(0, todayTotalCount - todayCompletedCount);
             const todayPct = todayTotalCount > 0 ? Math.round((todayCompletedCount / todayTotalCount) * 100) : 0;
             const isAllDoneToday = todayTotalCount > 0 && todayCompletedCount === todayTotalCount;
 
-            const handleToggleTask = async (taskId) => {
-                if (savingCheck) return;
+            const flushRoutineSave = useCallback(async (retryCount = 0) => {
+                if (isApiInFlightRef.current) {
+                    needsResendRef.current = true;
+                    return;
+                }
+                isApiInFlightRef.current = true;
+                setSyncStatus('saving');
+                const idsSnapshot = [...latestIdsRef.current];
+                const tasksNow = myRoleTasksRef.current || [];
+                const totalNow = tasksNow.length;
+                const doneNow = tasksNow.filter(t => idsSnapshot.includes(String(t.id))).length;
+
+                try {
+                    const res = await executeAPI({
+                        action: 'toggle_routine_check',
+                        completedIds: idsSnapshot,
+                        totalTasks: totalNow
+                    });
+                    const data = await res.json();
+                    if (data && data.success) {
+                        syncShieldUntilRef.current = Date.now() + 15000;
+                        const serverLog = data.log || {
+                            logKey: `${String(auth?.userId || '').toLowerCase()}__${todayYMD}`,
+                            date: todayYMD,
+                            completedIds: idsSnapshot,
+                            totalTasks: totalNow,
+                            completedCount: doneNow,
+                            updatedAt: new Date().toISOString()
+                        };
+                        try {
+                            localStorage.setItem(checkCacheKey, JSON.stringify({ ids: latestIdsRef.current, ts: Date.now(), synced: !needsResendRef.current }));
+                            const offlineRaw = localStorage.getItem('faridpurit_offline_db');
+                            if (offlineRaw) {
+                                const parsedDb = JSON.parse(offlineRaw);
+                                parsedDb.routineLogs = [serverLog, ...(parsedDb.routineLogs || []).filter(l => l.date !== todayYMD)];
+                                localStorage.setItem('faridpurit_offline_db', JSON.stringify(parsedDb));
+                            }
+                        } catch (e) {}
+                        if (typeof setRoutineLogs === 'function') {
+                            setRoutineLogs(prev => [serverLog, ...(prev || []).filter(l => l.date !== todayYMD)]);
+                        }
+                        if (!needsResendRef.current) {
+                            setSyncStatus('saved');
+                            if (savedBadgeTimerRef.current) clearTimeout(savedBadgeTimerRef.current);
+                            savedBadgeTimerRef.current = setTimeout(() => setSyncStatus('idle'), 2600);
+                        }
+                    } else {
+                        throw new Error('Save failed');
+                    }
+                } catch (e) {
+                    if (retryCount < 1) {
+                        isApiInFlightRef.current = false;
+                        setTimeout(() => flushRoutineSave(retryCount + 1), 1800);
+                        return;
+                    }
+                    setSyncStatus('error');
+                } finally {
+                    isApiInFlightRef.current = false;
+                    if (needsResendRef.current) {
+                        needsResendRef.current = false;
+                        flushRoutineSave(0);
+                    }
+                }
+            }, [executeAPI, auth?.userId, todayYMD, checkCacheKey, setRoutineLogs]);
+
+            const handleToggleTask = (taskId) => {
                 const liveDay = moment().format('YYYY-MM-DD');
                 if (liveDay !== todayYMD) {
                     setTodayYMD(liveDay);
@@ -20677,12 +20806,23 @@ const SmartPhoneAction = ({ phone }) => {
                     if (typeof addToast === 'function') addToast('দিন শেষ হয়ে গেছে! পূর্বের দিনের কোনো টাস্ক আর চেক করা যাবে না।', 'error');
                     return;
                 }
-                playAudio('click');
-                const nextIds = checkedSet.has(taskId)
-                    ? Array.from(checkedSet).filter(id => id !== taskId)
-                    : [...Array.from(checkedSet), taskId];
-                const newCount = myRoleTasks.filter(t => nextIds.includes(t.id)).length;
 
+                const tid = String(taskId);
+                const prevIds = latestIdsRef.current;
+                const isCurrentlyChecked = prevIds.includes(tid);
+                const nextIds = isCurrentlyChecked
+                    ? prevIds.filter(id => id !== tid)
+                    : [...prevIds, tid];
+
+                playAudio(isCurrentlyChecked ? 'click' : 'success');
+
+                // ⚡ ০ মিলিসেকেন্ডে স্থায়ী লোকাল স্টেট + ২৫ সেকেন্ড সিঙ্ক-শিল্ড
+                latestIdsRef.current = nextIds;
+                syncShieldUntilRef.current = Date.now() + 25000;
+                setLocalCheckedIds(nextIds);
+                setSyncStatus('saving');
+
+                const newCount = myRoleTasks.filter(t => nextIds.includes(String(t.id))).length;
                 const optimisticLog = {
                     logKey: `${String(auth?.userId || '').toLowerCase()}__${todayYMD}`,
                     date: todayYMD,
@@ -20691,28 +20831,25 @@ const SmartPhoneAction = ({ phone }) => {
                     completedCount: newCount,
                     updatedAt: new Date().toISOString()
                 };
+
+                try {
+                    localStorage.setItem(checkCacheKey, JSON.stringify({ ids: nextIds, ts: Date.now(), synced: false }));
+                } catch (e) {}
+
                 if (typeof setRoutineLogs === 'function') {
                     setRoutineLogs(prev => [optimisticLog, ...(prev || []).filter(l => l.date !== todayYMD)]);
                 }
 
-                setSavingCheck(true);
-                try {
-                    const res = await executeAPI({
-                        action: 'toggle_routine_check',
-                        completedIds: nextIds,
-                        totalTasks: todayTotalCount
-                    });
-                    const data = await res.json();
-                    if (data && data.success) {
-                        if (newCount === todayTotalCount && todayTotalCount > 0) {
-                            playAudio('success');
-                            if (typeof addToast === 'function') addToast('অসাধারণ! আজকের সব ডেইলি টাস্ক সম্পন্ন হয়েছে!', 'success');
-                        }
-                    } else if (typeof fetchOrders === 'function') {
-                        fetchOrders(true);
-                    }
-                } catch (e) {}
-                setSavingCheck(false);
+                if (!isCurrentlyChecked && newCount === todayTotalCount && todayTotalCount > 0) {
+                    if (typeof addToast === 'function') addToast('অসাধারণ! আজকের সব ডেইলি টাস্ক সম্পন্ন হয়েছে!', 'success');
+                }
+
+                // 🚀 স্মার্ট ডিবাউন্স: পরপর ৫টা টাস্কে দ্রুত ক্লিক করলেও কোনোটা মিস হবে না
+                if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+                syncTimerRef.current = setTimeout(() => {
+                    syncTimerRef.current = null;
+                    flushRoutineSave(0);
+                }, 450);
             };
 
             const handleCopyTaskText = (e, task) => {
@@ -21043,21 +21180,43 @@ const SmartPhoneAction = ({ phone }) => {
                                     </div>
                                 ) : (
                                     <div className="rounded-2xl border border-gray-200/70 dark:border-white/10 bg-white/85 dark:bg-[#141417] overflow-hidden divide-y divide-gray-100 dark:divide-white/[0.06]">
-                                        {/* Clean Micro Guide Header */}
+                                        {/* Clean Micro Guide Header + Live Save Status Pill */}
                                         <div className="px-3.5 sm:px-4 py-2 bg-gray-50/80 dark:bg-white/[0.02] flex items-center justify-between gap-2 flex-nowrap text-[11px]">
                                             <span className="font-semibold text-gray-500 dark:text-gray-400 truncate">
                                                 কাজ শেষ হলে বামের ঘরে ট্যাপ করে টিক দিন
                                             </span>
-                                            <span className={`font-bold whitespace-nowrap shrink-0 ${
-                                                isAllDoneToday ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#005fb8] dark:text-[#60cdff]'
-                                            }`}>
-                                                {isAllDoneToday ? 'সব সম্পন্ন ✓' : `${remainingTasksCount}টি বাকি`}
-                                            </span>
+                                            <div className="flex items-center gap-2 shrink-0 flex-nowrap">
+                                                {syncStatus === 'saving' && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-bold whitespace-nowrap">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                                                        সেভ হচ্ছে...
+                                                    </span>
+                                                )}
+                                                {syncStatus === 'saved' && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold whitespace-nowrap">
+                                                        সেভ হয়েছে ✓
+                                                    </span>
+                                                )}
+                                                {syncStatus === 'error' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); flushRoutineSave(0); }}
+                                                        className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-300 text-[10px] font-bold whitespace-nowrap"
+                                                    >
+                                                        Retry Save ↻
+                                                    </button>
+                                                )}
+                                                <span className={`font-bold whitespace-nowrap ${
+                                                    isAllDoneToday ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#005fb8] dark:text-[#60cdff]'
+                                                }`}>
+                                                    {isAllDoneToday ? 'সব সম্পন্ন ✓' : `${remainingTasksCount}টি বাকি`}
+                                                </span>
+                                            </div>
                                         </div>
 
-                                        {/* Minimal Task Rows */}
+                                        {/* Minimal Task Rows with Pure Inline SVG Checkbox (Zero Disappear Bug) */}
                                         {myRoleTasks.map((task, idx) => {
-                                            const isDone = checkedSet.has(task.id);
+                                            const isDone = checkedSet.has(String(task.id));
                                             const serNum = String(parseSerial(task, idx + 1)).padStart(2, '0');
 
                                             return (
@@ -21065,30 +21224,40 @@ const SmartPhoneAction = ({ phone }) => {
                                                     key={task.id}
                                                     onClick={() => handleToggleTask(task.id)}
                                                     style={{ WebkitTapHighlightColor: 'transparent' }}
-                                                    className={`group px-3.5 sm:px-4 py-3 sm:py-3.5 cursor-pointer flex items-start gap-3 transition-colors select-none ${
+                                                    className={`group px-3.5 sm:px-4 py-3.5 sm:py-4 cursor-pointer flex items-start gap-3 sm:gap-3.5 transition-colors select-none ${
                                                         isDone
-                                                            ? 'bg-emerald-500/[0.04] dark:bg-emerald-500/[0.06]'
+                                                            ? 'bg-emerald-500/[0.05] dark:bg-emerald-500/[0.08]'
                                                             : 'hover:bg-blue-500/[0.03] dark:hover:bg-white/[0.02]'
                                                     }`}
                                                 >
-                                                    {/* Crystal-Clear Interactive Round Checkbox */}
-                                                    <div className={`w-5 h-5 sm:w-[22px] sm:h-[22px] rounded-full flex items-center justify-center shrink-0 mt-0.5 border-2 transition-all ${
+                                                    {/* 🟢 Bulletproof Pure Inline SVG Round Checkbox (Never Vanishes!) */}
+                                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 border-2 transition-all duration-150 ${
                                                         isDone
-                                                            ? 'bg-emerald-500 border-emerald-500 text-white'
+                                                            ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm scale-100'
                                                             : 'bg-white dark:bg-transparent border-gray-300 dark:border-gray-600 group-hover:border-[#005fb8]'
                                                     }`}>
-                                                        {isDone && <Icon name="check" className="w-3 h-3 stroke-[3]" />}
+                                                        <svg
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            strokeWidth="3.2"
+                                                            strokeLinecap="round"
+                                                            strokeLinejoin="round"
+                                                            className={`w-3.5 h-3.5 transition-all duration-150 ${isDone ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}
+                                                        >
+                                                            <polyline points="20 6 9 17 4 12" />
+                                                        </svg>
                                                     </div>
 
-                                                    {/* Clean Task Title & Description */}
+                                                    {/* Clean Larger Task Title & Description */}
                                                     <div className="min-w-0 flex-1 space-y-1">
                                                         <div className="flex items-start justify-between gap-2">
-                                                            <h4 className={`text-[13.5px] sm:text-sm font-semibold leading-snug break-words min-w-0 flex-1 ${
+                                                            <h4 className={`text-[15px] sm:text-[16px] font-bold leading-snug tracking-tight break-words min-w-0 flex-1 ${
                                                                 isDone
                                                                     ? 'line-through text-gray-400 dark:text-gray-500'
                                                                     : 'text-gray-900 dark:text-white'
                                                             }`}>
-                                                                <span className="font-numbers text-[11px] font-bold text-gray-400 dark:text-gray-500 mr-1.5">
+                                                                <span className="font-numbers text-xs font-bold text-[#005fb8]/75 dark:text-[#60cdff]/75 mr-1.5">
                                                                     {serNum}.
                                                                 </span>
                                                                 {task.title}
