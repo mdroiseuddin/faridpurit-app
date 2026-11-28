@@ -30198,13 +30198,30 @@ const [courseModules, setCourseModules] = useState([]);
                     )}
 
                     <aside className={`fixed md:relative h-[100dvh] bg-white/95 dark:bg-[#111111]/95 backdrop-blur-3xl flex flex-col transition-all duration-300 ease-in-out z-[70] shrink-0 border-r border-gray-200/70 dark:border-white/10 ${isSidebarOpen ? 'w-[220px] translate-x-0 shadow-2xl md:shadow-none' : 'w-0 md:w-[76px] -translate-x-full md:translate-x-0 overflow-hidden sidebar-collapsed'}`}>
-                        {/* Elegant Top Branding */}
+                       {/* Elegant Top Branding (Non-Clickable Brand Logo) */}
                         <div className={`h-[68px] px-4 border-b border-gray-100 dark:border-white/5 flex items-center shrink-0 transition-all ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
-                            <div className="flex items-center gap-3 overflow-hidden cursor-pointer group" onClick={() => { playSound('click'); window.location.hash = 'dashboard'; }}>
-                                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#005fb8] to-purple-600 dark:from-[#facc15] dark:to-orange-500 text-white dark:text-gray-900 flex items-center justify-center shadow-md shrink-0 group-hover:shadow-lg transition-all group-hover:scale-105">
-                                    <Icon name="box" className="w-5 h-5" />
+                            <div className="flex items-center gap-2.5 overflow-hidden select-none">
+                                <div
+                                    className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0 pointer-events-none select-none"
+                                    onContextMenu={(e) => e.preventDefault()}
+                                >
+                                    <img
+                                        src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgfKRu6gbAKqQoIlMxINP7mnBcaoVrBuzacyV4NQsp_YvhKqCBYPJ2ixy7Im9qovlwVDE77rW3P-akLkVXOTlWY6tEThwQJILDDAN_1dCx_mDu92WSgtvX9sQMBMDi_-rqZIEMQVJUypFmG66rXmmJ0lkTD1ECNpKiixXTWyouqFAApTI2WiMtN8_GzJgPB/s192-rw/Faridpur%20It%20Institute%20Red%20Logo%20Icon%20webp.webp"
+                                        alt="Faridpur IT Institute Official Logo"
+                                        width="36"
+                                        height="36"
+                                        draggable="false"
+                                        referrerPolicy="no-referrer"
+                                        className="w-full h-full object-contain pointer-events-none select-none"
+                                    />
                                 </div>
-                                <span className="text-base font-bold tracking-tight text-gray-900 dark:text-white hide-on-collapse truncate" title="Faridpur IT Institute">Faridpur IT</span>
+                                <span
+                                    onClick={() => { playSound('click'); window.location.hash = 'dashboard'; }}
+                                    className="text-base font-bold tracking-tight text-gray-900 dark:text-white hide-on-collapse truncate cursor-pointer"
+                                    title="Faridpur IT Institute"
+                                >
+                                    Faridpur IT
+                                </span>
                             </div>
                             <button className="hidden md:flex p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 shrink-0 transition-all hide-on-collapse text-gray-400 hover:text-gray-900 dark:hover:text-white" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
                                 <Icon name="align-left" className="w-5 h-5" />
