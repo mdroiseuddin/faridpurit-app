@@ -30201,8 +30201,20 @@ const [courseModules, setCourseModules] = useState([]);
                         {/* Elegant Top Branding */}
                         <div className={`h-[68px] px-4 border-b border-gray-100 dark:border-white/5 flex items-center shrink-0 transition-all ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
                             <div className="flex items-center gap-3 overflow-hidden cursor-pointer group" onClick={() => { playSound('click'); window.location.hash = 'dashboard'; }}>
-                                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#005fb8] to-purple-600 dark:from-[#facc15] dark:to-orange-500 text-white dark:text-gray-900 flex items-center justify-center shadow-md shrink-0 group-hover:shadow-lg transition-all group-hover:scale-105">
-                                    <Icon name="box" className="w-5 h-5" />
+                                <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    onContextMenu={(e) => e.preventDefault()}
+                                    className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0 select-none cursor-default"
+                                >
+                                    <img
+                                        src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgfKRu6gbAKqQoIlMxINP7mnBcaoVrBuzacyV4NQsp_YvhKqCBYPJ2ixy7Im9qovlwVDE77rW3P-akLkVXOTlWY6tEThwQJILDDAN_1dCx_mDu92WSgtvX9sQMBMDi_-rqZIEMQVJUypFmG66rXmmJ0lkTD1ECNpKiixXTWyouqFAApTI2WiMtN8_GzJgPB/s192-rw/Faridpur%20It%20Institute%20Red%20Logo%20Icon%20webp.webp"
+                                        alt="Faridpur IT Institute Logo"
+                                        width="36"
+                                        height="36"
+                                        draggable="false"
+                                        referrerPolicy="no-referrer"
+                                        className="w-full h-full object-contain pointer-events-none select-none"
+                                    />
                                 </div>
                                 <span className="text-base font-bold tracking-tight text-gray-900 dark:text-white hide-on-collapse truncate" title="Faridpur IT Institute">Faridpur IT</span>
                             </div>
